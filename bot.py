@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Bot configuration
 API_ID = 23656977
 API_HASH = "49d3f43531a92b3f5bc403766313ca1e"
-BOT_TOKEN = "8052900952:AAFTioRqhxF7Tby2ISWEjSB8dX4cWwqNXAk"
+BOT_TOKEN = "8293003270:AAF_7aGUv1rgoVZfXgWEXBlI_72T8d8DNbg"
 
 # Channels
 MANDATORY_CHANNEL = "iIl337"
