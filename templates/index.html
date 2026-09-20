@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#08080C">
+<title>خَيال — شارِك البرومبت، لا الصورة فقط</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2322D3EE'/%3E%3Cstop offset='1' stop-color='%238B5CF6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='28' fill='url(%23g)'/%3E%3Ctext x='50' y='72' font-size='62' text-anchor='middle' fill='%230A0A0F' font-family='sans-serif' font-weight='800'%3Eخ%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- ═══ AURORA BACKGROUND ═══ -->
+<div class="aurora"><div class="aurora-mid"></div></div>
+
+<!-- ═══ NAV ═══ -->
+<header class="nav" id="nav">
+  <a class="nav-brand" onclick="App.goHome()">
+    <span class="brand-mark">خ</span>
+    <span>خَيال</span>
+  </a>
+  <nav class="nav-links">
+    <a class="nav-link" onclick="App.scrollTo('features')">المميزات</a>
+    <a class="nav-link" onclick="App.scrollTo('how')">كيف تعمل</a>
+    <a class="nav-link" onclick="App.scrollTo('community')">المجتمع</a>
+  </nav>
+  <div class="nav-grow"></div>
+  <div class="nav-actions">
+    <label class="search" id="searchWrap">
+      <i class="ph ph-magnifying-glass"></i>
+      <input type="text" id="searchInput" placeholder="ابحث عن برومبت أو مبدع…" autocomplete="off">
+      <div class="search-results" id="searchResults"></div>
+    </label>
+    <button class="icon-btn" id="notifBtn" onclick="Drawers.openNotifications()" aria-label="الإشعارات" style="display:none">
+      <i class="ph ph-bell"></i>
+      <span class="badge" id="notifBadge">3</span>
+    </button>
+    <button class="icon-btn" onclick="App.toggleTheme()" aria-label="تبديل المظهر">
+      <i class="ph ph-moon" id="themeIcon"></i>
+    </button>
+    <button class="btn btn-glass btn-sm" id="signInBtn" onclick="Auth.open()">
+      <i class="ph ph-google-logo"></i><span> دخول</span>
+    </button>
+    <button class="icon-btn" id="avatarBtn" onclick="App.switchTab('profile')" style="display:none">
+      <img class="author-avatar" src="{{ data.current_user.avatar }}" alt="">
+    </button>
+  </div>
+</header>
+
+<!-- ═══ LANDING ═══ -->
+<main class="view active" id="view-landing">
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-chip">
+        <span class="pulse"></span>
+        النسخة التجريبية · ١٢٬٤٠٠+ مبدع
+      </div>
+      <h1>
+        شارِك <span class="grad">البرومبت</span>،<br>
+        لا <span class="stroke">الصورة</span> فقط.
+      </h1>
+      <p class="hero-lede">
+        خَيال منصة عربية لمبدعي الصور بالذكاء الاصطناعي.
+        انشر البرومبت مع النتيجة، اكتشف مكتبة حيّة، انسخ ما ينجح، واحفظ الفضل لأصحابه.
+      </p>
+      <div class="hero-cta">
+        <button class="btn btn-primary btn-lg" onclick="Auth.open()">
+          <i class="ph ph-google-logo"></i> ابدأ بحساب جوجل
+        </button>
+        <button class="btn btn-glass btn-lg" onclick="App.previewFeed()">
+          تصفَّح المنصة <i class="ph ph-arrow-left"></i>
+        </button>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat"><strong>١٢٫٤K</strong><span>مبدع</span></div>
+        <div class="hero-stat"><strong>٤٨K</strong><span>برومبت</span></div>
+        <div class="hero-stat"><strong>٢٤٠K</strong><span>نسخة</span></div>
+      </div>
+      <div class="hero-preview">
+        <div class="card" data-label="cinematic rooftop, neon"><img src="https://picsum.photos/seed/aurora1/900/1200" alt="" loading="lazy"></div>
+        <div class="card" data-label="kyoto alley, rain"><img src="https://picsum.photos/seed/aurora2/600/400" alt="" loading="lazy"></div>
+        <div class="card" data-label="cyberpunk market"><img src="https://picsum.photos/seed/aurora3/600/400" alt="" loading="lazy"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <div class="sec-head">
+      <div>
+        <div class="sec-eyebrow">ما تحصل عليه</div>
+        <h2>كل ما يحتاجه صانع البرومبت في مكان واحد.</h2>
+      </div>
+      <p>بُنيت مع مبدعين ينشرون كل يوم. برومبتات حقيقية، أسماء محفوظة، وإعادة استخدام موثّقة.</p>
+    </div>
+    <div class="bento">
+      <article class="bento-card b-a">
+        <div class="bento-icon"><i class="ph ph-sparkle"></i></div>
+        <h3>انشر البرومبت مع النتيجة</h3>
+        <p>كل منشور يقرن الصورة بالبرومبت والموديل والإعدادات بالضبط. نسخة واحدة بضغطة.</p>
+      </article>
+      <article class="bento-card b-b">
+        <div class="bento-icon"><i class="ph ph-users-three"></i></div>
+        <h3>مجتمع حقيقي</h3>
+        <p>تابِع المبدعين، زُر صفحاتهم، وتواصل معهم مباشرة عبر الدردشة المدمجة.</p>
+      </article>
+      <article class="bento-card b-c">
+        <div class="bento-icon"><i class="ph ph-heart"></i></div>
+        <h3>أعجِب واحفظ</h3>
+        <p>مكتبتان منفصلتان: المُعجَبة والمحفوظة للرجوع لاحقاً.</p>
+      </article>
+      <article class="bento-card b-d">
+        <div class="bento-icon"><i class="ph ph-chat-circle-dots"></i></div>
+        <h3>دردشة مدمجة + إشعارات حية</h3>
+        <p>تحدّث مع المبدعين دون مغادرة المنصة، وابقَ على اطلاع بكل تفاعل على برومبتاتك.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <div class="sec-head">
+      <div>
+        <div class="sec-eyebrow">كيف تعمل</div>
+        <h2>ثلاث خطوات. هذا كل شيء.</h2>
+      </div>
+    </div>
+    <div class="bento" style="grid-template-columns:repeat(3,1fr)">
+      <article class="bento-card">
+        <div class="bento-icon"><i class="ph ph-google-logo"></i></div>
+        <h3>١. ادخل بجوجل</h3>
+        <p>ضغطة واحدة. بلا كلمات مرور، بلا نماذج.</p>
+      </article>
+      <article class="bento-card">
+        <div class="bento-icon"><i class="ph ph-image-square"></i></div>
+        <h3>٢. انشر برومبتك</h3>
+        <p>ارفع الصورة، الصق البرومبت، ضع وسم الموديل.</p>
+      </article>
+      <article class="bento-card">
+        <div class="bento-icon"><i class="ph ph-copy"></i></div>
+        <h3>٣. انسخ وأعِد الاستخدام</h3>
+        <p>اكتشف، انسخ، عدّل، وانشر نسختك الخاصة.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section" id="community">
+    <div class="sec-head">
+      <div>
+        <div class="sec-eyebrow">من المجتمع</div>
+        <h2>انظر ما ينشره الناس الآن.</h2>
+      </div>
+      <button class="btn btn-glass" onclick="App.previewFeed()">افتح التغذية كاملة <i class="ph ph-arrow-up-left"></i></button>
+    </div>
+    <div class="feed" id="landingFeed"></div>
+  </section>
+
+  <footer style="padding:var(--pad-y) var(--pad-x) var(--s8);border-top:1px solid var(--glass-border);max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;gap:var(--s6);flex-wrap:wrap;color:var(--fg-3);font-size:var(--t-sm)">
+    <div class="nav-brand"><span class="brand-mark">خ</span><span>خَيال</span></div>
+    <div>© ٢٠٢٥ خَيال. صُنع لمبدعي البرومبتات.</div>
+    <div style="display:flex;gap:var(--s6)"><a href="#">الخصوصية</a><a href="#">الشروط</a><a href="https://github.com">GitHub</a></div>
+  </footer>
+</main>
+
+<!-- ═══ APP ═══ -->
+<main class="view" id="view-app">
+  <div class="app-main">
+    <section class="tab-panel active" id="tab-home">
+      <div class="page-head">
+        <h1>الرئيسية</h1>
+        <p>برومبتات جديدة من المبدعين الذين تتابعهم.</p>
+      </div>
+      <div class="sort-row">
+        <div class="sort-tabs">
+          <button class="sort-tab active" data-sort="recent" onclick="App.setSort('recent')">الأحدث</button>
+          <button class="sort-tab" data-sort="top" onclick="App.setSort('top')">الأكثر رواجاً</button>
+        </div>
+      </div>
+      <div class="filters" id="filters"></div>
+      <div class="feed" id="homeFeed"></div>
+    </section>
+
+    <section class="tab-panel" id="tab-explore">
+      <div class="page-head"><h1>استكشف</h1><p>الأكثر رواجاً عبر المنصة.</p></div>
+      <div class="filters" id="exploreFilters"></div>
+      <div class="feed" id="exploreFeed"></div>
+    </section>
+
+    <section class="tab-panel" id="tab-liked">
+      <div class="page-head"><h1>المُعجَبة</h1><p>كل ما وضعت عليه قلباً.</p></div>
+      <div class="feed" id="likedFeed"></div>
+    </section>
+
+    <section class="tab-panel" id="tab-saved">
+      <div class="page-head"><h1>المحفوظة</h1><p>محفوظة للرجوع إليها.</p></div>
+      <div class="feed" id="savedFeed"></div>
+    </section>
+
+    <section class="tab-panel" id="tab-chat">
+      <div class="page-head"><h1>الرسائل</h1><p>تحدّث مع المبدعين.</p></div>
+      <div class="chat-layout" id="chatLayout">
+        <div class="chat-list">
+          <div class="chat-list-head">
+            <h3>صندوق الوارد</h3>
+            <button class="icon-btn" onclick="Utils.toast('قريباً')"><i class="ph ph-pencil-simple"></i></button>
+          </div>
+          <div class="chat-scroll" id="chatList"></div>
+        </div>
+        <div class="chat-thread" id="chatThread">
+          <div class="chat-head" id="chatHead"></div>
+          <div class="chat-body" id="chatBody"></div>
+          <form class="chat-composer" onsubmit="Chat.send(event)">
+            <textarea id="chatInput" placeholder="اكتب رسالة…" rows="1" oninput="Utils.autoGrow(this)"></textarea>
+            <button type="submit" class="btn btn-primary btn-icon" aria-label="إرسال" style="border-radius:var(--r-2);min-width:40px;min-height:40px">
+              <i class="ph ph-paper-plane-tilt"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-profile">
+      <div class="profile-head">
+        <div class="profile-body">
+          <img class="profile-avatar" src="{{ data.current_user.avatar }}" alt="" id="profileAvatar">
+          <div class="profile-info">
+            <div class="profile-name">
+              <span id="profileName">{{ data.current_user.name }}</span>
+              <i class="ph ph-seal-check verified"></i>
+            </div>
+            <div class="profile-handle" id="profileHandle">{{ data.current_user.handle }}</div>
+            <p class="profile-bio" id="profileBio">{{ data.current_user.bio }}</p>
+            <div class="profile-stats">
+              <div class="stat"><strong id="statPosts">٠</strong><span>برومبت</span></div>
+              <div class="stat"><strong>٢٤٨</strong><span>متابِع</span></div>
+              <div class="stat"><strong>١١٢</strong><span>يتابع</span></div>
+              <div class="stat"><strong id="statLikes">٠</strong><span>إعجاب</span></div>
+            </div>
+            <div class="profile-btns">
+              <button class="btn btn-glass btn-sm" onclick="Auth.openEditProfile()"><i class="ph ph-pencil-simple"></i> تعديل الملف</button>
+              <button class="btn btn-glass btn-sm" onclick="Auth.logout()"><i class="ph ph-sign-out"></i> خروج</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tabs" id="profileTabs">
+        <button class="tab active" data-ptab="posts">برومبتاتي</button>
+        <button class="tab" data-ptab="liked">المُعجَبة</button>
+        <button class="tab" data-ptab="settings">الإعدادات</button>
+      </div>
+      <div id="profilePanel"></div>
+    </section>
+  </div>
+</main>
+
+<!-- ═══ DOCK ═══ -->
+<nav class="dock" id="dock" style="display:none">
+  <button class="dock-item active" data-tab="home" onclick="App.switchTab('home')" aria-label="الرئيسية">
+    <span class="icon-wrap"><i class="ph ph-house"></i></span>
+    <span class="dock-label">الرئيسية</span>
+  </button>
+  <button class="dock-item" data-tab="explore" onclick="App.switchTab('explore')" aria-label="استكشف">
+    <span class="icon-wrap"><i class="ph ph-compass"></i></span>
+    <span class="dock-label">استكشف</span>
+  </button>
+  <button class="dock-item dock-create" onclick="Composer.open()" aria-label="برومبت جديد">
+    <span class="orb"><i class="ph ph-plus"></i></span>
+  </button>
+  <button class="dock-item" data-tab="chat" onclick="App.switchTab('chat')" aria-label="الرسائل">
+    <span class="icon-wrap">
+      <i class="ph ph-chat-circle-dots"></i>
+      <span class="dock-badge" id="dockChatBadge">3</span>
+    </span>
+    <span class="dock-label">الرسائل</span>
+  </button>
+  <button class="dock-item" data-tab="profile" onclick="App.switchTab('profile')" aria-label="حسابي">
+    <span class="icon-wrap"><i class="ph ph-user"></i></span>
+    <span class="dock-label">حسابي</span>
+  </button>
+</nav>
+
+<!-- ═══ MODALS ═══ -->
+<div class="scrim" id="authModal" onclick="Auth.close(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="position:relative">
+    <button class="modal-close" onclick="Auth.close()"><i class="ph ph-x"></i></button>
+    <h3>أهلاً بك في خَيال</h3>
+    <p>المنصة العربية لمبدعي البرومبتات. سجّل دخولك لتنشر، تُعجِب، وتراسل المبدعين.</p>
+    <button class="google-btn" onclick="Auth.signIn()">
+      <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 18.9 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.1-11.3-7.6l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.2 5.2C41.9 35.3 44 30.1 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>
+      المتابعة عبر جوجل
+    </button>
+    <div style="margin-top:var(--s5);font-size:var(--t-xs);color:var(--fg-3);text-align:center;line-height:1.7">
+      بالمتابعة توافق على <a href="#" style="text-decoration:underline;text-underline-offset:3px">الشروط</a> و<a href="#" style="text-decoration:underline;text-underline-offset:3px">سياسة الخصوصية</a>.
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="composerModal" onclick="Composer.close(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="position:relative;max-width:560px">
+    <button class="modal-close" onclick="Composer.close()"><i class="ph ph-x"></i></button>
+    <h3>برومبت جديد</h3>
+    <p>شارِك الصورة والبرومبت الذي صنعها بالضبط.</p>
+    <form onsubmit="Composer.publish(event)">
+      <div class="field"><label>العنوان</label><input class="input" id="cTitle" placeholder="مثال: بورتريه على سطح طوكيو" required></div>
+      <div class="field"><label>البرومبت</label><textarea class="textarea" id="cPrompt" placeholder="Paste the exact prompt here…" required></textarea></div>
+      <div class="field"><label>رابط الصورة</label><input class="input" id="cImage" placeholder="https://…" required></div>
+      <div class="field-row">
+        <div class="field"><label>الموديل</label><select class="input" id="cModel">{% for m in data.models %}<option>{{ m }}</option>{% endfor %}</select></div>
+        <div class="field"><label>الوسوم</label><input class="input" id="cTags" placeholder="بورتريه، سينمائي"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="Composer.close()">إلغاء</button>
+        <button type="submit" class="btn btn-primary"><i class="ph ph-paper-plane-tilt"></i> انشر</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="scrim" id="editProfileModal" onclick="Auth.closeEditProfile(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="position:relative">
+    <button class="modal-close" onclick="Auth.closeEditProfile()"><i class="ph ph-x"></i></button>
+    <h3>تعديل الملف</h3>
+    <p>حدّث معلوماتك الظاهرة للآخرين.</p>
+    <form onsubmit="Auth.saveProfile(event)">
+      <div class="field"><label>الاسم</label><input class="input" id="epName" required></div>
+      <div class="field"><label>المعرّف</label><input class="input" id="epHandle" required></div>
+      <div class="field"><label>النبذة</label><textarea class="textarea" id="epBio" style="font-family:var(--font-body);direction:rtl;text-align:right;min-height:80px"></textarea></div>
+      <div class="field"><label>رابط الصورة الرمزية</label><input class="input" id="epAvatar"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="Auth.closeEditProfile()">إلغاء</button>
+        <button type="submit" class="btn btn-primary">حفظ</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ DRAWERS ═══ -->
+<aside class="drawer" id="commentsDrawer">
+  <div class="drawer-head">
+    <h3>التعليقات <span id="commentCount" style="color:var(--fg-3);font-weight:500"></span></h3>
+    <button class="icon-btn" onclick="Drawers.closeComments()"><i class="ph ph-x"></i></button>
+  </div>
+  <div class="drawer-body" id="commentsBody"></div>
+  <form class="comment-composer" onsubmit="Comments.send(event)">
+    <textarea id="commentInput" placeholder="أضف تعليقاً…" rows="1" oninput="Utils.autoGrow(this)"></textarea>
+    <button type="submit" class="btn btn-primary btn-icon" style="min-width:40px;min-height:40px;border-radius:var(--r-2)">
+      <i class="ph ph-paper-plane-tilt"></i>
+    </button>
+  </form>
+</aside>
+
+<aside class="drawer" id="notificationsDrawer">
+  <div class="drawer-head">
+    <h3>الإشعارات</h3>
+    <div style="display:flex;gap:var(--s1)">
+      <button class="icon-btn" onclick="Drawers.markAllRead()" title="تعليم الكل كمقروء"><i class="ph ph-checks"></i></button>
+      <button class="icon-btn" onclick="Drawers.closeNotifications()"><i class="ph ph-x"></i></button>
+    </div>
+  </div>
+  <div class="drawer-body" id="notificationsBody"></div>
+</aside>
+
+<!-- ═══ TOAST ═══ -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- ═══ BOOTSTRAP DATA ═══ -->
+<script>
+  window.__KHAYAL__ = {{ data | tojson }};
+</script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
