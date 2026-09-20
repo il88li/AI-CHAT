@@ -1,258 +1,373 @@
 """
 خَيال — منصة البرومبتات العربية
-خادم Flask: يخدم القالب + يوفر REST API جاهز للتوسعة لاحقاً.
+خادم Flask متصل بقاعدة بيانات Aiven عبر متغيرات البيئة.
+لا توجد بيانات افتراضية — المنصة تبدأ فارغة.
 """
-from flask import Flask, render_template, jsonify, request, abort
+import os
 from datetime import datetime
-import random
+from flask import Flask, render_template, jsonify, request, session, abort
+from dotenv import load_dotenv
 
+from database import db, build_database_uri, User, Post, Comment, Like, Save, Follow, Chat, Message
+
+# ═══ تحميل متغيرات البيئة من .env ═══
+load_dotenv()
+
+
+# ═══════════════════════════════════════════════════════════
+# إعداد التطبيق
+# ═══════════════════════════════════════════════════════════
 app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
-
-
-# ═══════════════════════════════════════════════════════════
-# DATA STORE — للاستبدال بقاعدة بيانات حقيقية لاحقاً
-# ═══════════════════════════════════════════════════════════
-USERS = {
-    "u1": {"id":"u1","name":"ميّادة التونسي","handle":"@mayada.t",
-           "avatar":"https://picsum.photos/seed/user_maya/160/160",
-           "bio":"مخرجة فنية للذكاء الاصطناعي من تونس. أعمل مع الضوء والحبيبات.",
-           "followers":4820,"following":210,"verified":True},
-    "u2": {"id":"u2","name":"كريم الحربي","handle":"@karim.h",
-           "avatar":"https://picsum.photos/seed/user_karim/160/160",
-           "bio":"مصور تحوّل إلى هندسة البرومبتات. الرياض.",
-           "followers":2310,"following":88,"verified":False},
-    "u3": {"id":"u3","name":"ليلى العباسي","handle":"@layla.a",
-           "avatar":"https://picsum.photos/seed/user_layla/160/160",
-           "bio":"مصممة منتجات. أصنع صوراً ثلاثية الأبعاد هادئة.",
-           "followers":6120,"following":340,"verified":True},
-    "u4": {"id":"u4","name":"يوسف بن عيسى","handle":"@youssef.b",
-           "avatar":"https://picsum.photos/seed/user_youssef/160/160",
-           "bio":"سايبربانك وخيال علمي. الدار البيضاء. أنشر كل برومبت.",
-           "followers":1890,"following":145,"verified":False},
-    "me": {"id":"me","name":"أنت","handle":"@you",
-           "avatar":"https://picsum.photos/seed/user_me/160/160",
-           "bio":"مبدع صور بالذكاء الاصطناعي. أنشر البرومبت في كل مرة.",
-           "followers":248,"following":112,"verified":True},
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-me")
+app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,       # تفادي الاتصالات الميتة
+    "pool_recycle": 280,         # إعادة الاتصال كل 280 ثانية
+    "pool_size": 5,
+    "max_overflow": 2,
 }
 
-MODELS = ["Midjourney v6","DALL·E 3","Stable Diffusion XL","Flux 1.1 Pro","Adobe Firefly"]
-
-POSTS = [
-    {"id":"p1","author":"u1","title":"بورتريه على سطح طوكيو النيوني",
-     "prompt":"Cinematic portrait of a woman standing on a Tokyo rooftop at night, neon signs reflecting on wet pavement, shallow depth of field, 85mm lens f/1.4, cyberpunk color grade with teal and magenta, subtle film grain --ar 3:4 --v 6",
-     "image":"https://picsum.photos/seed/tokyo7/900/1200","model":"Midjourney v6",
-     "tags":["بورتريه","سايبربانك","سينمائي"],"likes":248,"copies":91,"saves":34,
-     "liked":False,"saved":False,"comments":4,"time":"قبل ساعتين"},
-    {"id":"p2","author":"u2","title":"زقاق كيوتو تحت المطر",
-     "prompt":"Quiet Kyoto alley in the rain at dusk, wet stone pavement reflecting warm lantern light, muted teal and amber palette, 35mm film look, Kodak Portra 400, misty atmosphere",
-     "image":"https://picsum.photos/seed/kyoto3/1200/900","model":"DALL·E 3",
-     "tags":["مناظر","تصوير","مطر"],"likes":412,"copies":156,"saves":78,
-     "liked":True,"saved":True,"comments":8,"time":"قبل 5 ساعات"},
-    {"id":"p3","author":"u3","title":"مزهرية سيراميك — دراسة بسيطة",
-     "prompt":"Minimalist product photography of a matte ceramic vase in bone white, placed on beige linen, soft diffused daylight from a large window, muted earth tones, 50mm f/4",
-     "image":"https://picsum.photos/seed/vase9/900/1200","model":"Stable Diffusion XL",
-     "tags":["ثلاثي الأبعاد","بسيط","منتج"],"likes":187,"copies":62,"saves":22,
-     "liked":False,"saved":False,"comments":3,"time":"قبل 8 ساعات"},
-    {"id":"p4","author":"u4","title":"بائع طعام في سوق سايبربانك",
-     "prompt":"Futuristic street food vendor in crowded cyberpunk market at night, holographic signage, steam rising from grill, rain, neon pink and cyan, cinematic wide, Blade Runner aesthetic, 24mm --ar 16:9 --v 6",
-     "image":"https://picsum.photos/seed/cyber11/1200/800","model":"Midjourney v6",
-     "tags":["سايبربانك","خيال علمي","مدينة"],"likes":892,"copies":341,"saves":156,
-     "liked":False,"saved":True,"comments":12,"time":"قبل 12 ساعة"},
-    {"id":"p5","author":"u1","title":"بورتريه صباحي هادئ",
-     "prompt":"Intimate portrait of a person waking up, soft morning light through sheer curtains, warm skin tones, film grain, 50mm f/2, natural window light, muted peachy palette --ar 4:5",
-     "image":"https://picsum.photos/seed/morning5/900/1125","model":"Flux 1.1 Pro",
-     "tags":["بورتريه","صباح","فيلم"],"likes":324,"copies":118,"saves":61,
-     "liked":False,"saved":False,"comments":5,"time":"قبل يوم"},
-    {"id":"p6","author":"u3","title":"مرصد في قلب الصحراء ليلاً",
-     "prompt":"A solitary observatory dome in the middle of vast desert at night, milky way overhead, long exposure star trails, deep blue and sand palette, wide angle 14mm f/2.8, cinematic --ar 3:2",
-     "image":"https://picsum.photos/seed/desert2/1200/800","model":"Midjourney v6",
-     "tags":["مناظر","فضاء","ليل"],"likes":567,"copies":203,"saves":128,
-     "liked":True,"saved":False,"comments":7,"time":"قبل يوم"},
-    {"id":"p7","author":"u2","title":"بورتريه فيلمي، الساعة الذهبية",
-     "prompt":"Analog film portrait of a young man at golden hour, backlit, sun flare across the frame, warm amber tones, Kodak Gold 200, 85mm f/1.8, natural bokeh --ar 4:5",
-     "image":"https://picsum.photos/seed/analog8/900/1125","model":"DALL·E 3",
-     "tags":["بورتريه","فيلم","الساعة الذهبية"],"likes":401,"copies":137,"saves":82,
-     "liked":False,"saved":False,"comments":6,"time":"قبل يومين"},
-    {"id":"p8","author":"u4","title":"مكتبة بأسلوب الوحشية",
-     "prompt":"Interior of a brutalist concrete library, tall vertical windows casting geometric shadows, single figure reading at long wooden table, warm afternoon light, 24mm tilt-shift",
-     "image":"https://picsum.photos/seed/brutal4/1200/800","model":"Stable Diffusion XL",
-     "tags":["معمار","بسيط","ضوء"],"likes":233,"copies":84,"saves":45,
-     "liked":False,"saved":False,"comments":2,"time":"قبل يومين"},
-]
-
-COMMENTS = {
-    "p1": [
-        {"id":"c1","author":"u2","text":"الإضاءة الجانبية هنا مذهلة. هل استخدمت controlnet؟","time":"قبل ساعة","likes":12},
-        {"id":"c2","author":"u3","text":"أعدت استخدامه — النتيجة أفضل مما توقعت. شكراً!","time":"قبل ٤٠ دقيقة","likes":8},
-        {"id":"c3","author":"u4","text":"-style raw يفرق كثير في Midjourney. جرّب v6.1","time":"قبل ٢٠ دقيقة","likes":5},
-        {"id":"c4","author":"u1","text":"شكراً للجميع! سأنشر نسخة بـ v6.1 قريباً.","time":"قبل ١٠ دقائق","likes":15},
-    ],
-    "p2": [
-        {"id":"c5","author":"u1","text":"مرجع Portra 400 هو السر. جميل جداً.","time":"قبل ٣ ساعات","likes":22},
-        {"id":"c6","author":"u3","text":"أريد تجربته في مشهد نهاري أيضاً.","time":"قبل ٢ ساعات","likes":7},
-    ],
-}
-
-CHATS = [
-    {"id":"c1","with_user":"u1","unread":True,"messages":[
-        {"from":"them","text":"أهلاً! أحببت برومبت زقاق كيوتو. هل عدّلت الألوان لاحقاً؟","time":"١٠:٢٤"},
-        {"from":"me","text":"من الموديل مباشرة — شدّدت على muted teal and amber palette.","time":"١٠:٣١"},
-        {"from":"them","text":"ممتاز. سأجربه بمرجع Fuji Superia.","time":"١٠:٣٣"},
-        {"from":"them","text":"وهذا آخر ما نشرته إن أردت إعادة استخدامه.","time":"١٠:٣٤","share":"p1"},
-    ]},
-    {"id":"c2","with_user":"u3","unread":True,"messages":[
-        {"from":"them","text":"ليلى هنا — رأيت إعجابك بدراسة المزهرية. تريد البرومبت السلبي؟","time":"أمس"},
-        {"from":"me","text":"نعم من فضلك! لم أستطع الحصول على ظلال بهذا النعومة.","time":"أمس"},
-    ]},
-    {"id":"c3","with_user":"u4","unread":False,"messages":[
-        {"from":"them","text":"برومبت سوق السايبربانك جلب 4 آلاف إعجاب. شكراً!","time":"الاثنين"},
-        {"from":"me","text":"سعيد أنه نجح! اللقطة الواسعة 24mm هي السر.","time":"الاثنين"},
-    ]},
-]
-
-NOTIFICATIONS = [
-    {"id":"n1","type":"like","user":"u2","text":"أعجب ببرومبتك «بورتريه صباحي هادئ»","time":"قبل ٥ دقائق","unread":True,"post":"p5"},
-    {"id":"n2","type":"follow","user":"u3","text":"بدأت بمتابعتك","time":"قبل ٢٠ دقيقة","unread":True,"post":None},
-    {"id":"n3","type":"comment","user":"u4","text":"علّق على «مرصد في قلب الصحراء»","time":"قبل ساعة","unread":True,"post":"p6"},
-    {"id":"n4","type":"copy","user":"u1","text":"نسخ برومبت «زقاق كيوتو»","time":"قبل ٣ ساعات","unread":False,"post":"p2"},
-    {"id":"n5","type":"like","user":"u3","text":"أعجبت ببرومبتك «بورتريه طوكيو»","time":"قبل يوم","unread":False,"post":"p1"},
-]
+db.init_app(app)
 
 
 # ═══════════════════════════════════════════════════════════
-# HELPERS
+# المصادقة المبسطة (جلسة)
 # ═══════════════════════════════════════════════════════════
-def find_post(pid):
-    return next((p for p in POSTS if p["id"] == pid), None)
+def current_user():
+    uid = session.get("user_id")
+    return User.query.get(uid) if uid else None
+
+
+def require_auth():
+    u = current_user()
+    if not u:
+        abort(401, description="يجب تسجيل الدخول")
+    return u
 
 
 # ═══════════════════════════════════════════════════════════
-# VIEWS
+# الصفحات
 # ═══════════════════════════════════════════════════════════
 @app.route("/")
 def index():
-    """الصفحة الواحدة — تحتوي على القالب الكامل مع كل البيانات المحقونة."""
-    return render_template("index.html", data={
-        "users": USERS,
-        "posts": POSTS,
-        "models": MODELS,
-        "comments": COMMENTS,
-        "chats": CHATS,
-        "notifications": NOTIFICATIONS,
-        "current_user": USERS["me"],
-    })
+    me = current_user()
+    return render_template("index.html", me=me.to_dict() if me else None)
 
 
 @app.route("/app")
 def app_view():
-    """نفس القالب — الواجهة تقرّر أيّ قسم تعرضه بناءً على المسار."""
-    return render_template("index.html", data={
-        "users": USERS,
-        "posts": POSTS,
-        "models": MODELS,
-        "comments": COMMENTS,
-        "chats": CHATS,
-        "notifications": NOTIFICATIONS,
-        "current_user": USERS["me"],
-        "initial_view": "app",
+    me = current_user()
+    if not me:
+        # غير مسجّل — افتح الصفحة الرئيسية
+        return render_template("index.html", me=None)
+    return render_template("index.html", me=me.to_dict(), initial_view="app")
+
+
+# ═══════════════════════════════════════════════════════════
+# المصادقة (Google OAuth — مبسّط)
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/auth/google")
+def auth_google():
+    """
+    في الإنتاج: تحقّق من الـ id_token القادم من Google.
+    هنا نستقبل البريد والاسم مباشرةً للتطوير.
+    """
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    name  = (data.get("name") or "").strip()
+    if not email or not name:
+        return jsonify({"error": "البريد والاسم مطلوبان"}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        # إنشاء معرّف فريد من البريد
+        base_handle = "@" + email.split("@")[0]
+        handle = base_handle
+        n = 1
+        while User.query.filter_by(handle=handle).first():
+            handle = f"{base_handle}{n}"
+            n += 1
+        user = User(
+            email=email, name=name, handle=handle,
+            avatar=data.get("avatar") or f"https://api.dicebear.com/7.x/initials/svg?seed={name}",
+            bio="", verified=False,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+    session["user_id"] = user.id
+    return jsonify(user.to_dict())
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/me")
+def api_me():
+    u = current_user()
+    return jsonify(u.to_dict() if u else None)
+
+
+# ═══════════════════════════════════════════════════════════
+# البرومبتات
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/posts")
+def api_posts():
+    q      = request.args.get("q", "").strip()
+    tag    = request.args.get("tag", "").strip()
+    model  = request.args.get("model", "").strip()
+    author = request.args.get("author")
+    sort   = request.args.get("sort", "recent")
+    limit  = min(int(request.args.get("limit", 50)), 100)
+
+    query = Post.query
+
+    if q:
+        like = f"%{q}%"
+        query = query.filter(db.or_(Post.title.ilike(like),
+                                     Post.prompt.ilike(like),
+                                     Post.tags.ilike(like)))
+    if tag:
+        query = query.filter(Post.tags.ilike(f"%{tag}%"))
+    if model:
+        query = query.filter(Post.model == model)
+    if author:
+        query = query.filter(Post.author_id == author)
+
+    query = query.order_by(Post.likes.desc()) if sort == "top" else query.order_by(Post.created_at.desc())
+    posts = query.limit(limit).all()
+
+    # أضف حالة الإعجاب/الحفظ للمستخدم الحالي
+    me = current_user()
+    result = []
+    for p in posts:
+        d = p.to_dict()
+        d["author_data"] = p.author.to_dict()
+        if me:
+            d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
+            d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
+        result.append(d)
+    return jsonify(result)
+
+
+@app.post("/api/posts")
+def api_create_post():
+    u = require_auth()
+    data = request.get_json() or {}
+    title  = (data.get("title") or "").strip()
+    prompt = (data.get("prompt") or "").strip()
+    if not title or not prompt:
+        return jsonify({"error": "العنوان والبرومبت مطلوبان"}), 400
+
+    post = Post(
+        author_id=u.id,
+        title=title,
+        prompt=prompt,
+        image=(data.get("image") or "").strip() or None,
+        model=(data.get("model") or "").strip() or None,
+        tags=",".join([t.strip() for t in (data.get("tags") or []) if t.strip()]),
+    )
+    db.session.add(post)
+    db.session.commit()
+    return jsonify(post.to_dict()), 201
+
+
+@app.post("/api/posts/<int:pid>/like")
+def api_like(pid):
+    u = require_auth()
+    post = Post.query.get_or_404(pid)
+    existing = Like.query.filter_by(user_id=u.id, post_id=pid).first()
+    if existing:
+        db.session.delete(existing)
+        post.likes = max(0, post.likes - 1)
+        liked = False
+    else:
+        db.session.add(Like(user_id=u.id, post_id=pid))
+        post.likes += 1
+        liked = True
+    db.session.commit()
+    return jsonify({"liked": liked, "likes": post.likes})
+
+
+@app.post("/api/posts/<int:pid>/save")
+def api_save(pid):
+    u = require_auth()
+    post = Post.query.get_or_404(pid)
+    existing = Save.query.filter_by(user_id=u.id, post_id=pid).first()
+    if existing:
+        db.session.delete(existing)
+        post.saves = max(0, post.saves - 1)
+        saved = False
+    else:
+        db.session.add(Save(user_id=u.id, post_id=pid))
+        post.saves += 1
+        saved = True
+    db.session.commit()
+    return jsonify({"saved": saved, "saves": post.saves})
+
+
+@app.post("/api/posts/<int:pid>/copy")
+def api_copy(pid):
+    post = Post.query.get_or_404(pid)
+    post.copies += 1
+    db.session.commit()
+    return jsonify({"copies": post.copies})
+
+
+@app.get("/api/posts/<int:pid>/comments")
+def api_comments(pid):
+    Post.query.get_or_404(pid)
+    comments = Comment.query.filter_by(post_id=pid).order_by(Comment.created_at.desc()).all()
+    return jsonify([{**c.to_dict(), "author_data": c.author.to_dict()} for c in comments])
+
+
+@app.post("/api/posts/<int:pid>/comments")
+def api_add_comment(pid):
+    u = require_auth()
+    Post.query.get_or_404(pid)
+    text = ((request.get_json() or {}).get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "نص التعليق مطلوب"}), 400
+    c = Comment(post_id=pid, author_id=u.id, text=text)
+    db.session.add(c)
+    db.session.commit()
+    return jsonify({**c.to_dict(), "author_data": u.to_dict()}), 201
+
+
+# ═══════════════════════════════════════════════════════════
+# المستخدمون
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/users/<int:uid>")
+def api_user(uid):
+    u = User.query.get_or_404(uid)
+    return jsonify(u.to_dict())
+
+
+@app.post("/api/users/<int:uid>/follow")
+def api_follow(uid):
+    me = require_auth()
+    if me.id == uid:
+        return jsonify({"error": "لا يمكن متابعة نفسك"}), 400
+    target = User.query.get_or_404(uid)
+    existing = Follow.query.filter_by(follower_id=me.id, following_id=uid).first()
+    if existing:
+        db.session.delete(existing)
+        me.following = max(0, me.following - 1)
+        target.followers = max(0, target.followers - 1)
+        following = False
+    else:
+        db.session.add(Follow(follower_id=me.id, following_id=uid))
+        me.following += 1
+        target.followers += 1
+        following = True
+    db.session.commit()
+    return jsonify({"following": following})
+
+
+# ═══════════════════════════════════════════════════════════
+# الدردشة
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/chats")
+def api_chats():
+    me = require_auth()
+    chats = Chat.query.filter(db.or_(Chat.user_a_id == me.id, Chat.user_b_id == me.id)).all()
+    out = []
+    for c in chats:
+        other_id = c.user_b_id if c.user_a_id == me.id else c.user_a_id
+        other = User.query.get(other_id)
+        last = c.messages.order_by(Message.created_at.desc()).first()
+        out.append({
+            "id": c.id,
+            "with_user": other.to_dict() if other else None,
+            "last": last.text if last else "",
+            "time": last.created_at.strftime("%Y-%m-%d") if last else "",
+            "unread": c.messages.filter_by(read=False).filter(Message.sender_id != me.id).count(),
+        })
+    return jsonify(out)
+
+
+@app.get("/api/chats/<int:cid>/messages")
+def api_messages(cid):
+    me = require_auth()
+    chat = Chat.query.get_or_404(cid)
+    if me.id not in (chat.user_a_id, chat.user_b_id):
+        abort(403)
+    msgs = chat.messages.order_by(Message.created_at.asc()).all()
+    # علّم الرسائل كمقروءة
+    for m in msgs:
+        if m.sender_id != me.id and not m.read:
+            m.read = True
+    db.session.commit()
+    return jsonify([{
+        "id": m.id, "text": m.text,
+        "from": "me" if m.sender_id == me.id else "them",
+        "time": m.created_at.strftime("%H:%M"),
+    } for m in msgs])
+
+
+@app.post("/api/chats/<int:cid>/messages")
+def api_send_message(cid):
+    me = require_auth()
+    chat = Chat.query.get_or_404(cid)
+    if me.id not in (chat.user_a_id, chat.user_b_id):
+        abort(403)
+    text = ((request.get_json() or {}).get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "الرسالة فارغة"}), 400
+    m = Message(chat_id=cid, sender_id=me.id, text=text)
+    db.session.add(m)
+    db.session.commit()
+    return jsonify({"id": m.id, "text": m.text, "from": "me",
+                    "time": m.created_at.strftime("%H:%M")}), 201
+
+
+@app.post("/api/chats/with/<int:uid>")
+def api_open_chat(uid):
+    """يفتح محادثة مع مستخدم أو ينشئها."""
+    me = require_auth()
+    if me.id == uid:
+        abort(400)
+    chat = Chat.query.filter(
+        db.or_(
+            db.and_(Chat.user_a_id == me.id, Chat.user_b_id == uid),
+            db.and_(Chat.user_a_id == uid, Chat.user_b_id == me.id),
+        )
+    ).first()
+    if not chat:
+        chat = Chat(user_a_id=me.id, user_b_id=uid)
+        db.session.add(chat)
+        db.session.commit()
+    return jsonify({"id": chat.id})
+
+
+# ═══════════════════════════════════════════════════════════
+# الصحة والإقلاع
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/health")
+def health():
+    return jsonify({
+        "status": "ok",
+        "db": "connected",
+        "users": User.query.count(),
+        "posts": Post.query.count(),
     })
 
 
 # ═══════════════════════════════════════════════════════════
-# REST API — جاهز للاستخدام من الواجهة الأمامية
+# إنشاء الجداول عند أول تشغيل
 # ═══════════════════════════════════════════════════════════
-@app.get("/api/posts")
-def api_posts():
-    tag = request.args.get("tag")
-    model = request.args.get("model")
-    author = request.args.get("author")
-    sort = request.args.get("sort", "recent")
-    items = POSTS
-    if tag:
-        items = [p for p in items if tag in p["tags"]]
-    if model:
-        items = [p for p in items if p["model"] == model]
-    if author:
-        items = [p for p in items if p["author"] == author]
-    if sort == "top":
-        items = sorted(items, key=lambda p: p["likes"], reverse=True)
-    return jsonify(items)
+with app.app_context():
+    try:
+        db.create_all()
+        print("✅ الجداول جاهزة في قاعدة البيانات.")
+    except Exception as e:
+        print("⚠️ فشل الاتصال بقاعدة البيانات:", e)
 
 
-@app.get("/api/posts/<pid>")
-def api_post(pid):
-    p = find_post(pid) or abort(404)
-    return jsonify(p)
-
-
-@app.post("/api/posts/<pid>/like")
-def api_like(pid):
-    p = find_post(pid) or abort(404)
-    p["liked"] = not p["liked"]
-    p["likes"] += 1 if p["liked"] else -1
-    return jsonify({"liked": p["liked"], "likes": p["likes"]})
-
-
-@app.post("/api/posts/<pid>/save")
-def api_save(pid):
-    p = find_post(pid) or abort(404)
-    p["saved"] = not p["saved"]
-    p["saves"] += 1 if p["saved"] else -1
-    return jsonify({"saved": p["saved"], "saves": p["saves"]})
-
-
-@app.post("/api/posts/<pid>/copy")
-def api_copy(pid):
-    p = find_post(pid) or abort(404)
-    p["copies"] += 1
-    return jsonify({"copies": p["copies"]})
-
-
-@app.get("/api/posts/<pid>/comments")
-def api_comments(pid):
-    return jsonify(COMMENTS.get(pid, []))
-
-
-@app.post("/api/posts/<pid>/comments")
-def api_add_comment(pid):
-    if not find_post(pid):
-        abort(404)
-    body = request.get_json() or {}
-    text = (body.get("text") or "").strip()
-    if not text:
-        return jsonify({"error": "نص التعليق مطلوب"}), 400
-    c = {
-        "id": f"c{random.randint(1000, 9999)}",
-        "author": "me",
-        "text": text,
-        "time": "الآن",
-        "likes": 0,
-    }
-    COMMENTS.setdefault(pid, []).append(c)
-    return jsonify(c), 201
-
-
-@app.get("/api/users/<uid>")
-def api_user(uid):
-    return jsonify(USERS.get(uid) or abort(404))
-
-
-@app.get("/api/notifications")
-def api_notifications():
-    return jsonify(NOTIFICATIONS)
-
-
-@app.get("/api/chats")
-def api_chats():
-    return jsonify(CHATS)
-
-
-@app.get("/api/health")
-def health():
-    return jsonify({"status": "ok", "posts": len(POSTS), "users": len(USERS)})
-
-
-# ═══════════════════════════════════════════════════════════
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
