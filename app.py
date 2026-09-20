@@ -1,16 +1,15 @@
 """
 خَيال — منصة البرومبتات العربية
-خادم Flask متصل بقاعدة بيانات Aiven عبر متغيرات البيئة.
-لا توجد بيانات افتراضية — المنصة تبدأ فارغة.
+خادم Flask متصل بقاعدة Aiven (PostgreSQL أو MySQL).
 """
 import os
-from datetime import datetime
+import sys
 from flask import Flask, render_template, jsonify, request, session, abort
 from dotenv import load_dotenv
 
-from database import db, build_database_uri, User, Post, Comment, Like, Save, Follow, Chat, Message
+from database import (db, build_database_uri, User, Post, Comment,
+                      Like, Save, Follow, Chat, Message)
 
-# ═══ تحميل متغيرات البيئة من .env ═══
 load_dotenv()
 
 
@@ -19,21 +18,22 @@ load_dotenv()
 # ═══════════════════════════════════════════════════════════
 app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-me")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
 app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_pre_ping": True,       # تفادي الاتصالات الميتة
-    "pool_recycle": 280,         # إعادة الاتصال كل 280 ثانية
-    "pool_size": 5,
+    "pool_pre_ping": True,
+    "pool_recycle": 280,
+    "pool_size": 3,
     "max_overflow": 2,
+    "connect_args": {"connect_timeout": 10},
 }
 
 db.init_app(app)
 
 
 # ═══════════════════════════════════════════════════════════
-# المصادقة المبسطة (جلسة)
+# مصادقة
 # ═══════════════════════════════════════════════════════════
 def current_user():
     uid = session.get("user_id")
@@ -59,21 +59,14 @@ def index():
 @app.route("/app")
 def app_view():
     me = current_user()
-    if not me:
-        # غير مسجّل — افتح الصفحة الرئيسية
-        return render_template("index.html", me=None)
-    return render_template("index.html", me=me.to_dict(), initial_view="app")
+    return render_template("index.html", me=me.to_dict() if me else None)
 
 
 # ═══════════════════════════════════════════════════════════
-# المصادقة (Google OAuth — مبسّط)
+# المصادقة
 # ═══════════════════════════════════════════════════════════
 @app.post("/api/auth/google")
 def auth_google():
-    """
-    في الإنتاج: تحقّق من الـ id_token القادم من Google.
-    هنا نستقبل البريد والاسم مباشرةً للتطوير.
-    """
     data = request.get_json() or {}
     email = (data.get("email") or "").strip().lower()
     name  = (data.get("name") or "").strip()
@@ -82,7 +75,6 @@ def auth_google():
 
     user = User.query.filter_by(email=email).first()
     if not user:
-        # إنشاء معرّف فريد من البريد
         base_handle = "@" + email.split("@")[0]
         handle = base_handle
         n = 1
@@ -129,30 +121,49 @@ def api_posts():
 
     if q:
         like = f"%{q}%"
-        query = query.filter(db.or_(Post.title.ilike(like),
-                                     Post.prompt.ilike(like),
-                                     Post.tags.ilike(like)))
+        query = query.filter(db.or_(
+            Post.title.ilike(like),
+            Post.prompt.ilike(like),
+            Post.tags.ilike(like),
+        ))
     if tag:
         query = query.filter(Post.tags.ilike(f"%{tag}%"))
     if model:
         query = query.filter(Post.model == model)
     if author:
-        query = query.filter(Post.author_id == author)
+        query = query.filter(Post.author_id == int(author))
 
-    query = query.order_by(Post.likes.desc()) if sort == "top" else query.order_by(Post.created_at.desc())
+    if sort == "top":
+        query = query.order_by(Post.likes.desc(), Post.created_at.desc())
+    else:
+        query = query.order_by(Post.created_at.desc())
+
     posts = query.limit(limit).all()
-
-    # أضف حالة الإعجاب/الحفظ للمستخدم الحالي
     me = current_user()
-    result = []
+    out = []
     for p in posts:
         d = p.to_dict()
         d["author_data"] = p.author.to_dict()
         if me:
             d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
             d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
-        result.append(d)
-    return jsonify(result)
+        else:
+            d["liked"] = False
+            d["saved"] = False
+        out.append(d)
+    return jsonify(out)
+
+
+@app.get("/api/posts/<int:pid>")
+def api_post(pid):
+    p = Post.query.get_or_404(pid)
+    d = p.to_dict()
+    d["author_data"] = p.author.to_dict()
+    me = current_user()
+    if me:
+        d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
+        d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
+    return jsonify(d)
 
 
 @app.post("/api/posts")
@@ -174,7 +185,22 @@ def api_create_post():
     )
     db.session.add(post)
     db.session.commit()
-    return jsonify(post.to_dict()), 201
+    d = post.to_dict()
+    d["author_data"] = u.to_dict()
+    d["liked"] = False
+    d["saved"] = False
+    return jsonify(d), 201
+
+
+@app.delete("/api/posts/<int:pid>")
+def api_delete_post(pid):
+    u = require_auth()
+    post = Post.query.get_or_404(pid)
+    if post.author_id != u.id:
+        abort(403)
+    db.session.delete(post)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @app.post("/api/posts/<int:pid>/like")
@@ -219,11 +245,16 @@ def api_copy(pid):
     return jsonify({"copies": post.copies})
 
 
+# ═══════════════════════════════════════════════════════════
+# التعليقات
+# ═══════════════════════════════════════════════════════════
 @app.get("/api/posts/<int:pid>/comments")
 def api_comments(pid):
     Post.query.get_or_404(pid)
     comments = Comment.query.filter_by(post_id=pid).order_by(Comment.created_at.desc()).all()
-    return jsonify([{**c.to_dict(), "author_data": c.author.to_dict()} for c in comments])
+    return jsonify([
+        {**c.to_dict(), "author_data": c.author.to_dict()} for c in comments
+    ])
 
 
 @app.post("/api/posts/<int:pid>/comments")
@@ -245,7 +276,25 @@ def api_add_comment(pid):
 @app.get("/api/users/<int:uid>")
 def api_user(uid):
     u = User.query.get_or_404(uid)
-    return jsonify(u.to_dict())
+    d = u.to_dict()
+    d["posts_count"] = u.posts.count()
+    return jsonify(d)
+
+
+@app.get("/api/users/<int:uid>/posts")
+def api_user_posts(uid):
+    User.query.get_or_404(uid)
+    posts = Post.query.filter_by(author_id=uid).order_by(Post.created_at.desc()).all()
+    me = current_user()
+    out = []
+    for p in posts:
+        d = p.to_dict()
+        d["author_data"] = p.author.to_dict()
+        if me:
+            d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
+            d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
+        out.append(d)
+    return jsonify(out)
 
 
 @app.post("/api/users/<int:uid>/follow")
@@ -266,7 +315,21 @@ def api_follow(uid):
         target.followers += 1
         following = True
     db.session.commit()
-    return jsonify({"following": following})
+    return jsonify({"following": following, "followers": target.followers})
+
+
+@app.patch("/api/me")
+def api_update_me():
+    u = require_auth()
+    data = request.get_json() or {}
+    if "name" in data:
+        u.name = (data["name"] or "").strip() or u.name
+    if "bio" in data:
+        u.bio = (data["bio"] or "").strip()
+    if "avatar" in data and data["avatar"]:
+        u.avatar = data["avatar"].strip()
+    db.session.commit()
+    return jsonify(u.to_dict())
 
 
 # ═══════════════════════════════════════════════════════════
@@ -275,18 +338,23 @@ def api_follow(uid):
 @app.get("/api/chats")
 def api_chats():
     me = require_auth()
-    chats = Chat.query.filter(db.or_(Chat.user_a_id == me.id, Chat.user_b_id == me.id)).all()
+    chats = Chat.query.filter(db.or_(
+        Chat.user_a_id == me.id,
+        Chat.user_b_id == me.id,
+    )).all()
+
     out = []
     for c in chats:
         other_id = c.user_b_id if c.user_a_id == me.id else c.user_a_id
         other = User.query.get(other_id)
         last = c.messages.order_by(Message.created_at.desc()).first()
+        unread = c.messages.filter_by(read=False).filter(Message.sender_id != me.id).count()
         out.append({
             "id": c.id,
             "with_user": other.to_dict() if other else None,
             "last": last.text if last else "",
-            "time": last.created_at.strftime("%Y-%m-%d") if last else "",
-            "unread": c.messages.filter_by(read=False).filter(Message.sender_id != me.id).count(),
+            "time": last.created_at.strftime("%H:%M") if last else "",
+            "unread": unread,
         })
     return jsonify(out)
 
@@ -297,14 +365,16 @@ def api_messages(cid):
     chat = Chat.query.get_or_404(cid)
     if me.id not in (chat.user_a_id, chat.user_b_id):
         abort(403)
+
     msgs = chat.messages.order_by(Message.created_at.asc()).all()
-    # علّم الرسائل كمقروءة
     for m in msgs:
         if m.sender_id != me.id and not m.read:
             m.read = True
     db.session.commit()
+
     return jsonify([{
-        "id": m.id, "text": m.text,
+        "id": m.id,
+        "text": m.text,
         "from": "me" if m.sender_id == me.id else "them",
         "time": m.created_at.strftime("%H:%M"),
     } for m in msgs])
@@ -322,22 +392,21 @@ def api_send_message(cid):
     m = Message(chat_id=cid, sender_id=me.id, text=text)
     db.session.add(m)
     db.session.commit()
-    return jsonify({"id": m.id, "text": m.text, "from": "me",
-                    "time": m.created_at.strftime("%H:%M")}), 201
+    return jsonify({
+        "id": m.id, "text": m.text, "from": "me",
+        "time": m.created_at.strftime("%H:%M"),
+    }), 201
 
 
 @app.post("/api/chats/with/<int:uid>")
 def api_open_chat(uid):
-    """يفتح محادثة مع مستخدم أو ينشئها."""
     me = require_auth()
     if me.id == uid:
         abort(400)
-    chat = Chat.query.filter(
-        db.or_(
-            db.and_(Chat.user_a_id == me.id, Chat.user_b_id == uid),
-            db.and_(Chat.user_a_id == uid, Chat.user_b_id == me.id),
-        )
-    ).first()
+    chat = Chat.query.filter(db.or_(
+        db.and_(Chat.user_a_id == me.id, Chat.user_b_id == uid),
+        db.and_(Chat.user_a_id == uid, Chat.user_b_id == me.id),
+    )).first()
     if not chat:
         chat = Chat(user_a_id=me.id, user_b_id=uid)
         db.session.add(chat)
@@ -346,28 +415,46 @@ def api_open_chat(uid):
 
 
 # ═══════════════════════════════════════════════════════════
-# الصحة والإقلاع
+# الصحة + معالجة الأخطاء
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/health")
 def health():
-    return jsonify({
-        "status": "ok",
-        "db": "connected",
-        "users": User.query.count(),
-        "posts": Post.query.count(),
-    })
-
-
-# ═══════════════════════════════════════════════════════════
-# إنشاء الجداول عند أول تشغيل
-# ═══════════════════════════════════════════════════════════
-with app.app_context():
     try:
-        db.create_all()
-        print("✅ الجداول جاهزة في قاعدة البيانات.")
+        return jsonify({
+            "status": "ok",
+            "db": "connected",
+            "users": User.query.count(),
+            "posts": Post.query.count(),
+        })
     except Exception as e:
-        print("⚠️ فشل الاتصال بقاعدة البيانات:", e)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.errorhandler(500)
+def err_500(e):
+    return jsonify({"error": "خطأ في الخادم", "detail": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════
+# تهيئة الجداول (لا تُسقط التطبيق إن فشلت)
+# ═══════════════════════════════════════════════════════════
+def init_db():
+    with app.app_context():
+        try:
+            db.create_all()
+            print("✅ الجداول جاهزة.")
+        except Exception as e:
+            print("⚠️  فشل تهيئة قاعدة البيانات:", e, file=sys.stderr)
+
+
+# نُشغّل التهيئة مرة واحدة فقط عند الإقلاع (وليس مع كل طلب)
+init_db()
+
+
+# ═══════════════════════════════════════════════════════════
+# التشغيل
+# ═══════════════════════════════════════════════════════════
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.getenv("FLASK_ENV", "development") == "development"
+    app.run(host="0.0.0.0", port=port, debug=debug)
