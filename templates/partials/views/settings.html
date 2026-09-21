@@ -17,10 +17,6 @@
     <section class="settings-hero-profile" id="settingsHeroProfile" data-style="glass">
       <div class="settings-hero-cover" id="settingsHeroCover" data-cover="aurora">
         <div class="profile-cover-pattern" aria-hidden="true"></div>
-        <div class="settings-live-badge" id="settingsLiveBadge" hidden>
-          <span class="settings-live-dot" aria-hidden="true"></span>
-          <span>معاينة مباشرة</span>
-        </div>
       </div>
 
       <div class="settings-hero-content">
@@ -61,20 +57,20 @@
       </div>
     </section>
 
-    <!-- ═══ Tabs (pill-in-pill) ═══ -->
+    <!-- ═══ Tabs ═══ -->
     <div class="settings-tabs-wrap">
       <nav class="settings-tabs" role="tablist" aria-label="أقسام الإعدادات">
         <button class="settings-tab is-active" role="tab" aria-selected="true" data-section="posts" type="button">
           <i class="ph ph-image-square" aria-hidden="true"></i>
-          <span>منشوراتك</span>
+          <span>المنشورات</span>
         </button>
         <button class="settings-tab" role="tab" aria-selected="false" data-section="appearance" type="button">
           <i class="ph ph-palette" aria-hidden="true"></i>
-          <span>تخصيص البروفايل</span>
+          <span>التخصيص</span>
         </button>
         <button class="settings-tab" role="tab" aria-selected="false" data-section="account" type="button">
           <i class="ph ph-gear-six" aria-hidden="true"></i>
-          <span>اعدادات الحساب</span>
+          <span>الحساب</span>
         </button>
       </nav>
     </div>
@@ -90,35 +86,24 @@
       <!-- APPEARANCE -->
       <section class="settings-panel" data-panel="appearance" role="tabpanel">
 
-        <div class="settings-hero settings-hero--quiet">
-          <div class="settings-hero-text">
-            <h3>خلّي ملفك يعكس شخصيتك</h3>
-            <p>كل تغيير يظهر في المعاينة بالأعلى فوراً — لا حاجة للحفظ للتجربة.</p>
-          </div>
-          <div class="settings-hero-badge">
-            <i class="ph ph-sparkle" aria-hidden="true"></i>
-            <span>جديد</span>
-          </div>
-        </div>
-
         <div class="settings-block">
           <div class="settings-block-head">
             <h4>نمط الغلاف</h4>
             <span class="settings-block-hint">12 نمطاً</span>
           </div>
           <div class="cover-presets--wide" id="settingsCoverPresets" role="radiogroup" aria-label="نمط الغلاف">
-            <button type="button" class="cover-preset" data-cover="aurora"   aria-label="أورورا"       aria-pressed="false" style="--c1:#22D3EE;--c2:#8B5CF6"></button>
-            <button type="button" class="cover-preset" data-cover="sunset"   aria-label="غروب"         aria-pressed="false" style="--c1:#FBBF24;--c2:#FB7185"></button>
-            <button type="button" class="cover-preset" data-cover="forest"   aria-label="غابة"         aria-pressed="false" style="--c1:#34D399;--c2:#22D3EE"></button>
-            <button type="button" class="cover-preset" data-cover="royal"    aria-label="ملكي"         aria-pressed="false" style="--c1:#8B5CF6;--c2:#EC4899"></button>
-            <button type="button" class="cover-preset" data-cover="midnight" aria-label="منتصف الليل"  aria-pressed="false" style="--c1:#1E1E2A;--c2:#0A0A0F"></button>
-            <button type="button" class="cover-preset" data-cover="ocean"    aria-label="محيط"         aria-pressed="false" style="--c1:#0EA5E9;--c2:#22D3EE"></button>
-            <button type="button" class="cover-preset" data-cover="cyber"    aria-label="سايبر"        aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="candy"    aria-label="حلوى"         aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="mesh"     aria-label="شبكة ناعمة"   aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="noir"     aria-label="نوار"         aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="topo"     aria-label="طبوجرافيا"    aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="dots"     aria-label="نقاط"         aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="aurora"   aria-label="أورورا"      title="أورورا"      aria-pressed="false" style="--c1:#22D3EE;--c2:#8B5CF6"></button>
+            <button type="button" class="cover-preset" data-cover="sunset"   aria-label="غروب"        title="غروب"        aria-pressed="false" style="--c1:#FBBF24;--c2:#FB7185"></button>
+            <button type="button" class="cover-preset" data-cover="forest"   aria-label="غابة"        title="غابة"        aria-pressed="false" style="--c1:#34D399;--c2:#22D3EE"></button>
+            <button type="button" class="cover-preset" data-cover="royal"    aria-label="ملكي"        title="ملكي"        aria-pressed="false" style="--c1:#8B5CF6;--c2:#EC4899"></button>
+            <button type="button" class="cover-preset" data-cover="midnight" aria-label="منتصف الليل" title="منتصف الليل" aria-pressed="false" style="--c1:#1E1E2A;--c2:#0A0A0F"></button>
+            <button type="button" class="cover-preset" data-cover="ocean"    aria-label="محيط"        title="محيط"        aria-pressed="false" style="--c1:#0EA5E9;--c2:#22D3EE"></button>
+            <button type="button" class="cover-preset" data-cover="cyber"    aria-label="سايبر"       title="سايبر"       aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="candy"    aria-label="حلوى"        title="حلوى"        aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="mesh"     aria-label="شبكة ناعمة"  title="شبكة ناعمة"  aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="noir"     aria-label="نوار"        title="نوار"        aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="topo"     aria-label="طبوجرافيا"   title="طبوجرافيا"   aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="dots"     aria-label="نقاط"        title="نقاط"        aria-pressed="false"></button>
           </div>
         </div>
 
@@ -225,6 +210,11 @@
             <input class="input" id="setWebsite" type="url" maxlength="120" placeholder="https://…" inputmode="url">
           </div>
         </div>
+
+        <button class="settings-reset-btn" id="settingsResetBtn" type="button">
+          <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
+          <span>استعادة القيم المحفوظة</span>
+        </button>
 
       </section>
 
