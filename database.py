@@ -1,8 +1,9 @@
 """
-خَيال — طبقة قاعدة البيانات v10.0
+خَيال — طبقة قاعدة البيانات v11.0
 - PostgreSQL + MySQL + SSL لـ Aiven
-- حقول Profile موسّعة: location, website, cover,
-  accent_color, avatar_shape, card_style, pronouns, status
+- إطارات صور شخصية (8 أنواع) + أغلفة موسّعة (12 نمطاً)
+- pronouns محصور بقائمة محددة مسبقاً
+- location و status محفوظان للأرشيف فقط (لا يُستخدمان في الواجهة)
 """
 import os
 import re
@@ -132,6 +133,24 @@ def test_connection(app) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════
+# الثوابت المشتركة (Whitelist)
+# ═══════════════════════════════════════════════════════════
+ALLOWED_COVERS = {
+    "aurora", "sunset", "forest", "royal", "midnight", "ocean",
+    "cyber", "candy", "mesh", "noir", "topo", "dots",
+}
+
+ALLOWED_FRAMES = {
+    "none", "ring", "gradient", "neon",
+    "double", "polaroid", "glass", "hex",
+}
+
+ALLOWED_PRONOUNS = {"", "هو", "هي", "هم", "هن"}
+
+ALLOWED_CARD_STYLES = {"glass", "solid", "gradient"}
+
+
+# ═══════════════════════════════════════════════════════════
 # النماذج
 # ═══════════════════════════════════════════════════════════
 
@@ -149,16 +168,17 @@ class User(db.Model):
     avatar = db.Column(db.String(512), nullable=True)
     bio = db.Column(db.Text, nullable=True, default="")
 
-    # Profile metadata
-    location = db.Column(db.String(60), nullable=True)
+    # Profile metadata (v11)
     website = db.Column(db.String(120), nullable=True)
     pronouns = db.Column(db.String(20), nullable=True)
+    # أرشيف فقط — لا تظهر في الواجهة بعد v11
+    location = db.Column(db.String(60), nullable=True)
     status = db.Column(db.String(100), nullable=True)
 
-    # Visual customization
+    # Visual customization (v11)
     cover = db.Column(db.String(40), nullable=True, default="aurora")
     accent_color = db.Column(db.String(7), nullable=True, default="#22D3EE")
-    avatar_shape = db.Column(db.String(10), nullable=True, default="rounded")
+    avatar_shape = db.Column(db.String(30), nullable=True, default="ring")  # frame type
     card_style = db.Column(db.String(12), nullable=True, default="glass")
 
     # Stats
@@ -182,13 +202,11 @@ class User(db.Model):
             "username": self.username,
             "avatar": self.avatar or f"https://api.dicebear.com/7.x/initials/svg?seed={self.name}",
             "bio": self.bio or "",
-            "location": self.location,
             "website": self.website,
             "pronouns": self.pronouns,
-            "status": self.status,
             "cover": self.cover or "aurora",
             "accent_color": self.accent_color or "#22D3EE",
-            "avatar_shape": self.avatar_shape or "rounded",
+            "avatar_shape": self.avatar_shape or "ring",
             "card_style": self.card_style or "glass",
             "verified": self.verified,
             "followers": self.followers,
