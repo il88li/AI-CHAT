@@ -2,7 +2,7 @@
 خَيال — منصة البرومبتات العربية
 Flask + PostgreSQL + تسجيل دخول محلي + استقرار إنتاجي
 محسّن للتطوير من الهاتف والإنتاج على Render
-v10.0 — Auto-migration + Profile customization
+v11.0 — Profile frames + expanded covers + preset pronouns
 """
 import os
 import sys
@@ -22,7 +22,9 @@ from sqlalchemy.orm import joinedload
 from dotenv import load_dotenv
 
 from database import (db, build_database_uri, test_connection,
-                      User, Post, Comment, Like, Save, Follow, Chat, Message)
+                      User, Post, Comment, Like, Save, Follow, Chat, Message,
+                      ALLOWED_COVERS, ALLOWED_FRAMES,
+                      ALLOWED_PRONOUNS, ALLOWED_CARD_STYLES)
 
 load_dotenv()
 
@@ -252,7 +254,7 @@ def api_register():
             verified=False,
             cover="aurora",
             accent_color="#22D3EE",
-            avatar_shape="rounded",
+            avatar_shape="ring",
             card_style="glass",
         )
         db.session.add(user)
@@ -385,23 +387,43 @@ def admin_db_migrate():
     try:
         with db.engine.begin() as conn:
             cols = [
-                ("location", "VARCHAR(60)"),
-                ("website", "VARCHAR(120)"),
-                ("pronouns", "VARCHAR(20)"),
-                ("status", "VARCHAR(100)"),
-                ("cover", "VARCHAR(40) DEFAULT 'aurora'"),
-                ("accent_color", "VARCHAR(7) DEFAULT '#22D3EE'"),
-                ("avatar_shape", "VARCHAR(10) DEFAULT 'rounded'"),
-                ("card_style", "VARCHAR(12) DEFAULT 'glass'"),
+                ("website",      "VARCHAR(120)"),
+                ("pronouns",     "VARCHAR(20)"),
+                ("cover",        "VARCHAR(40) DEFAULT 'aurora'"),
+                ("accent_color", "VARCHAR(7)  DEFAULT '#22D3EE'"),
+                ("avatar_shape", "VARCHAR(30) DEFAULT 'ring'"),
+                ("card_style",   "VARCHAR(12) DEFAULT 'glass'"),
+                # location و status مُتروكان للأرشيف
             ]
             for name, dtype in cols:
                 conn.execute(text(
                     f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
                 ))
+
+            # وسّع avatar_shape
+            try:
+                conn.execute(text(
+                    "ALTER TABLE users ALTER COLUMN avatar_shape TYPE VARCHAR(30)"
+                ))
+            except Exception:
+                pass
+
+            # هجرة قيم الإطارات القديمة → الجديدة
+            conn.execute(text("""
+                UPDATE users SET avatar_shape = CASE
+                    WHEN avatar_shape = 'circle'  THEN 'gradient'
+                    WHEN avatar_shape = 'rounded' THEN 'ring'
+                    WHEN avatar_shape = 'square'  THEN 'none'
+                    ELSE avatar_shape
+                END
+                WHERE avatar_shape IN ('circle', 'rounded', 'square') OR avatar_shape IS NULL
+            """))
+
             conn.execute(text("UPDATE users SET cover = 'aurora' WHERE cover IS NULL"))
             conn.execute(text("UPDATE users SET accent_color = '#22D3EE' WHERE accent_color IS NULL"))
-            conn.execute(text("UPDATE users SET avatar_shape = 'rounded' WHERE avatar_shape IS NULL"))
+            conn.execute(text("UPDATE users SET avatar_shape = 'ring' WHERE avatar_shape IS NULL"))
             conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
+
         return jsonify({"ok": True, "message": "تمت إضافة الأعمدة بنجاح"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -616,10 +638,10 @@ def api_add_comment(pid):
     u = g.user
     if not db.session.get(Post, pid):
         abort(404)
-    text = ((request.get_json() or {}).get("text") or "").strip()
-    if not text:
+    text_ = ((request.get_json() or {}).get("text") or "").strip()
+    if not text_:
         return jsonify({"error": "نص التعليق مطلوب"}), 400
-    c = Comment(post_id=pid, author_id=u.id, text=text)
+    c = Comment(post_id=pid, author_id=u.id, text=text_)
     db.session.add(c)
     db.session.commit()
     return jsonify({**c.to_dict(), "author_data": u.to_dict()}), 201
@@ -650,22 +672,16 @@ def api_user(uid):
 
     d = u.to_dict()
     d["posts_count"] = u.posts.count()
-    d["created_at"] = u.created_at.isoformat() if u.created_at else None
-    d["location"] = u.location
-    d["website"] = u.website
-    d["pronouns"] = u.pronouns
-    d["status"] = u.status
-    d["cover"] = u.cover or "aurora"
-    d["accent_color"] = u.accent_color or "#22D3EE"
-    d["avatar_shape"] = u.avatar_shape or "rounded"
-    d["card_style"] = u.card_style or "glass"
+    d["total_likes"] = 0
+    d["total_copies"] = 0
 
     totals = db.session.query(
         func.coalesce(func.sum(Post.likes), 0),
         func.coalesce(func.sum(Post.copies), 0),
     ).filter(Post.author_id == uid).first()
-    d["total_likes"] = int(totals[0]) if totals else 0
-    d["total_copies"] = int(totals[1]) if totals else 0
+    if totals:
+        d["total_likes"] = int(totals[0])
+        d["total_copies"] = int(totals[1])
 
     me = current_user()
     d["is_following"] = False
@@ -763,43 +779,47 @@ def api_update_me():
             return jsonify({"error": "النبذة طويلة جداً"}), 400
         u.bio = bio
 
-    if "location" in data:
-        loc = (data["location"] or "").strip()
-        u.location = loc[:60] if loc else None
-
+    # website فقط — location و status محذوفان
     if "website" in data:
         web = (data["website"] or "").strip()
         if web and not (web.startswith("http://") or web.startswith("https://")):
             web = "https://" + web
         u.website = web[:120] if web else None
 
+    # pronouns — قائمة بيضاء صارمة
     if "pronouns" in data:
         pr = (data["pronouns"] or "").strip()
-        u.pronouns = pr[:20] if pr else None
-
-    if "status" in data:
-        st = (data["status"] or "").strip()
-        u.status = st[:100] if st else None
+        if pr not in ALLOWED_PRONOUNS:
+            return jsonify({"error": "ضمير غير صالح"}), 400
+        u.pronouns = pr or None
 
     if "avatar" in data and data["avatar"]:
         u.avatar = data["avatar"].strip()[:500]
 
-    if "cover" in data and data["cover"]:
-        u.cover = data["cover"].strip()[:40]
+    # cover — قائمة بيضاء
+    if "cover" in data:
+        cv = (data["cover"] or "").strip()
+        if cv in ALLOWED_COVERS:
+            u.cover = cv
 
     if "accent_color" in data:
         ac = (data["accent_color"] or "").strip()
         if re.match(r"^#[0-9A-Fa-f]{6}$", ac):
             u.accent_color = ac
 
-    if "avatar_shape" in data:
-        sh = (data["avatar_shape"] or "").strip()
-        if sh in ("circle", "rounded", "square"):
-            u.avatar_shape = sh
+    # avatar_frame (اسم جديد) أو avatar_shape (توافق خلفي)
+    frame_val = None
+    if "avatar_frame" in data:
+        frame_val = (data["avatar_frame"] or "").strip()
+    elif "avatar_shape" in data:
+        frame_val = (data["avatar_shape"] or "").strip()
+
+    if frame_val is not None and frame_val in ALLOWED_FRAMES:
+        u.avatar_shape = frame_val
 
     if "card_style" in data:
         cs = (data["card_style"] or "").strip()
-        if cs in ("glass", "solid", "gradient"):
+        if cs in ALLOWED_CARD_STYLES:
             u.card_style = cs
 
     db.session.commit()
@@ -885,10 +905,10 @@ def api_send_message(cid):
         abort(404)
     if me.id not in (chat.user_a_id, chat.user_b_id):
         abort(403)
-    text = ((request.get_json() or {}).get("text") or "").strip()
-    if not text:
+    text_ = ((request.get_json() or {}).get("text") or "").strip()
+    if not text_:
         return jsonify({"error": "الرسالة فارغة"}), 400
-    m = Message(chat_id=cid, sender_id=me.id, text=text)
+    m = Message(chat_id=cid, sender_id=me.id, text=text_)
     db.session.add(m)
     db.session.commit()
     return jsonify({
@@ -997,7 +1017,7 @@ def err_all(e):
 
 
 # ═══════════════════════════════════════════════════════════
-# تهيئة قاعدة البيانات
+# تهيئة قاعدة البيانات + Auto-migration
 # ═══════════════════════════════════════════════════════════
 def init_db():
     with app.app_context():
@@ -1026,29 +1046,51 @@ def init_db():
             print("✅ الجداول جاهزة.")
 
             # ═══════════════════════════════════════════════════════
-            # Auto-migration v10 — يضمن وجود الأعمدة الجديدة
+            # Auto-migration v11 — أعمدة + هجرة قيم الإطارات
             # ═══════════════════════════════════════════════════════
             try:
                 with db.engine.begin() as conn:
                     cols = [
-                        ("location", "VARCHAR(60)"),
-                        ("website", "VARCHAR(120)"),
-                        ("pronouns", "VARCHAR(20)"),
-                        ("status", "VARCHAR(100)"),
-                        ("cover", "VARCHAR(40) DEFAULT 'aurora'"),
-                        ("accent_color", "VARCHAR(7) DEFAULT '#22D3EE'"),
-                        ("avatar_shape", "VARCHAR(10) DEFAULT 'rounded'"),
-                        ("card_style", "VARCHAR(12) DEFAULT 'glass'"),
+                        ("website",      "VARCHAR(120)"),
+                        ("pronouns",     "VARCHAR(20)"),
+                        ("cover",        "VARCHAR(40) DEFAULT 'aurora'"),
+                        ("accent_color", "VARCHAR(7)  DEFAULT '#22D3EE'"),
+                        ("avatar_shape", "VARCHAR(30) DEFAULT 'ring'"),
+                        ("card_style",   "VARCHAR(12) DEFAULT 'glass'"),
+                        # location و status مُتروكان للأرشيف
                     ]
                     for name, dtype in cols:
                         conn.execute(text(
                             f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
                         ))
+
+                    # وسّع avatar_shape لدعم أسماء الإطارات الجديدة
+                    try:
+                        conn.execute(text(
+                            "ALTER TABLE users ALTER COLUMN avatar_shape TYPE VARCHAR(30)"
+                        ))
+                    except Exception:
+                        pass  # MySQL/SQLite قد لا يدعم — يُتجاهل
+
+                    # هجرة الإطارات القديمة
+                    conn.execute(text("""
+                        UPDATE users SET avatar_shape = CASE
+                            WHEN avatar_shape = 'circle'  THEN 'gradient'
+                            WHEN avatar_shape = 'rounded' THEN 'ring'
+                            WHEN avatar_shape = 'square'  THEN 'none'
+                            ELSE avatar_shape
+                        END
+                        WHERE avatar_shape IN ('circle', 'rounded', 'square')
+                           OR avatar_shape IS NULL
+                    """))
+
+                    # قيم افتراضية نظيفة
                     conn.execute(text("UPDATE users SET cover = 'aurora' WHERE cover IS NULL"))
                     conn.execute(text("UPDATE users SET accent_color = '#22D3EE' WHERE accent_color IS NULL"))
-                    conn.execute(text("UPDATE users SET avatar_shape = 'rounded' WHERE avatar_shape IS NULL"))
+                    conn.execute(text("UPDATE users SET avatar_shape = 'ring' WHERE avatar_shape IS NULL"))
                     conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
-                print("✅ Auto-migration: الأعمدة الجديدة جاهزة.")
+
+                print("✅ Auto-migration v11: الإطارات والأغلفة جاهزة.")
             except Exception as m_err:
                 print(f"⚠️  Auto-migration: {str(m_err)[:150]}")
 
