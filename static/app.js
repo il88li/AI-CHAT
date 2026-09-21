@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   خَيال — Aurora App 4.1
-   Google OAuth + PTR + Router + Counts + CmdK + Blur-up
+   خَيال — Aurora App 5.0
+   تسجيل دخول محلي + PTR + Router + Counts + CmdK + Blur-up
    ═══════════════════════════════════════════════════════════ */
 
 (() => {
@@ -177,11 +177,7 @@ const API = {
    PULL-TO-REFRESH
    ═══════════════════════════════════════════════════════════ */
 const PTR = {
-  startY: 0,
-  pulling: false,
-  threshold: 70,
-  wrap: null,
-  indicator: null,
+  startY: 0, pulling: false, threshold: 70, wrap: null, indicator: null,
 
   init() {
     this.wrap = U.$('#ptrWrap');
@@ -257,7 +253,7 @@ const PTR = {
 
 
 /* ═══════════════════════════════════════════════════════════
-   ROUTER (URL Hash)
+   ROUTER
    ═══════════════════════════════════════════════════════════ */
 const Router = {
   validTabs: ['home', 'explore', 'liked', 'saved', 'chat', 'profile'],
@@ -267,7 +263,6 @@ const Router = {
     if (hash && this.validTabs.includes(hash)) {
       setTimeout(() => App.switchTab(hash, { skipHistory: true }), 120);
     }
-
     window.addEventListener('hashchange', () => {
       const tab = location.hash.slice(1);
       if (this.validTabs.includes(tab) && tab !== App.state.tab) {
@@ -286,7 +281,7 @@ const Router = {
 
 
 /* ═══════════════════════════════════════════════════════════
-   COUNTS (Pills)
+   COUNTS
    ═══════════════════════════════════════════════════════════ */
 const Counts = {
   update() {
@@ -297,7 +292,6 @@ const Counts = {
       if (span) span.textContent = U.fmtNum(n);
       likedEl.setAttribute('data-count', n);
     }
-
     const savedEl = U.$('#savedCount');
     if (savedEl) {
       const n = App.state.posts.filter(p => p.saved).length;
@@ -310,7 +304,7 @@ const Counts = {
 
 
 /* ═══════════════════════════════════════════════════════════
-   IMAGE LOADER (Blur-up)
+   IMAGE LOADER
    ═══════════════════════════════════════════════════════════ */
 const ImageLoader = {
   observe() {
@@ -403,32 +397,21 @@ const CommandPalette = {
    ═══════════════════════════════════════════════════════════ */
 const App = {
   state: {
-    posts: [],
-    chats: [],
-    filter: 'all',
-    model: 'all',
-    sort: 'recent',
-    tab: 'home',
-    activeChat: null,
-    profileTab: 'posts',
-    search: '',
-    theme: 'dark',
-    loading: false
+    posts: [], chats: [], filter: 'all', model: 'all', sort: 'recent',
+    tab: 'home', activeChat: null, profileTab: 'posts',
+    search: '', theme: 'dark', loading: false
   },
 
   async init() {
-    // Theme
     this.state.theme = U.storage.get('khayal_theme') || 'dark';
     document.documentElement.setAttribute('data-theme', this.state.theme);
     this.syncThemeIcon();
 
-    // Nav scroll
     window.addEventListener('scroll', U.throttle(() => {
       const n = U.$('#nav');
       if (n) n.classList.toggle('scrolled', window.scrollY > 20);
     }, 100), { passive: true });
 
-    // Network
     window.addEventListener('online', () => {
       U.$('#netBar')?.classList.remove('show');
       this.refreshAll(true);
@@ -436,7 +419,6 @@ const App = {
     window.addEventListener('offline', () => U.$('#netBar')?.classList.add('show'));
     if (!navigator.onLine) U.$('#netBar')?.classList.add('show');
 
-    // UI bindings
     this.bindSearch();
     this.bindProfileTabs();
     this.bindKeyboard();
@@ -445,11 +427,9 @@ const App = {
     this.renderFilters('exploreFilters');
     this.renderSortTabs();
 
-    // Features
     PTR.init();
     Router.init();
 
-    // Bento glow
     document.addEventListener('mousemove', U.throttle(e => {
       U.$$('.bento-card').forEach(c => {
         const r = c.getBoundingClientRect();
@@ -458,36 +438,29 @@ const App = {
       });
     }, 80), { passive: true });
 
-    // Service Worker
     if ('serviceWorker' in navigator) {
       try { await navigator.serviceWorker.register('/sw.js', { scope: '/' }); } catch {}
     }
 
-    // Handle OAuth error redirects
-    const params = new URLSearchParams(location.search);
-    const err = params.get('error');
-    if (err) {
-      const messages = {
-        invalid_state: 'انتهت صلاحية الجلسة. حاول مرة أخرى.',
-        token_exchange: 'فشل تبادل الرمز مع Google.',
-        no_userinfo: 'لم نتمكن من جلب بيانات حسابك.',
-        no_email: 'حسابك لا يحتوي على بريد إلكتروني.'
-      };
-      U.toast(messages[err] || 'فشل تسجيل الدخول', 'ph-warning');
-      try { history.replaceState(null, '', '/'); } catch {}
-    }
-
-    // Load data
     await this.refreshAll();
 
-    // Enter app if signed in
     if (K.me) {
       this.applyUser();
       this.enterApp();
     }
 
-    // Handle URL actions
+    const params = new URLSearchParams(location.search);
     if (params.get('action') === 'new' && K.me) Composer.open();
+
+    // Bind live validation for auth forms
+    setTimeout(() => {
+      const unameInput = U.$('#regUsername');
+      const emailInput = U.$('#regEmail');
+      if (unameInput) unameInput.addEventListener('input',
+        U.debounce(e => Auth.checkUsername(e.target.value), 500));
+      if (emailInput) emailInput.addEventListener('input',
+        U.debounce(e => Auth.checkEmail(e.target.value), 500));
+    }, 500);
   },
 
   async refreshAll(silent = false) {
@@ -543,9 +516,7 @@ const App = {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   },
 
-  scrollTo(id) {
-    U.$('#' + id)?.scrollIntoView({ behavior: 'smooth' });
-  },
+  scrollTo(id) { U.$('#' + id)?.scrollIntoView({ behavior: 'smooth' }); },
 
   showView(id) {
     U.$$('.view').forEach(v => v.classList.remove('active'));
@@ -602,7 +573,6 @@ const App = {
     if (i) i.className = this.state.theme === 'dark' ? 'ph ph-moon' : 'ph ph-sun';
   },
 
-  /* Filters */
   renderFilters(id) {
     const el = U.$('#' + id);
     if (!el) return;
@@ -721,7 +691,6 @@ const App = {
     }
   },
 
-  /* Search */
   bindSearch() {
     const input = U.$('#searchInput');
     const results = U.$('#searchResults');
@@ -773,7 +742,6 @@ const App = {
     } catch {}
   },
 
-  /* Profile */
   bindProfileTabs() {
     U.$$('#profileTabs .tab').forEach(t => t.addEventListener('click', () => {
       U.$$('#profileTabs .tab').forEach(x => x.classList.remove('active'));
@@ -830,7 +798,6 @@ const App = {
     </div>`;
   },
 
-  /* Publisher */
   async openPublisher(uid) {
     try {
       const [u, posts] = await Promise.all([
@@ -908,7 +875,6 @@ const App = {
     }
   },
 
-  /* Keyboard */
   bindKeyboard() {
     let lastG = 0;
     document.addEventListener('keydown', e => {
@@ -944,7 +910,6 @@ const App = {
     });
   },
 
-  /* Gestures */
   bindGestures() {
     let sx = 0, sy = 0;
     const layout = U.$('#chatLayout');
@@ -1245,40 +1210,208 @@ const Composer = {
 
 
 /* ═══════════════════════════════════════════════════════════
-   AUTH — Google OAuth 2.0 حقيقي
+   AUTH — تسجيل دخول محلي (username + password)
    ═══════════════════════════════════════════════════════════ */
 const Auth = {
-  open() {
+  open(mode = 'login') {
     U.$('#authModal').classList.add('open');
     document.body.style.overflow = 'hidden';
+    this.switchMode(mode);
+    setTimeout(() => {
+      const firstInput = mode === 'login' ? U.$('#loginIdentifier') : U.$('#regName');
+      firstInput?.focus();
+    }, 200);
   },
 
   close(e) {
     if (e && e.target !== e.currentTarget) return;
     U.$('#authModal').classList.remove('open');
     document.body.style.overflow = '';
+    setTimeout(() => {
+      U.$('#loginForm')?.reset();
+      U.$('#registerForm')?.reset();
+      const us = U.$('#usernameStatus'); if (us) us.className = 'input-status';
+      const es = U.$('#emailStatus'); if (es) es.className = 'input-status';
+      const sl = U.$('#strengthLabel'); if (sl) sl.textContent = '';
+      const sb = U.$('.strength-bar'); if (sb) sb.removeAttribute('data-level');
+    }, 400);
   },
 
-  /**
-   * تسجيل دخول حقيقي عبر Google OAuth 2.0
-   * يعيد التوجيه إلى /auth/google على الخادم
-   */
-  signIn() {
-    const btn = U.$('#googleSignInBtn');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = `
-        <i class="ph ph-circle-notch" style="animation:spin 1s linear infinite;font-size:20px"></i>
-        <span>جارٍ التوجيه إلى Google…</span>`;
+  switchMode(mode) {
+    const tabs = U.$('.auth-tabs');
+    if (tabs) tabs.dataset.mode = mode;
+
+    U.$$('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+    U.$$('.auth-form').forEach(f => f.classList.toggle('active', f.dataset.mode === mode));
+
+    setTimeout(() => {
+      const firstInput = mode === 'login' ? U.$('#loginIdentifier') : U.$('#regName');
+      firstInput?.focus();
+    }, 100);
+  },
+
+  togglePassword(btn) {
+    const input = btn.parentElement.querySelector('input');
+    const icon = btn.querySelector('i');
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.className = 'ph ph-eye-slash';
+      btn.setAttribute('aria-label', 'إخفاء');
+    } else {
+      input.type = 'password';
+      icon.className = 'ph ph-eye';
+      btn.setAttribute('aria-label', 'إظهار');
+    }
+  },
+
+  checkStrength(pw) {
+    const bar = U.$('.strength-bar');
+    const label = U.$('#strengthLabel');
+    if (!bar || !label) return;
+
+    if (!pw) { bar.removeAttribute('data-level'); label.textContent = ''; return; }
+
+    let score = 0;
+    if (pw.length >= 6) score++;
+    if (pw.length >= 10) score++;
+    if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+    if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
+    score = Math.max(1, Math.min(4, score));
+
+    bar.dataset.level = score;
+    const labels = ['', 'ضعيفة', 'مقبولة', 'قوية', 'ممتازة'];
+    const colors = ['', 'var(--rose)', 'var(--amber)', 'var(--cyan)', 'var(--mint)'];
+    label.textContent = labels[score];
+    label.style.color = colors[score];
+  },
+
+  async checkUsername(value) {
+    const status = U.$('#usernameStatus');
+    if (!status) return;
+
+    if (!value || value.length < 3) {
+      status.className = 'input-status';
+      status.innerHTML = '';
+      return;
+    }
+    if (!/^[a-zA-Z0-9_\-]{3,32}$/.test(value)) {
+      status.className = 'input-status err';
+      status.innerHTML = '<i class="ph ph-x-circle"></i>';
+      return;
     }
 
-    // احفظ الصفحة المطلوبة
-    const next = encodeURIComponent('/app' + (location.hash || ''));
+    status.className = 'input-status loading';
+    status.innerHTML = '';
 
-    // أعطِ المتصفح 200ms ليرسم حالة التحميل ثم وجّه
-    setTimeout(() => {
-      window.location.href = `/auth/google?next=${next}`;
-    }, 200);
+    try {
+      const r = await API.post('/api/auth/check-username', { username: value });
+      if (r.available) {
+        status.className = 'input-status ok';
+        status.innerHTML = '<i class="ph ph-check-circle"></i>';
+      } else {
+        status.className = 'input-status err';
+        status.innerHTML = '<i class="ph ph-x-circle"></i>';
+      }
+    } catch {
+      status.className = 'input-status';
+      status.innerHTML = '';
+    }
+  },
+
+  async checkEmail(value) {
+    const status = U.$('#emailStatus');
+    if (!status) return;
+
+    if (!value || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) {
+      status.className = 'input-status';
+      status.innerHTML = '';
+      return;
+    }
+
+    status.className = 'input-status loading';
+    status.innerHTML = '';
+
+    try {
+      const r = await API.post('/api/auth/check-email', { email: value });
+      if (r.available) {
+        status.className = 'input-status ok';
+        status.innerHTML = '<i class="ph ph-check-circle"></i>';
+      } else {
+        status.className = 'input-status err';
+        status.innerHTML = '<i class="ph ph-x-circle"></i>';
+      }
+    } catch {
+      status.className = 'input-status';
+      status.innerHTML = '';
+    }
+  },
+
+  async login(e) {
+    e.preventDefault();
+    const btn = U.$('#loginSubmit');
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ph ph-circle-notch" style="animation:spin 1s linear infinite"></i><span>جارٍ…</span>';
+
+    try {
+      const user = await API.post('/api/auth/login', {
+        identifier: U.$('#loginIdentifier').value.trim(),
+        password: U.$('#loginPassword').value,
+        remember: U.$('#rememberMe').checked
+      });
+      K.me = user;
+      this.close();
+      App.applyUser();
+      await App.refreshAll();
+      App.enterApp();
+      U.toast('أهلاً ' + user.name + '!', 'ph-hand-waving');
+      U.haptic();
+    } catch (err) {
+      U.toast(err.message, 'ph-warning');
+      const form = U.$('#loginForm');
+      form.style.animation = 'none';
+      setTimeout(() => { form.style.animation = 'shake .4s'; }, 10);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = orig;
+    }
+  },
+
+  async register(e) {
+    e.preventDefault();
+    const btn = U.$('#registerSubmit');
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ph ph-circle-notch" style="animation:spin 1s linear infinite"></i><span>جارٍ…</span>';
+
+    try {
+      const user = await API.post('/api/auth/register', {
+        name: U.$('#regName').value.trim(),
+        username: U.$('#regUsername').value.trim(),
+        email: U.$('#regEmail').value.trim(),
+        password: U.$('#regPassword').value
+      });
+      K.me = user;
+      this.close();
+      App.applyUser();
+      await App.refreshAll();
+      App.enterApp();
+      U.toast('مرحباً بك في خَيال، ' + user.name + '!', 'ph-confetti');
+      U.haptic();
+    } catch (err) {
+      U.toast(err.message, 'ph-warning');
+      const form = U.$('#registerForm');
+      form.style.animation = 'none';
+      setTimeout(() => { form.style.animation = 'shake .4s'; }, 10);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = orig;
+    }
+  },
+
+  forgot(e) {
+    e.preventDefault();
+    U.toast('خاصية استعادة كلمة المرور قريباً', 'ph-info');
   },
 
   async logout() {
@@ -1430,9 +1563,7 @@ const Chat = {
     }
   },
 
-  backToList() {
-    U.$('#chatLayout')?.classList.add('show-list');
-  },
+  backToList() { U.$('#chatLayout')?.classList.add('show-list'); },
 
   async send(e) {
     e.preventDefault();
@@ -1571,7 +1702,6 @@ document.head.appendChild(style);
 
 document.addEventListener('DOMContentLoaded', () => App.init());
 
-// Expose globally
 window.App = App;
 window.Feed = Feed;
 window.Composer = Composer;
