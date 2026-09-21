@@ -1,42 +1,45 @@
-<section class="tab-panel active" id="tab-home" data-tab="home">
+<section class="tab-panel is-active" id="tab-home" data-tab="home">
   <div class="page-head">
-    <div>
+    <div class="page-head-info">
       <h1>الرئيسية</h1>
       <p>أحدث البرومبتات من المنصة.</p>
     </div>
-    <button class="btn btn-glass btn-sm refresh-btn" id="refreshBtn" onclick="App.refreshAll(true)" aria-label="تحديث">
-      <i class="ph ph-arrow-clockwise"></i>
+    <button
+      class="btn btn-icon btn-secondary"
+      onclick="App.refreshAll(true)"
+      aria-label="تحديث"
+      type="button">
+      <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>
     </button>
   </div>
 
-  <div class="sort-row">
-    <div class="sort-tabs">
-      <button class="sort-tab active" data-sort="recent" onclick="App.setSort('recent')">
-        <i class="ph ph-clock"></i> الأحدث
+  <!-- Composer trigger (Prompt-composer pattern) -->
+  <div class="composer-trigger" onclick="Composer.open()" role="button" tabindex="0">
+    <img class="avatar" id="composerAvatar" src="" alt="">
+    <div class="composer-trigger-input">شارك برومبتاً جديداً…</div>
+  </div>
+
+  <div class="cluster-between" style="margin-bottom:var(--sp-4)">
+    <div class="sort-tabs" role="tablist" aria-label="ترتيب">
+      <button class="sort-tab" role="tab" aria-selected="true" data-sort="recent" onclick="App.setSort('recent')" type="button">
+        <i class="ph ph-clock" aria-hidden="true"></i> الأحدث
       </button>
-      <button class="sort-tab" data-sort="top" onclick="App.setSort('top')">
-        <i class="ph ph-fire"></i> الأكثر رواجاً
-      </button>
-      <button class="sort-tab" data-sort="trending" onclick="App.setSort('trending')">
-        <i class="ph ph-trend-up"></i> رائج
+      <button class="sort-tab" role="tab" aria-selected="false" data-sort="top" onclick="App.setSort('top')" type="button">
+        <i class="ph ph-fire" aria-hidden="true"></i> الأكثر رواجاً
       </button>
     </div>
   </div>
 
-  <div class="filters" id="filters"></div>
+  <div class="filters" id="filters" role="tablist" aria-label="تصفية"></div>
 
-  <!-- Pull-to-Refresh Container -->
-  <div class="ptr-wrap" id="ptrWrap">
-    <div class="ptr" id="ptr">
-      <i class="ph ph-arrow-clockwise"></i>
-    </div>
-    <div class="feed" id="homeFeed">
-      {% include 'partials/skeletons.html' %}
-    </div>
+  <div class="feed" id="homeFeed">
+    {% for i in range(6) %}
+      {% include 'partials/cards/skeleton.html' %}
+    {% endfor %}
   </div>
 
-  <div class="load-more" id="homeLoader" style="display:none">
-    <span class="spinner"></span>
+  <div id="homeLoader" class="text-center text-muted" style="padding:var(--sp-6);display:none">
+    <i class="ph ph-circle-notch" style="animation:spin .8s linear infinite;display:inline-block"></i>
     <span>جارٍ التحميل…</span>
   </div>
 </section>
