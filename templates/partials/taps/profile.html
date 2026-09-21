@@ -1,6 +1,11 @@
 <section class="tab-panel" id="tab-profile" data-tab="profile">
   <div class="profile-head">
-    <div class="profile-cover"></div>
+    <div class="profile-cover">
+      <div class="cover-pattern"></div>
+      <button class="cover-edit" onclick="Auth.openEditProfile()" aria-label="تعديل الغلاف">
+        <i class="ph ph-camera"></i>
+      </button>
+    </div>
     <div class="profile-body">
       <div class="profile-avatar-wrap">
         <img class="profile-avatar" src="" alt="" id="profileAvatar">
@@ -34,15 +39,9 @@
   </div>
 
   <div class="tabs" id="profileTabs">
-    <button class="tab active" data-ptab="posts">
-      <i class="ph ph-image-square"></i> برومبتاتي
-    </button>
-    <button class="tab" data-ptab="liked">
-      <i class="ph ph-heart"></i> المُعجَبة
-    </button>
-    <button class="tab" data-ptab="settings">
-      <i class="ph ph-gear"></i> الإعدادات
-    </button>
+    <button class="tab active" data-ptab="posts"><i class="ph ph-image-square"></i> برومبتاتي</button>
+    <button class="tab" data-ptab="liked"><i class="ph ph-heart"></i> المُعجَبة</button>
+    <button class="tab" data-ptab="settings"><i class="ph ph-gear"></i> الإعدادات</button>
   </div>
   <div id="profilePanel"></div>
 </section>
