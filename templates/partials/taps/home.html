@@ -1,0 +1,42 @@
+<section class="tab-panel active" id="tab-home" data-tab="home">
+  <div class="page-head">
+    <div>
+      <h1>الرئيسية</h1>
+      <p>أحدث البرومبتات من المنصة.</p>
+    </div>
+    <button class="btn btn-glass btn-sm refresh-btn" onclick="App.refreshAll()" aria-label="تحديث">
+      <i class="ph ph-arrow-clockwise"></i>
+    </button>
+  </div>
+
+  <div class="sort-row">
+    <div class="sort-tabs">
+      <button class="sort-tab active" data-sort="recent" onclick="App.setSort('recent')">
+        <i class="ph ph-clock"></i> الأحدث
+      </button>
+      <button class="sort-tab" data-sort="top" onclick="App.setSort('top')">
+        <i class="ph ph-fire"></i> الأكثر رواجاً
+      </button>
+      <button class="sort-tab" data-sort="trending" onclick="App.setSort('trending')">
+        <i class="ph ph-trend-up"></i> رائج
+      </button>
+    </div>
+  </div>
+
+  <div class="filters" id="filters"></div>
+
+  <!-- Pull to refresh indicator -->
+  <div class="ptr" id="ptr">
+    <i class="ph ph-arrow-clockwise"></i>
+  </div>
+
+  <div class="feed" id="homeFeed">
+    {% include 'partials/skeletons.html' %}
+  </div>
+
+  <!-- Infinite scroll loader -->
+  <div class="load-more" id="homeLoader" style="display:none">
+    <span class="spinner"></span>
+    <span>جارٍ التحميل…</span>
+  </div>
+</section>
