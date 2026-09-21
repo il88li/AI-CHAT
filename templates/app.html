@@ -1,9 +1,11 @@
 {% extends "base.html" %}
 {% block title %}خَيال — المنصة{% endblock %}
-{% block body_class %}app-page{% endblock %}
 
 {% block body %}
-<main class="view active" id="view-app">
+
+{% include 'partials/nav.html' %}
+
+<main class="view is-active" id="view-app">
   <div class="app-main">
     {% include 'partials/tabs/home.html' %}
     {% include 'partials/tabs/explore.html' %}
@@ -13,4 +15,7 @@
     {% include 'partials/tabs/profile.html' %}
   </div>
 </main>
-{% endblock %}*
+
+{% include 'partials/dock.html' %}
+
+{% endblock %}
