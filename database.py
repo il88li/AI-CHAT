@@ -1,6 +1,9 @@
 """
-خَيال — طبقة قاعدة البيانات v2
-إصلاح SSL مع Aiven، pool recycling آمن، دعم pg8000 كبديل
+خَيال — طبقة قاعدة البيانات v9.0
+- PostgreSQL (psycopg2) + MySQL (pymysql)
+- SSL صحيح لـ Aiven
+- pool recycling آمن (pool_use_lifo)
+- حقول Profile موسّعة: location, website, cover
 """
 import os
 import re
@@ -62,6 +65,7 @@ def _force_ssl_require(uri: str) -> str:
 
 
 def _swap_host_to_public(uri: str) -> str:
+    """عند التطوير المحلي: pg-xxx.aivencloud.com → public-pg-xxx.aivencloud.com"""
     try:
         parsed = urlparse(uri)
         host = parsed.hostname or ""
@@ -98,19 +102,31 @@ def build_database_uri() -> str:
     user = _sanitize_uri(os.getenv("DB_USER"))
     password = _sanitize_uri(os.getenv("DB_PASSWORD"))
     name = _sanitize_uri(os.getenv("DB_NAME")) or "defaultdb"
+    kind = (_sanitize_uri(os.getenv("DB_TYPE")) or "postgres").lower()
+    use_ssl = (_sanitize_uri(os.getenv("DB_SSL")) or "true").lower() == "true"
 
     if not all([host, user, password]):
         raise RuntimeError(
             "❌ متغيرات قاعدة البيانات ناقصة.\n"
-            "أضف DATABASE_URL=postgresql://..."
+            "أضف في البيئة:\n"
+            "  DATABASE_URL=postgresql://...\n"
+            "أو:\n"
+            "  DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT"
         )
 
     if is_running_locally() and host.startswith("pg-") and "aivencloud.com" in host:
         host = "public-" + host
 
-    uri = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}?sslmode=require"
+    if kind == "mysql":
+        port = port or "3306"
+        ssl_part = "&ssl_ca=ca.pem" if use_ssl else ""
+        uri = f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4{ssl_part}"
+    else:
+        port = port or "5432"
+        uri = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}?sslmode=require"
+
     print(f"[DB] mode={'render' if is_running_on_render() else 'local'}")
-    print(f"[DB] host={host} port={port} db={name}")
+    print(f"[DB] host={host} port={port} db={name} kind={kind}")
     return uri
 
 
@@ -166,6 +182,9 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     avatar = db.Column(db.String(512), nullable=True)
     bio = db.Column(db.Text, nullable=True, default="")
+    location = db.Column(db.String(60), nullable=True)
+    website = db.Column(db.String(120), nullable=True)
+    cover = db.Column(db.String(40), nullable=True, default="aurora")
     verified = db.Column(db.Boolean, default=False)
     followers = db.Column(db.Integer, default=0)
     following = db.Column(db.Integer, default=0)
@@ -186,9 +205,13 @@ class User(db.Model):
             "username": self.username,
             "avatar": self.avatar or f"https://api.dicebear.com/7.x/initials/svg?seed={self.name}",
             "bio": self.bio or "",
+            "location": getattr(self, "location", None),
+            "website": getattr(self, "website", None),
+            "cover": getattr(self, "cover", "aurora"),
             "verified": self.verified,
             "followers": self.followers,
             "following": self.following,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -261,8 +284,10 @@ class Like(db.Model):
     __table_args__ = (db.UniqueConstraint("user_id", "post_id", name="uq_like_user_post"),)
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                        nullable=False)
+    post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"),
+                        nullable=False)
 
 
 class Save(db.Model):
@@ -270,8 +295,10 @@ class Save(db.Model):
     __table_args__ = (db.UniqueConstraint("user_id", "post_id", name="uq_save_user_post"),)
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                        nullable=False)
+    post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"),
+                        nullable=False)
 
 
 class Follow(db.Model):
@@ -279,8 +306,10 @@ class Follow(db.Model):
     __table_args__ = (db.UniqueConstraint("follower_id", "following_id", name="uq_follow"),)
 
     id = db.Column(db.Integer, primary_key=True)
-    follower_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    following_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    follower_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                            nullable=False)
+    following_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                             nullable=False)
 
 
 class Chat(db.Model):
