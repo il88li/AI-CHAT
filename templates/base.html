@@ -30,7 +30,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/@phosphor-icons/web@2.1.1" defer></script>
 
-<link rel="stylesheet" href="/static/style.css?v=7">
+<link rel="stylesheet" href="/static/style.css?v=8">
 {% block styles %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -46,17 +46,18 @@
 
 <!-- Global chrome (always present) -->
 {% include 'partials/modals/auth.html' %}
-{% include 'partials/modals/composer.html' %}
-{% include 'partials/modals/edit_profile.html' %}
+{% include 'partials/views/composer.html' %}
+{% include 'partials/views/edit_profile.html' %}
 {% include 'partials/drawers/comments.html' %}
+{% include 'partials/drawers/notifications.html' %}
 
 <div class="toast-wrap" id="toastWrap" role="status" aria-live="polite" aria-atomic="false"></div>
 
 <script>
   window.__ME__ = {{ me | tojson }};
-  window.__BUILD__ = '7.0';
+  window.__BUILD__ = '8.0';
 </script>
-<script src="/static/app.js?v=7" defer></script>
+<script src="/static/app.js?v=8" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
