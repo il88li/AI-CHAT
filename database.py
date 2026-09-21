@@ -1,8 +1,9 @@
 """
 خَيال — طبقة قاعدة البيانات
-يدعم Aiven PostgreSQL و MySQL تلقائياً حسب متغيرات البيئة.
+PostgreSQL (Aiven) عبر SQLAlchemy.
 """
 import os
+import re
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 
@@ -10,62 +11,56 @@ db = SQLAlchemy()
 
 
 def build_database_uri() -> str:
-    """
-    يبني رابط SQLAlchemy من متغيرات البيئة:
-    - إن وُجد DATABASE_URL مباشرةً، استخدمه وطبّع السكيما.
-    - وإلا ركّبه من DB_* مع اكتشاف النوع تلقائياً.
-    """
-    direct = os.getenv("DATABASE_URL")
+    """يبني رابط SQLAlchemy من متغيرات البيئة."""
+    direct = (os.getenv("DATABASE_URL") or "").strip()
+    direct = direct.replace("\n", "").replace("\r", "").replace("\t", "")
+
     if direct:
-        # طبّع سكيما PostgreSQL (Aiven تعطي postgres:// أحياناً)
-        if direct.startswith("postgres://"):
-            direct = direct.replace("postgres://", "postgresql://", 1)
-        # تأكد من SSL
-        if "sslmode=" not in direct and "ssl_ca=" not in direct:
+        direct = re.sub(r"^postgre(?:sql)?://", "postgresql://", direct, flags=re.IGNORECASE)
+        direct = re.sub(r"^mysql://", "mysql+pymysql://", direct, flags=re.IGNORECASE)
+        if direct.startswith("postgresql://") and "sslmode=" not in direct:
             sep = "&" if "?" in direct else "?"
             direct = f"{direct}{sep}sslmode=require"
+        print(f"[DB] DATABASE_URL scheme: {direct[:60]}…")
         return direct
 
-    host = os.getenv("DB_HOST")
-    port = os.getenv("DB_PORT")
-    user = os.getenv("DB_USER")
-    password = os.getenv("DB_PASSWORD")
-    name = os.getenv("DB_NAME", "defaultdb")
-    kind = (os.getenv("DB_TYPE") or "postgres").lower()
-    use_ssl = os.getenv("DB_SSL", "true").lower() == "true"
+    host     = (os.getenv("DB_HOST") or "").strip()
+    port     = (os.getenv("DB_PORT") or "").strip()
+    user     = (os.getenv("DB_USER") or "").strip()
+    password = (os.getenv("DB_PASSWORD") or "").strip()
+    name     = (os.getenv("DB_NAME") or "defaultdb").strip()
+    kind     = (os.getenv("DB_TYPE") or "postgres").lower().strip()
+    use_ssl  = (os.getenv("DB_SSL") or "true").lower().strip() == "true"
 
     if not all([host, user, password]):
         raise RuntimeError(
-            "متغيرات قاعدة البيانات ناقصة. "
-            "أضف DB_HOST و DB_USER و DB_PASSWORD "
+            "متغيرات قاعدة البيانات ناقصة. أضف DB_HOST و DB_USER و DB_PASSWORD "
             "أو حدّد DATABASE_URL مباشرةً."
         )
+
+    if host.startswith("pg-") and ".aivencloud.com" in host:
+        print(f"⚠️  تحذير: '{host}' يبدو داخل VPC. فعّل Public Access في Aiven.")
+
+    print(f"[DB] host={host!r} port={port!r} user={user!r} db={name!r} kind={kind}")
 
     if kind == "mysql":
         port = port or "3306"
         ssl_part = "&ssl_ca=ca.pem" if use_ssl else ""
-        return (
-            f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}"
-            f"?charset=utf8mb4{ssl_part}"
-        )
-    else:  # postgres
+        return f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4{ssl_part}"
+    else:
         port = port or "5432"
-        ssl_part = "?sslmode=require"
-        return (
-            f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}"
-            f"{ssl_part}"
-        )
+        return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}?sslmode=require"
 
 
 # ═══════════════════════════════════════════════════════════
-# النماذج (Models)
+# النماذج
 # ═══════════════════════════════════════════════════════════
 
 class User(db.Model):
     __tablename__ = "users"
 
     id         = db.Column(db.Integer, primary_key=True)
-    google_id  = db.Column(db.String(128), unique=True, index=True, nullable=True)
+    google_id  = db.Column(db.String(64), unique=True, index=True, nullable=True)
     email      = db.Column(db.String(255), unique=True, index=True, nullable=False)
     name       = db.Column(db.String(120), nullable=False)
     handle     = db.Column(db.String(64), unique=True, index=True, nullable=False)
@@ -134,7 +129,7 @@ class Post(db.Model):
             "copies": self.copies,
             "saves": self.saves,
             "comments": self.comments.count(),
-            "time": self.created_at.isoformat(),
+            "time": self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -156,7 +151,7 @@ class Comment(db.Model):
             "author": self.author_id,
             "text": self.text,
             "likes": self.likes,
-            "time": self.created_at.isoformat(),
+            "time": self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -165,10 +160,8 @@ class Like(db.Model):
     __table_args__ = (db.UniqueConstraint("user_id", "post_id", name="uq_like_user_post"),)
 
     id      = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
-                        nullable=False)
-    post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"),
-                        nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
 
 
 class Save(db.Model):
@@ -176,10 +169,8 @@ class Save(db.Model):
     __table_args__ = (db.UniqueConstraint("user_id", "post_id", name="uq_save_user_post"),)
 
     id      = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
-                        nullable=False)
-    post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"),
-                        nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
 
 
 class Follow(db.Model):
@@ -187,10 +178,8 @@ class Follow(db.Model):
     __table_args__ = (db.UniqueConstraint("follower_id", "following_id", name="uq_follow"),)
 
     id           = db.Column(db.Integer, primary_key=True)
-    follower_id  = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
-                             nullable=False)
-    following_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
-                             nullable=False)
+    follower_id  = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    following_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
 
 class Chat(db.Model):
