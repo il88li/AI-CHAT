@@ -1,0 +1,139 @@
+<!-- ═══════════════════════════════════════════════════════════
+     COMPOSER — بنمط فيسبوك (Bottom Sheet على الجوال)
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- Step 1: Trigger card (يظهر في التايملاين) -->
+<div class="composer-trigger" id="composerTrigger" onclick="Composer.open()">
+  <div class="composer-trigger-avatar">
+    <img id="composerAvatar" src="" alt="">
+  </div>
+  <div class="composer-trigger-input">بم تفكر؟</div>
+</div>
+
+<!-- Step 2: Sheet (الواجهة الرئيسية) -->
+<div class="scrim composer-scrim" id="composerModal" onclick="Composer.close(event)">
+  <div class="composer-sheet" onclick="event.stopPropagation()">
+
+    <!-- Handle bar (للسحب) -->
+    <div class="sheet-handle"></div>
+
+    <!-- رأس الورقة -->
+    <div class="composer-head">
+      <h3>إنشاء منشور</h3>
+      <button class="icon-btn composer-close" onclick="Composer.close()" aria-label="إغلاق">
+        <i class="ph ph-x"></i>
+      </button>
+    </div>
+
+    <!-- اختيار النوع -->
+    <div class="composer-types" id="composerTypes">
+      <button type="button" class="type-card" data-type="text" onclick="Composer.chooseType('text')">
+        <span class="type-icon type-text">
+          <i class="ph ph-text-aa"></i>
+        </span>
+        <span class="type-label">منشور نصي</span>
+      </button>
+
+      <button type="button" class="type-card" data-type="prompt" onclick="Composer.chooseType('prompt')">
+        <span class="type-icon type-image">
+          <i class="ph ph-image"></i>
+        </span>
+        <span class="type-label">صورة + برومبت</span>
+      </button>
+    </div>
+
+    <!-- نموذج النشر -->
+    <form class="composer-form" id="composerForm" onsubmit="Composer.publish(event)" style="display:none">
+
+      <!-- رأس المستخدم -->
+      <div class="composer-user">
+        <img id="composerFormAvatar" src="" alt="">
+        <div>
+          <strong id="composerUserName">—</strong>
+          <span class="composer-visibility">
+            <i class="ph ph-globe"></i> عام
+          </span>
+        </div>
+      </div>
+
+      <!-- العنوان -->
+      <input class="composer-title"
+             id="cTitle"
+             type="text"
+             placeholder="عنوان المنشور…"
+             maxlength="200"
+             autocomplete="off"
+             enterkeyhint="next"
+             required>
+
+      <!-- محتوى النصي (يظهر في وضع "نصي") -->
+      <textarea class="composer-text"
+                id="cPrompt"
+                placeholder="اكتب برومبتك هنا…"
+                maxlength="2000"
+                rows="5"
+                autocomplete="off"
+                spellcheck="false"
+                required></textarea>
+
+      <!-- حقل صورة (يظهر في وضع "صورة") -->
+      <div class="composer-image-field" id="imageField" style="display:none">
+        <label class="composer-img-label" for="cImage">
+          <i class="ph ph-link"></i>
+          <span>رابط الصورة</span>
+        </label>
+        <input class="composer-img-input"
+               id="cImage"
+               type="url"
+               placeholder="https://…"
+               inputmode="url"
+               autocomplete="off">
+      </div>
+
+      <!-- الصف: الموديل + الوسوم -->
+      <div class="composer-row">
+        <div class="composer-field">
+          <label for="cModel">الموديل</label>
+          <select class="composer-select" id="cModel">
+            <option>Midjourney v6</option>
+            <option>DALL·E 3</option>
+            <option>Stable Diffusion XL</option>
+            <option>Flux 1.1 Pro</option>
+            <option>Adobe Firefly</option>
+          </select>
+        </div>
+        <div class="composer-field">
+          <label for="cTags">الوسوم</label>
+          <input class="composer-input"
+                 id="cTags"
+                 type="text"
+                 placeholder="بورتريه، سينمائي"
+                 autocomplete="off">
+        </div>
+      </div>
+
+      <!-- صف الأيقونات (بنمط فيسبوك) -->
+      <div class="composer-icons">
+        <button type="button" class="icon-action" onclick="U.toast('قريباً','ph-image')">
+          <i class="ph ph-image"></i>
+          <span>صورة</span>
+        </button>
+        <button type="button" class="icon-action" onclick="U.toast('قريباً','ph-smiley')">
+          <i class="ph ph-smiley"></i>
+          <span>شعور</span>
+        </button>
+        <button type="button" class="icon-action" onclick="U.toast('قريباً','ph-map-pin')">
+          <i class="ph ph-map-pin"></i>
+          <span>موقع</span>
+        </button>
+      </div>
+
+      <!-- زر النشر -->
+      <button type="submit" class="composer-submit" id="composerSubmit">
+        <span>نشر</span>
+      </button>
+
+    </form>
+
+  </div>
+</div>
