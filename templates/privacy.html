@@ -5,25 +5,116 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08080C">
 <title>سياسة الخصوصية — خَيال</title>
-<link rel="stylesheet" href="/static/style.css?v=5">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+
 <style>
-  .privacy-wrap{max-width:720px;margin:0 auto;padding:calc(80px + env(safe-area-inset-top)) var(--pad-x) 120px}
-  .privacy-wrap h1{font-size:var(--t-3xl);margin-bottom:8px}
-  .privacy-wrap .meta{color:var(--fg-3);font-size:var(--t-sm);margin-bottom:32px}
-  .privacy-wrap h2{font-size:var(--t-xl);margin:28px 0 12px;color:var(--cyan)}
-  .privacy-wrap p,.privacy-wrap li{color:var(--fg-2);line-height:1.75;margin-bottom:12px}
-  .privacy-wrap ul{padding-inline-start:20px;margin-bottom:16px}
-  .privacy-wrap li{list-style:disc}
-  .privacy-back{display:inline-flex;align-items:center;gap:8px;margin-bottom:24px;color:var(--fg-2);font-weight:600}
-  .privacy-back:hover{color:var(--cyan)}
+:root{
+  --bg:#08080C;
+  --fg-1:#F5F5F7;
+  --fg-2:#A1A1AA;
+  --fg-3:#71717A;
+  --cyan:#22D3EE;
+  --border:rgba(255,255,255,.08);
+  --surface:rgba(255,255,255,.035);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"IBM Plex Sans Arabic",system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--fg-1);
+  line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+  min-height:100dvh;
+}
+.aurora{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+.aurora::before,.aurora::after{
+  content:'';position:absolute;
+  border-radius:50%;filter:blur(100px);opacity:.25;
+}
+.aurora::before{
+  width:50vw;height:50vw;
+  top:-15vw;inset-inline-end:-10vw;
+  background:radial-gradient(circle,rgba(34,211,238,.5),transparent 60%);
+}
+.aurora::after{
+  width:45vw;height:45vw;
+  bottom:-20vw;inset-inline-start:-15vw;
+  background:radial-gradient(circle,rgba(139,92,246,.45),transparent 60%);
+}
+.wrap{
+  position:relative;z-index:1;
+  max-width:720px;
+  margin:0 auto;
+  padding:clamp(80px,12vw,120px) clamp(20px,4vw,32px) 120px;
+}
+.back{
+  display:inline-flex;align-items:center;gap:8px;
+  margin-bottom:32px;
+  color:var(--fg-2);
+  font-weight:600;
+  text-decoration:none;
+  transition:color .2s;
+}
+.back:hover{color:var(--cyan)}
+.back i{font-size:18px}
+h1{
+  font-size:clamp(28px,5vw,40px);
+  font-weight:700;
+  letter-spacing:-.02em;
+  margin-bottom:8px;
+}
+.meta{
+  color:var(--fg-3);
+  font-size:14px;
+  margin-bottom:48px;
+  padding-bottom:24px;
+  border-bottom:1px solid var(--border);
+}
+h2{
+  font-size:clamp(18px,3vw,22px);
+  font-weight:700;
+  margin:32px 0 12px;
+  color:var(--cyan);
+  letter-spacing:-.01em;
+}
+p,li{
+  color:var(--fg-2);
+  line-height:1.75;
+  margin-bottom:12px;
+  font-size:15px;
+}
+ul{padding-inline-start:20px;margin-bottom:16px}
+li{list-style:disc}
+li::marker{color:var(--cyan)}
+strong{color:var(--fg-1);font-weight:600}
+code{
+  font-family:ui-monospace,monospace;
+  font-size:.9em;
+  background:var(--surface);
+  padding:2px 6px;
+  border-radius:4px;
+  color:var(--cyan);
+}
+a{color:var(--cyan);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
 </style>
 </head>
 <body>
-<div class="aurora"><div class="aurora-mid"></div></div>
-<div class="privacy-wrap">
-  <a class="privacy-back" href="/"><i class="ph ph-arrow-right"></i> العودة</a>
+
+<div class="aurora"></div>
+
+<article class="wrap">
+  <a class="back" href="/">
+    <i class="ph ph-arrow-right"></i>
+    العودة
+  </a>
+
   <h1>سياسة الخصوصية</h1>
-  <p class="meta">آخر تحديث: سبتمبر 2026 · تنطبق على تطبيق وموقع خَيال</p>
+  <p class="meta">آخر تحديث: سبتمبر ٢٠٢٦ · تنطبق على تطبيق وموقع خَيال</p>
 
   <h2>1. من نحن</h2>
   <p>خَيال منصة عربية لمشاركة برومبتات الصور المُنشأة بالذكاء الاصطناعي. نحن نحترم خصوصيتك ونلتزم بحماية بياناتك.</p>
@@ -41,7 +132,7 @@
     <li>تشغيل الحساب وتسجيل الدخول.</li>
     <li>عرض المنشورات والمجتمع والرسائل.</li>
     <li>تحسين الأداء والأمان واكتشاف الإساءة.</li>
-    <li>إشعارات داخل التطبيق عند التفاعل (إن فعّلتها لاحقاً).</li>
+    <li>إشعارات داخل التطبيق عند التفاعل.</li>
   </ul>
   <p>لا نبيع بياناتك الشخصية لأطراف ثالثة لأغراض إعلانية.</p>
 
@@ -49,7 +140,7 @@
   <p>قد نشارك بيانات محدودة مع مزودي الاستضافة وقواعد البيانات والتحليلات فقط بالقدر اللازم لتشغيل الخدمة، وبموجب عقود تحمي السرية.</p>
 
   <h2>5. التخزين والأمان</h2>
-  <p>كلمات المرور تُخزَّن مشفّرة (pbkdf2). الاتصالات محمية بـ HTTPS. نتخذ إجراءات معقولة لمنع الوصول غير المصرح به.</p>
+  <p>كلمات المرور تُخزَّن مشفّرة بـ <code>pbkdf2</code>. الاتصالات محمية بـ HTTPS. نتخذ إجراءات معقولة لمنع الوصول غير المصرح به.</p>
 
   <h2>6. حقوقك</h2>
   <ul>
@@ -59,7 +150,7 @@
   </ul>
 
   <h2>7. ملفات تعريف الارتباط والتخزين المحلي</h2>
-  <p>نستخدم جلسة آمنة (cookies) لتسجيل الدخول، وlocalStorage لتفضيلات المظهر والواجهة. لا نستخدم تتبع إعلاني من طرف ثالث.</p>
+  <p>نستخدم جلسة آمنة (cookies) لتسجيل الدخول، و<code>localStorage</code> لتفضيلات المظهر والواجهة. لا نستخدم تتبع إعلاني من طرف ثالث.</p>
 
   <h2>8. الأطفال</h2>
   <p>الخدمة غير موجهة لمن هم دون 13 عاماً. إذا علمت بحساب لطفل، تواصل معنا لحذفه.</p>
@@ -69,7 +160,7 @@
 
   <h2>10. التواصل</h2>
   <p>لأي استفسار عن الخصوصية أو طلب حذف بيانات: استخدم قنوات التواصل داخل التطبيق أو البريد الرسمي عند توفره.</p>
-</div>
-<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+</article>
+
 </body>
 </html>
