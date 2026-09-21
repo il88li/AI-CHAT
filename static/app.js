@@ -1,13 +1,16 @@
 /* ═══════════════════════════════════════════════════════════
-   خَيال — Aurora · App 3.0
-   تحسينات: طلبات متوازية، cache ذكي، معالجة أخطاء،
-   optimistic UI، offline support، PWA، إيماءات لمس.
+   خَيال — Aurora App 4.0 (كامل)
+   PTR + Router + Counts + Blur-up + Command Palette + …
    ═══════════════════════════════════════════════════════════ */
 
 (() => {
 'use strict';
 
-const K = { me: window.__ME__ || null, users: {}, models: ['Midjourney v6','DALL·E 3','Stable Diffusion XL','Flux 1.1 Pro','Adobe Firefly'] };
+const K = {
+  me: window.__ME__ || null,
+  users: {},
+  models: ['Midjourney v6','DALL·E 3','Stable Diffusion XL','Flux 1.1 Pro','Adobe Firefly']
+};
 
 /* ═══ UTILS ═══ */
 const U = {
@@ -19,7 +22,7 @@ const U = {
   fmtNum(n){return (n||0).toLocaleString('ar-EG')},
   fmtDate(s){
     if(!s)return '';
-    const d=new Date(s); if(isNaN(d))return s;
+    const d=new Date(s);if(isNaN(d))return s;
     const diff=(Date.now()-d)/1000;
     if(diff<60)return 'الآن';
     if(diff<3600)return `قبل ${Math.floor(diff/60)} د`;
@@ -32,7 +35,7 @@ const U = {
     set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}},
     rm(k){try{localStorage.removeItem(k)}catch{}}
   },
-  toast(msg,icon='ph-check-circle',type='default'){
+  toast(msg,icon='ph-check-circle'){
     const w=U.$('#toastWrap');if(!w)return;
     const el=document.createElement('div');
     el.className='toast';
@@ -68,7 +71,7 @@ const U = {
   haptic(){try{navigator.vibrate&&navigator.vibrate(8)}catch{}}
 };
 
-/* ═══ API — مع إعادة محاولة ═══ */
+/* ═══ API ═══ */
 const API = {
   timeout:10000,
   async req(method,path,body,retries=1){
@@ -88,7 +91,7 @@ const API = {
     }catch(e){
       clearTimeout(tid);
       if(e.name==='AbortError')throw new Error('انتهت المهلة');
-      if(retries>0 && (e.message.includes('fetch')||e.status>=500)){
+      if(retries>0&&(e.message.includes('fetch')||e.status>=500)){
         await new Promise(r=>setTimeout(r,500));
         return this.req(method,path,body,retries-1);
       }
@@ -98,34 +101,207 @@ const API = {
   get:(p)=>API.req('GET',p),
   post:(p,b)=>API.req('POST',p,b),
   patch:(p,b)=>API.req('PATCH',p,b),
-  del:(p)=>API.req('DELETE',p),
+  del:(p)=>API.req('DELETE',p)
 };
 
-/* ═══ APP STATE ═══ */
+/* ═══ PULL-TO-REFRESH ═══ */
+const PTR = {
+  startY:0,pulling:false,threshold:70,wrap:null,indicator:null,
+  init(){
+    this.wrap=U.$('#ptrWrap');
+    this.indicator=U.$('#ptr');
+    if(!this.wrap||!this.indicator)return;
+    if(!('ontouchstart' in window))return;
+    this.wrap.addEventListener('touchstart',e=>this.onStart(e),{passive:true});
+    this.wrap.addEventListener('touchmove',e=>this.onMove(e),{passive:false});
+    this.wrap.addEventListener('touchend',()=>this.onEnd(),{passive:true});
+    this.wrap.addEventListener('touchcancel',()=>this.reset(),{passive:true});
+  },
+  onStart(e){
+    if(window.scrollY>0)return;
+    if(App.state.tab!=='home')return;
+    this.startY=e.touches[0].clientY;
+    this.pulling=false;
+  },
+  onMove(e){
+    if(!this.startY)return;
+    const dy=e.touches[0].clientY-this.startY;
+    if(dy<=0)return;
+    if(window.scrollY>5)return;
+    this.pulling=true;
+    e.preventDefault();
+    const distance=Math.min(dy*0.5,100);
+    this.indicator.style.marginTop=(-56+distance)+'px';
+    this.indicator.style.opacity=Math.min(distance/this.threshold,1);
+    if(distance>=this.threshold){
+      this.indicator.classList.add('pulling','ready');
+    } else {
+      this.indicator.classList.add('pulling');
+      this.indicator.classList.remove('ready');
+    }
+  },
+  onEnd(){
+    if(!this.pulling){this.reset();return}
+    const distance=parseFloat(this.indicator.style.marginTop||-56)+56;
+    if(distance>=this.threshold)this.trigger();
+    else this.reset();
+    this.startY=0;this.pulling=false;
+  },
+  async trigger(){
+    this.indicator.classList.add('refreshing');
+    this.indicator.classList.remove('ready');
+    this.indicator.style.marginTop='16px';
+    U.haptic();
+    try{
+      await App.refreshAll(true);
+      U.toast('تم التحديث','ph-check-circle');
+    }catch{
+      U.toast('تعذّر التحديث','ph-warning');
+    }finally{
+      setTimeout(()=>this.reset(),400);
+    }
+  },
+  reset(){
+    if(!this.indicator)return;
+    this.indicator.classList.remove('pulling','ready','refreshing');
+    this.indicator.style.marginTop='-56px';
+    this.indicator.style.opacity='0';
+  }
+};
+
+/* ═══ ROUTER ═══ */
+const Router = {
+  validTabs:['home','explore','liked','saved','chat','profile'],
+  init(){
+    const hash=location.hash.slice(1);
+    if(hash&&this.validTabs.includes(hash)){
+      setTimeout(()=>App.switchTab(hash,{skipHistory:true}),100);
+    }
+    window.addEventListener('hashchange',()=>{
+      const tab=location.hash.slice(1);
+      if(this.validTabs.includes(tab)&&tab!==App.state.tab){
+        App.switchTab(tab,{skipHistory:true});
+      }
+    });
+  },
+  push(tab){
+    if(!this.validTabs.includes(tab))return;
+    const current=location.hash.slice(1);
+    if(current===tab)return;
+    try{history.replaceState(null,'','#'+tab)}catch{}
+  }
+};
+
+/* ═══ COUNTS ═══ */
+const Counts = {
+  update(){
+    const likedEl=U.$('#likedCount');
+    if(likedEl){
+      const n=App.state.posts.filter(p=>p.liked).length;
+      const span=likedEl.querySelector('span');
+      if(span)span.textContent=U.fmtNum(n);
+      likedEl.setAttribute('data-count',n);
+    }
+    const savedEl=U.$('#savedCount');
+    if(savedEl){
+      const n=App.state.posts.filter(p=>p.saved).length;
+      const span=savedEl.querySelector('span');
+      if(span)span.textContent=U.fmtNum(n);
+      savedEl.setAttribute('data-count',n);
+    }
+  }
+};
+
+/* ═══ IMAGE LOADER ═══ */
+const ImageLoader = {
+  observe(){
+    U.$$('.prompt-img img').forEach(img=>{
+      if(img.dataset.loadObserved)return;
+      img.dataset.loadObserved='1';
+      if(img.complete&&img.naturalHeight!==0){
+        img.classList.add('loaded');
+      } else {
+        img.classList.add('loading');
+        img.addEventListener('load',()=>{
+          img.classList.add('loaded');
+          img.classList.remove('loading');
+        },{once:true});
+        img.addEventListener('error',()=>img.classList.remove('loading'),{once:true});
+      }
+    });
+  }
+};
+
+/* ═══ COMMAND PALETTE ═══ */
+const CommandPalette = {
+  open(){
+    U.$('#cmdkScrim').classList.add('open');
+    setTimeout(()=>U.$('#cmdkInput')?.focus(),100);
+    this.render('');
+  },
+  close(e){
+    if(e&&e.target!==e.currentTarget)return;
+    U.$('#cmdkScrim').classList.remove('open');
+    const i=U.$('#cmdkInput');if(i)i.value='';
+  },
+  render(query){
+    const q=(query||'').toLowerCase().trim();
+    const items=[
+      {icon:'ph-house',label:'الرئيسية',action:()=>App.switchTab('home'),keys:'G H'},
+      {icon:'ph-compass',label:'استكشف',action:()=>App.switchTab('explore'),keys:'G E'},
+      {icon:'ph-chat-circle-dots',label:'الرسائل',action:()=>App.switchTab('chat'),keys:'G C'},
+      {icon:'ph-user',label:'حسابي',action:()=>App.switchTab('profile'),keys:'G P'},
+      {icon:'ph-heart',label:'المُعجَبة',action:()=>App.switchTab('liked'),keys:'G L'},
+      {icon:'ph-bookmark-simple',label:'المحفوظة',action:()=>App.switchTab('saved'),keys:'G S'},
+      {icon:'ph-plus',label:'برومبت جديد',action:()=>Composer.open(),keys:'N'},
+      {icon:'ph-moon',label:'تبديل المظهر',action:()=>App.toggleTheme()},
+      {icon:'ph-magnifying-glass',label:'بحث',action:()=>U.$('#searchInput')?.focus(),keys:'/'},
+      {icon:'ph-sign-out',label:'تسجيل الخروج',action:()=>Auth.logout()}
+    ];
+    const filtered=items.filter(c=>!q||c.label.toLowerCase().includes(q));
+    const results=U.$('#cmdkResults');
+    if(!results)return;
+    if(!filtered.length){
+      results.innerHTML='<div style="padding:20px;text-align:center;color:var(--fg-3)">لا نتائج</div>';
+      return;
+    }
+    results.innerHTML=filtered.map((c,i)=>`
+      <div class="cmdk-item" onclick="CommandPalette.run(${i})">
+        <i class="ph ${c.icon}"></i>
+        <span>${c.label}</span>
+        ${c.keys?`<kbd>${c.keys}</kbd>`:''}
+      </div>`).join('');
+    this._items=filtered;
+  },
+  run(i){
+    const item=this._items?.[i];
+    if(!item)return;
+    this.close();
+    setTimeout(()=>item.action(),80);
+  }
+};
+
+/* ═══ APP ═══ */
 const App = {
   state:{
-    posts:[], chats:[], filter:'all', model:'all', sort:'recent',
-    tab:'home', activeChat:null, profileTab:'posts', search:'', theme:'dark',
+    posts:[],chats:[],filter:'all',model:'all',sort:'recent',
+    tab:'home',activeChat:null,profileTab:'posts',search:'',theme:'dark',
     loading:false
   },
 
   async init(){
-    // Theme
-    this.state.theme = U.storage.get('khayal_theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', this.state.theme);
+    this.state.theme=U.storage.get('khayal_theme')||'dark';
+    document.documentElement.setAttribute('data-theme',this.state.theme);
     this.syncThemeIcon();
 
-    // Nav scroll (throttled)
-    window.addEventListener('scroll', U.throttle(()=>{
+    window.addEventListener('scroll',U.throttle(()=>{
       const n=U.$('#nav');if(n)n.classList.toggle('scrolled',window.scrollY>20);
     },100),{passive:true});
 
-    // Network monitoring
-    window.addEventListener('online',()=>{U.$('#netBar')?.classList.remove('show');this.refreshAll()});
+    window.addEventListener('online',()=>{U.$('#netBar')?.classList.remove('show');this.refreshAll(true)});
     window.addEventListener('offline',()=>U.$('#netBar')?.classList.add('show'));
     if(!navigator.onLine)U.$('#netBar')?.classList.add('show');
 
-    // UI bindings
     this.bindSearch();
     this.bindProfileTabs();
     this.bindKeyboard();
@@ -134,8 +310,10 @@ const App = {
     this.renderFilters('exploreFilters');
     this.renderSortTabs();
 
-    // Bento mouse glow
-    document.addEventListener('mousemove', U.throttle(e=>{
+    PTR.init();
+    Router.init();
+
+    document.addEventListener('mousemove',U.throttle(e=>{
       U.$$('.bento-card').forEach(c=>{
         const r=c.getBoundingClientRect();
         c.style.setProperty('--mx',(e.clientX-r.left)+'px');
@@ -143,74 +321,60 @@ const App = {
       });
     },80),{passive:true});
 
-    // PWA Service Worker
     if('serviceWorker' in navigator){
-      try{ await navigator.serviceWorker.register('/sw.js',{scope:'/'}); }catch{}
+      try{await navigator.serviceWorker.register('/sw.js',{scope:'/'})}catch{}
     }
 
-    // Load data
     await this.refreshAll();
 
-    // Enter app if signed in
-    if(K.me){ this.applyUser(); this.enterApp(); }
+    if(K.me){this.applyUser();this.enterApp()}
 
-    // Handle URL actions (shortcuts)
     const params=new URLSearchParams(location.search);
-    if(params.get('action')==='new' && K.me) Composer.open();
-    if(params.get('tab')) this.switchTab(params.get('tab'));
+    if(params.get('action')==='new'&&K.me)Composer.open();
   },
 
-  async refreshAll(){
+  async refreshAll(silent=false){
     if(this.state.loading)return;
     this.state.loading=true;
+    const refreshBtn=U.$('#refreshBtn');
+    if(refreshBtn&&silent)refreshBtn.classList.add('loading');
     try{
-      // Parallel fetch
-      const [meResult, postsResult] = await Promise.allSettled([
+      const [meResult,postsResult]=await Promise.allSettled([
         API.get('/api/me'),
         API.get('/api/posts?limit=100')
       ]);
-
-      K.me = meResult.status==='fulfilled' ? meResult.value : K.me;
-      const posts = postsResult.status==='fulfilled' ? postsResult.value : [];
-      this.state.posts = posts || [];
-      this.state.posts.forEach(p=>{ if(p.author_data)K.users[p.author_data.id]=p.author_data; });
-
-      // Update hero stats
+      K.me=meResult.status==='fulfilled'?meResult.value:K.me;
+      const posts=postsResult.status==='fulfilled'?postsResult.value:[];
+      this.state.posts=posts||[];
+      this.state.posts.forEach(p=>{if(p.author_data)K.users[p.author_data.id]=p.author_data});
       const hp=U.$('#heroStatPosts');if(hp)hp.textContent=U.fmtNum(this.state.posts.length);
       const hu=U.$('#heroStatUsers');if(hu)hu.textContent=U.fmtNum(Object.keys(K.users).length);
-
-      // Chats if signed in
       if(K.me){
-        try{ this.state.chats = await API.get('/api/chats'); }catch{ this.state.chats=[]; }
+        try{this.state.chats=await API.get('/api/chats')}catch{this.state.chats=[]}
       } else this.state.chats=[];
-
-      // Render
       this.renderLandingPreview();
       this.renderAllFeeds();
       if(K.me)Chat.render();
+      Counts.update();
+      ImageLoader.observe();
     }catch(e){
       console.error('refreshAll',e);
-      U.toast('تعذّر التحميل','ph-warning');
+      if(!silent)U.toast('تعذّر التحميل','ph-warning');
+      throw e;
     }finally{
       this.state.loading=false;
+      if(refreshBtn)refreshBtn.classList.remove('loading');
     }
   },
 
-  /* NAVIGATION */
   goHome(){this.showView('view-landing');window.scrollTo({top:0,behavior:'smooth'})},
   scrollTo(id){U.$('#'+id)?.scrollIntoView({behavior:'smooth'})},
-
   showView(id){
     U.$$('.view').forEach(v=>v.classList.remove('active'));
     U.$('#'+id)?.classList.add('active');
     const d=U.$('#dock');if(d)d.style.display=id==='view-app'?'flex':'none';
   },
-
-  previewFeed(){
-    if(!K.me){Auth.open();return}
-    this.enterApp();
-  },
-
+  previewFeed(){if(!K.me){Auth.open();return}this.enterApp()},
   enterApp(){
     this.showView('view-app');
     this.switchTab('home');
@@ -219,7 +383,8 @@ const App = {
     this.updateProfileStats();
   },
 
-  switchTab(tab){
+  switchTab(tab,options={}){
+    if(!Router.validTabs.includes(tab))tab='home';
     this.state.tab=tab;
     U.$$('.tab-panel').forEach(p=>p.classList.remove('active'));
     U.$('#tab-'+tab)?.classList.add('active');
@@ -231,15 +396,18 @@ const App = {
     if(tab==='explore')this.renderExploreFeed();
     if(tab==='liked')this.renderLikedFeed();
     if(tab==='saved')this.renderSavedFeed();
+
+    if(!options.skipHistory)Router.push(tab);
+
     window.scrollTo({top:0,behavior:'smooth'});
     U.haptic();
+    requestAnimationFrame(()=>ImageLoader.observe());
   },
 
-  /* THEME */
   toggleTheme(){
-    this.state.theme = this.state.theme==='dark'?'light':'dark';
-    document.documentElement.setAttribute('data-theme', this.state.theme);
-    U.storage.set('khayal_theme', this.state.theme);
+    this.state.theme=this.state.theme==='dark'?'light':'dark';
+    document.documentElement.setAttribute('data-theme',this.state.theme);
+    U.storage.set('khayal_theme',this.state.theme);
     this.syncThemeIcon();
     U.haptic();
   },
@@ -248,28 +416,38 @@ const App = {
     if(i)i.className=this.state.theme==='dark'?'ph ph-moon':'ph ph-sun';
   },
 
-  /* FILTERS */
   renderFilters(id){
     const el=U.$('#'+id);if(!el)return;
     const tags=['all','بورتريه','مناظر','سايبربانك','ثلاثي الأبعاد','فيلم','معمار','تصوير','سينمائي'];
     const labels={all:'الكل'};
-    let html = tags.map(t=>{
+    let html=tags.map(t=>{
       const a=this.state.filter===t?' active':'';
-      return `<button class="filter${a}" data-f="${t}" onclick="App.setFilter('${t}')">${labels[t]||'#'+t}</button>`;
+      return `<button class="filter${a}" onclick="App.setFilter('${t}')">${labels[t]||'#'+t}</button>`;
     }).join('');
-    html += `<span style="width:1px;background:var(--glass-border);margin:0 var(--s2);flex-shrink:0"></span>`;
-    html += K.models.map(m=>{
+    html+=`<span style="width:1px;background:var(--glass-border);margin:0 var(--s2);flex-shrink:0"></span>`;
+    html+=K.models.map(m=>{
       const a=this.state.model===m?' active':'';
       return `<button class="filter${a}" onclick="App.setModel('${m}')"><i class="ph ph-cpu"></i> ${m}</button>`;
     }).join('');
     el.innerHTML=html;
   },
-  setFilter(f){this.state.filter=f;this.renderFilters('filters');this.renderFilters('exploreFilters');this.renderHomeFeed();this.renderExploreFeed()},
-  setModel(m){this.state.model=this.state.model===m?'all':m;this.renderFilters('filters');this.renderFilters('exploreFilters');this.renderHomeFeed();this.renderExploreFeed()},
+  setFilter(f){
+    this.state.filter=f;
+    this.renderFilters('filters');
+    this.renderFilters('exploreFilters');
+    this.renderHomeFeed();
+    this.renderExploreFeed();
+  },
+  setModel(m){
+    this.state.model=this.state.model===m?'all':m;
+    this.renderFilters('filters');
+    this.renderFilters('exploreFilters');
+    this.renderHomeFeed();
+    this.renderExploreFeed();
+  },
   renderSortTabs(){U.$$('.sort-tab').forEach(b=>b.classList.toggle('active',b.dataset.sort===this.state.sort))},
   setSort(s){this.state.sort=s;this.renderSortTabs();this.renderHomeFeed()},
 
-  /* FEEDS */
   filterPosts(){
     let posts=this.state.posts.slice();
     const {filter,model,search,sort}=this.state;
@@ -286,10 +464,17 @@ const App = {
     if(sort==='top')posts.sort((a,b)=>b.likes-a.likes);
     return posts;
   },
+
   renderHomeFeed(){Feed.render('homeFeed',this.filterPosts())},
   renderExploreFeed(){Feed.render('exploreFeed',this.state.posts.slice().sort((a,b)=>b.likes-a.likes))},
-  renderLikedFeed(){Feed.render('likedFeed',this.state.posts.filter(p=>p.liked),'لا إعجابات بعد','اضغط القلب في أي برومبت ليظهر هنا.')},
-  renderSavedFeed(){Feed.render('savedFeed',this.state.posts.filter(p=>p.saved),'لا شيء محفوظ بعد','احفظ البرومبتات لتعود إليها.')},
+  renderLikedFeed(){
+    Feed.render('likedFeed',this.state.posts.filter(p=>p.liked),'لا إعجابات بعد','اضغط القلب في أي برومبت ليظهر هنا.');
+    Counts.update();
+  },
+  renderSavedFeed(){
+    Feed.render('savedFeed',this.state.posts.filter(p=>p.saved),'لا شيء محفوظ بعد','احفظ البرومبتات لتعود إليها.');
+    Counts.update();
+  },
   renderLandingPreview(){Feed.render('landingFeed',this.state.posts.slice(0,6),null,null,true)},
 
   renderAllFeeds(){
@@ -299,6 +484,8 @@ const App = {
     if(this.state.tab==='saved')this.renderSavedFeed();
     this.updateProfileStats();
     this.updateBadges();
+    Counts.update();
+    requestAnimationFrame(()=>ImageLoader.observe());
   },
 
   updateProfileStats(){
@@ -316,12 +503,10 @@ const App = {
     if(b){b.textContent=U.fmtNum(unread);b.style.display=unread?'grid':'none'}
   },
 
-  /* SEARCH */
   bindSearch(){
     const input=U.$('#searchInput');
     const results=U.$('#searchResults');
     if(!input||!results)return;
-
     const doSearch=U.debounce(async(q)=>{
       if(!q){results.classList.remove('open');this.renderHomeFeed();return}
       try{
@@ -341,11 +526,11 @@ const App = {
         results.classList.add('open');
       }catch{}
     },280);
-
     input.addEventListener('input',e=>{
       const q=e.target.value.trim();
       this.state.search=q;
-      if(this.state.tab!=='home'){this.switchTab('home')}else this.renderHomeFeed();
+      if(this.state.tab!=='home')this.switchTab('home');
+      else this.renderHomeFeed();
       doSearch(q);
     });
     input.addEventListener('blur',()=>setTimeout(()=>results.classList.remove('open'),200));
@@ -364,7 +549,6 @@ const App = {
     }catch{}
   },
 
-  /* PROFILE */
   bindProfileTabs(){
     U.$$('#profileTabs .tab').forEach(t=>t.addEventListener('click',()=>{
       U.$$('#profileTabs .tab').forEach(x=>x.classList.remove('active'));
@@ -406,22 +590,19 @@ const App = {
     </div>`;
   },
 
-  /* PUBLISHER */
   async openPublisher(uid){
     try{
-      const [u, posts]=await Promise.all([
+      const [u,posts]=await Promise.all([
         API.get(`/api/users/${uid}`),
         API.get(`/api/users/${uid}/posts`)
       ]);
       const isMe=K.me&&K.me.id===u.id;
-
       U.$('#commentsBody').innerHTML=`
         <div style="padding:var(--s6);text-align:center;position:relative">
           <div style="position:absolute;top:0;left:0;right:0;height:100px;background:linear-gradient(135deg,rgba(34,211,238,.3),rgba(139,92,246,.3))"></div>
           <img src="${u.avatar}" style="width:100px;height:100px;border-radius:50%;object-fit:cover;border:4px solid var(--bg-0);position:relative;margin:40px auto 0">
           <h3 style="margin-top:var(--s4);font-size:var(--t-2xl);font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px">
-            ${U.esc(u.name)}
-            ${u.verified?'<i class="ph ph-seal-check" style="color:var(--cyan);font-size:22px"></i>':''}
+            ${U.esc(u.name)}${u.verified?'<i class="ph ph-seal-check" style="color:var(--cyan);font-size:22px"></i>':''}
           </h3>
           <div style="color:var(--fg-3);font-size:var(--t-sm);margin-top:4px">${U.esc(u.handle)}</div>
           <p style="margin-top:var(--s4);color:var(--fg-2);line-height:1.7;max-width:44ch;margin-inline:auto">${U.esc(u.bio||'')}</p>
@@ -442,7 +623,8 @@ const App = {
         <div style="padding:0 var(--s4) var(--s4)">
           ${posts.length?posts.slice(0,4).map(p=>`
             <div style="display:flex;gap:var(--s3);padding:var(--s3);border-radius:var(--r-3);cursor:pointer;transition:background .2s"
-                 onmouseover="this.style.background='var(--glass)'" onmouseout="this.style.background='transparent'"
+                 onmouseover="this.style.background='var(--glass)'"
+                 onmouseout="this.style.background='transparent'"
                  onclick="Feed.copyPrompt(${p.id})">
               <img src="${p.image||''}" style="width:60px;height:60px;border-radius:var(--r-2);object-fit:cover;flex-shrink:0">
               <div style="min-width:0">
@@ -451,8 +633,7 @@ const App = {
               </div>
             </div>`).join(''):'<div style="padding:var(--s4);color:var(--fg-3);font-size:var(--t-sm);text-align:center">لا توجد برومبتات بعد.</div>'}
         </div>`;
-
-      U.$('#commentForm').style.display='none';
+      const cf=U.$('#commentForm');if(cf)cf.style.display='none';
       U.$('#commentsDrawer').classList.add('open');
       document.body.style.overflow='hidden';
     }catch(e){U.toast('تعذّر التحميل','ph-warning')}
@@ -470,15 +651,19 @@ const App = {
     }catch(e){U.toast(e.message,'ph-warning')}
   },
 
-  /* KEYBOARD */
   bindKeyboard(){
     let lastG=0;
     document.addEventListener('keydown',e=>{
       const t=e.target;
-      if(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable)return;
+      if(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable){
+        if(e.key==='Escape')t.blur();
+        return;
+      }
+      if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();CommandPalette.open();return}
       if(e.key==='Escape'){
         U.$$('.scrim').forEach(s=>s.classList.remove('open'));
         U.$$('.drawer').forEach(d=>d.classList.remove('open'));
+        CommandPalette.close();
         document.body.style.overflow='';
         return;
       }
@@ -493,7 +678,6 @@ const App = {
     });
   },
 
-  /* GESTURES — swipe-back for chat */
   bindGestures(){
     let sx=0,sy=0;
     const layout=U.$('#chatLayout');
@@ -507,11 +691,8 @@ const App = {
       const dx=e.changedTouches[0].clientX-sx;
       const dy=Math.abs(e.changedTouches[0].clientY-sy);
       if(dy>40)return;
-      if(dx>80&&layout.classList.contains('show-list')){
-        layout.classList.remove('show-list');
-      } else if(dx<-80&&!layout.classList.contains('show-list')){
-        layout.classList.add('show-list');
-      }
+      if(dx>80&&layout.classList.contains('show-list'))layout.classList.remove('show-list');
+      else if(dx<-80&&!layout.classList.contains('show-list'))layout.classList.add('show-list');
     },{passive:true});
   },
 
@@ -539,9 +720,9 @@ const Feed = {
       </div>`;
       return;
     }
-    // Use requestAnimationFrame for smooth rendering
     requestAnimationFrame(()=>{
       el.innerHTML=posts.map(p=>this.card(p,compact)).join('');
+      requestAnimationFrame(()=>ImageLoader.observe());
     });
   },
 
@@ -550,7 +731,6 @@ const Feed = {
     if(a.id)K.users[a.id]=a;
     const tags=(p.tags||[]).slice(0,3).map(t=>`<span class="tag" onclick="event.stopPropagation();App.setFilter('${U.esc(t)}')">#${U.esc(t)}</span>`).join('');
     const v=a.verified?'<i class="ph ph-seal-check verified"></i>':'';
-
     return `<article class="prompt-card" data-post="${p.id}">
       <div class="prompt-img" onclick="App.openPublisher(${a.id||p.author})">
         <img src="${p.image||''}" alt="${U.esc(p.title)}" loading="lazy" decoding="async"
@@ -586,8 +766,12 @@ const Feed = {
           <i class="ph ph-chat-circle"></i>
           <span data-comment-count="${p.id}">${U.fmtNum(p.comments||0)}</span>
         </button>
-        <button class="action" onclick="Feed.share(${p.id})" aria-label="مشاركة"><i class="ph ph-share-network"></i></button>
-        <button class="action" onclick="U.speak(${JSON.stringify(p.prompt)})" aria-label="استماع"><i class="ph ph-speaker-high"></i></button>
+        <button class="action" onclick="Feed.share(${p.id})" aria-label="مشاركة">
+          <i class="ph ph-share-network"></i>
+        </button>
+        <button class="action" onclick="U.speak(${JSON.stringify(p.prompt)})" aria-label="استماع">
+          <i class="ph ph-speaker-high"></i>
+        </button>
         ${!compact?`
         <button class="action action-primary" data-copy="${p.id}" onclick="Feed.copyPrompt(${p.id})">
           <i class="ph ph-copy"></i><span>نسخ</span>
@@ -601,7 +785,6 @@ const Feed = {
 
   async toggleLike(id){
     if(!K.me){Auth.open();return}
-    // Optimistic update
     const p=App.state.posts.find(x=>x.id===id);
     if(!p)return;
     const wasLiked=p.liked;
@@ -609,13 +792,12 @@ const Feed = {
     p.likes+=p.liked?1:-1;
     this.syncCard(p);
     U.haptic();
-
     try{
       const r=await API.post(`/api/posts/${id}/like`);
       p.liked=r.liked;p.likes=r.likes;
       this.syncCard(p);
+      Counts.update();
     }catch(e){
-      // Rollback
       p.liked=wasLiked;p.likes+=wasLiked?1:-1;
       this.syncCard(p);
       U.toast(e.message,'ph-warning');
@@ -631,11 +813,11 @@ const Feed = {
     p.saves=(p.saves||0)+(p.saved?1:-1);
     this.syncCard(p);
     U.haptic();
-
     try{
       const r=await API.post(`/api/posts/${id}/save`);
       p.saved=r.saved;p.saves=r.saves;
       this.syncCard(p);
+      Counts.update();
       U.toast(r.saved?'حُفظ':'أُزيل','ph-bookmark-simple');
     }catch(e){
       p.saved=wasSaved;p.saves=(p.saves||0)+(wasSaved?1:-1);
@@ -707,15 +889,13 @@ const Composer = {
     const orig=btn.innerHTML;
     btn.disabled=true;
     btn.innerHTML='<i class="ph ph-circle-notch" style="animation:spin 1s linear infinite"></i> جارٍ…';
-
     const body={
       title:U.$('#cTitle').value.trim(),
       prompt:U.$('#cPrompt').value.trim(),
       image:U.$('#cImage').value.trim(),
       model:U.$('#cModel').value,
-      tags:U.$('#cTags').value.split(/[,،]/).map(t=>t.trim()).filter(Boolean),
+      tags:U.$('#cTags').value.split(/[,،]/).map(t=>t.trim()).filter(Boolean)
     };
-
     try{
       const post=await API.post('/api/posts',body);
       App.state.posts.unshift(post);
@@ -747,7 +927,6 @@ const Auth = {
     if(!email)return;
     const name=prompt('الاسم الظاهر:','');
     if(!name)return;
-
     try{
       const user=await API.post('/api/auth/google',{email,name});
       K.me=user;
@@ -788,7 +967,7 @@ const Auth = {
       const updated=await API.patch('/api/me',{
         name:U.$('#epName').value.trim(),
         bio:U.$('#epBio').value.trim(),
-        avatar:U.$('#epAvatar').value.trim(),
+        avatar:U.$('#epAvatar').value.trim()
       });
       K.me={...K.me,...updated};
       this.closeEditProfile();
@@ -803,9 +982,7 @@ const Chat = {
   render(){
     const list=U.$('#chatList');if(!list)return;
     if(!App.state.chats.length){
-      list.innerHTML=`<div style="padding:40px 20px;text-align:center;color:var(--fg-3);font-size:13px">
-        لا محادثات بعد.<br><br>ابدأ محادثة من ملف أي مبدع.
-      </div>`;
+      list.innerHTML=`<div style="padding:40px 20px;text-align:center;color:var(--fg-3);font-size:13px">لا محادثات بعد.<br><br>ابدأ محادثة من ملف أي مبدع.</div>`;
       this.renderThread();return;
     }
     list.innerHTML=App.state.chats.map(c=>{
@@ -823,12 +1000,10 @@ const Chat = {
         ${c.unread?'<span class="unread-dot"></span>':''}
       </div>`;
     }).join('');
-
     if(!App.state.activeChat&&App.state.chats[0])App.state.activeChat=App.state.chats[0].id;
     this.renderThread();
     App.updateBadges();
   },
-
   open(id){
     App.state.activeChat=id;
     this.render();
@@ -837,7 +1012,6 @@ const Chat = {
     if(layout&&window.innerWidth<=820)layout.classList.remove('show-list');
     U.haptic();
   },
-
   async openWithUser(uid){
     if(!K.me){Auth.open();return}
     U.$$('.drawer').forEach(d=>d.classList.remove('open'));
@@ -850,18 +1024,15 @@ const Chat = {
       setTimeout(()=>U.$('#chatInput')?.focus(),250);
     }catch(e){U.toast(e.message,'ph-warning')}
   },
-
   async renderThread(){
     const cid=App.state.activeChat;
     const head=U.$('#chatHead');
     const body=U.$('#chatBody');
     if(!head||!body)return;
     if(!cid){head.innerHTML='';body.innerHTML='';return}
-
     const chat=App.state.chats.find(x=>x.id===cid);
     if(!chat){head.innerHTML='';body.innerHTML='';return}
     const u=chat.with_user||{name:'?',avatar:'',id:0};
-
     head.innerHTML=`
       <button class="icon-btn" onclick="Chat.backToList()" style="display:${window.innerWidth<=820?'grid':'none'}"><i class="ph ph-arrow-right"></i></button>
       <img class="author-avatar" src="${u.avatar||''}" alt="">
@@ -871,7 +1042,6 @@ const Chat = {
       </div>
       <button class="icon-btn" onclick="App.openPublisher(${u.id||0})" aria-label="الملف"><i class="ph ph-user-circle"></i></button>
     `;
-
     try{
       const msgs=await API.get(`/api/chats/${cid}/messages`);
       body.innerHTML=msgs.map(m=>`
@@ -883,9 +1053,7 @@ const Chat = {
       body.scrollTop=body.scrollHeight;
     }catch{body.innerHTML=''}
   },
-
   backToList(){U.$('#chatLayout')?.classList.add('show-list')},
-
   async send(e){
     e.preventDefault();
     const input=U.$('#chatInput');
@@ -893,15 +1061,11 @@ const Chat = {
     if(!text)return;
     const cid=App.state.activeChat;
     if(!cid)return;
-
-    // Optimistic
     const body=U.$('#chatBody');
     const time=new Date().toTimeString().slice(0,5);
-    body.insertAdjacentHTML('beforeend',`
-      <div class="msg me">${U.esc(text).replace(/\n/g,'<br>')}<span class="msg-time">${time}</span></div>`);
+    body.insertAdjacentHTML('beforeend',`<div class="msg me">${U.esc(text).replace(/\n/g,'<br>')}<span class="msg-time">${time}</span></div>`);
     body.scrollTop=body.scrollHeight;
     input.value='';input.style.height='auto';
-
     try{
       await API.post(`/api/chats/${cid}/messages`,{text});
       const chats=await API.get('/api/chats');
@@ -911,7 +1075,17 @@ const Chat = {
       U.toast(err.message,'ph-warning');
       this.renderThread();
     }
-  }
+  },
+  filterList(q){
+    const items=U.$$('#chatList .chat-item');
+    const query=q.toLowerCase().trim();
+    items.forEach(it=>{
+      const name=it.querySelector('.chat-name')?.textContent.toLowerCase()||'';
+      it.style.display=(!query||name.includes(query))?'':'none';
+    });
+  },
+  newChat(){U.toast('افتح ملف أي مبدع لبدء محادثة','ph-info')},
+  attach(){U.toast('الملفات قريباً','ph-paperclip')}
 };
 
 /* ═══ DRAWERS ═══ */
@@ -921,7 +1095,7 @@ const Drawers = {
     this.currentPost=pid;
     U.$('#commentsDrawer').classList.add('open');
     document.body.style.overflow='hidden';
-    U.$('#commentForm').style.display='flex';
+    const cf=U.$('#commentForm');if(cf)cf.style.display='flex';
     try{
       const comments=await API.get(`/api/posts/${pid}/comments`);
       U.$('#commentCount').textContent=`(${U.fmtNum(comments.length)})`;
@@ -965,7 +1139,7 @@ const Comments = {
     const pid=Drawers.currentPost;
     if(!pid)return;
     try{
-      const c=await API.post(`/api/posts/${pid}/comments`,{text});
+      await API.post(`/api/posts/${pid}/comments`,{text});
       input.value='';input.style.height='auto';
       const comments=await API.get(`/api/posts/${pid}/comments`);
       Drawers.renderComments(comments);
@@ -979,14 +1153,12 @@ const Comments = {
 };
 
 /* ═══ BOOT ═══ */
-// Spin keyframe for loading
 const style=document.createElement('style');
 style.textContent='@keyframes spin{to{transform:rotate(360deg)}}';
 document.head.appendChild(style);
 
 document.addEventListener('DOMContentLoaded',()=>App.init());
 
-// Expose globally for inline onclick
 window.App=App;
 window.Feed=Feed;
 window.Composer=Composer;
@@ -995,5 +1167,6 @@ window.Chat=Chat;
 window.Drawers=Drawers;
 window.Comments=Comments;
 window.U=U;
+window.CommandPalette=CommandPalette;
 
 })();
