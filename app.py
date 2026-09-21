@@ -1,16 +1,19 @@
 """
 خَيال — منصة البرومبتات العربية
-Flask + PostgreSQL + Google OAuth 2.0 + PWA
+Flask + PostgreSQL + تسجيل دخول تقليدي (اسم مستخدم + كلمة مرور)
 """
 import os
 import sys
+import re
 import secrets
 from datetime import datetime, timedelta
+from functools import wraps
 
 from flask import (Flask, render_template, jsonify, request, session,
-                   abort, redirect, url_for, make_response, send_from_directory)
+                   abort, redirect, url_for, make_response, send_from_directory,
+                   g)
 from flask_compress import Compress
-from authlib.integrations.flask_client import OAuth
+from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
 from database import (db, build_database_uri, User, Post, Comment,
@@ -24,14 +27,12 @@ load_dotenv()
 app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
 
-# الجلسة والأمان
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 app.config["SESSION_COOKIE_SECURE"]    = os.getenv("FLASK_ENV") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"]  = True
 app.config["SESSION_COOKIE_SAMESITE"]  = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
-# قاعدة البيانات
 app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
@@ -43,7 +44,6 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
                      "keepalives_idle": 30, "keepalives_interval": 10},
 }
 
-# ضغط المحتوى
 app.config["COMPRESS_MIMETYPES"] = [
     "text/html", "text/css", "text/javascript",
     "application/json", "application/javascript", "image/svg+xml",
@@ -57,30 +57,6 @@ Compress(app)
 
 
 # ═══════════════════════════════════════════════════════════
-# Google OAuth
-# ═══════════════════════════════════════════════════════════
-GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID",
-                                  "1066865562137-k509114e44npk13n5n78gb32b3meldrk.apps.googleusercontent.com")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-
-if not GOOGLE_CLIENT_SECRET:
-    print("⚠️  GOOGLE_CLIENT_SECRET غير مضبوط. تسجيل دخول جوجل لن يعمل.",
-          file=sys.stderr)
-
-oauth = OAuth(app)
-google = oauth.register(
-    name="google",
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret=GOOGLE_CLIENT_SECRET,
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={
-        "scope": "openid email profile",
-        "prompt": "select_account",
-    },
-)
-
-
-# ═══════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════
 def current_user():
@@ -88,15 +64,33 @@ def current_user():
     return User.query.get(uid) if uid else None
 
 
-def require_auth():
-    u = current_user()
-    if not u:
-        abort(401, description="يجب تسجيل الدخول")
-    return u
+def require_auth(fn):
+    @wraps(fn)
+    def wrapper(*a, **kw):
+        u = current_user()
+        if not u:
+            return jsonify({"error": "يجب تسجيل الدخول"}), 401
+        g.user = u
+        return fn(*a, **kw)
+    return wrapper
 
 
 def _payload(u):
     return u.to_dict() if u else None
+
+
+def _validate_username(s):
+    """يسمح بـ a-z, 0-9, _, - فقط."""
+    return bool(re.match(r"^[a-zA-Z0-9_\-]{3,32}$", s or ""))
+
+
+def _validate_email(s):
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", s or ""))
+
+
+def _validate_password(s):
+    """6 أحرف على الأقل."""
+    return isinstance(s, str) and len(s) >= 6
 
 
 # ═══════════════════════════════════════════════════════════
@@ -135,110 +129,91 @@ def service_worker():
 
 
 # ═══════════════════════════════════════════════════════════
-# Google OAuth Routes
+# المصادقة — تسجيل / دخول / خروج
 # ═══════════════════════════════════════════════════════════
-@app.get("/auth/google")
-def auth_google_start():
-    """بدء تدفق OAuth — يعيد توجيه المستخدم إلى Google."""
-    if not GOOGLE_CLIENT_SECRET:
-        return jsonify({"error": "تسجيل دخول جوجل غير مهيأ على الخادم"}), 503
+@app.post("/api/auth/register")
+def api_register():
+    data = request.get_json() or {}
+    email     = (data.get("email") or "").strip().lower()
+    username  = (data.get("username") or "").strip()
+    name      = (data.get("name") or "").strip()
+    password  = data.get("password") or ""
 
-    next_url = request.args.get("next", "/app")
-    if not next_url.startswith("/"):
-        next_url = "/app"
-    session["oauth_next"] = next_url
+    # ─── التحقق ───
+    if not email or not username or not name or not password:
+        return jsonify({"error": "جميع الحقول مطلوبة"}), 400
 
-    state = secrets.token_urlsafe(32)
-    session["oauth_state"] = state
+    if not _validate_email(email):
+        return jsonify({"error": "البريد الإلكتروني غير صحيح"}), 400
 
-    redirect_uri = url_for("auth_google_callback", _external=True)
-    try:
-        return google.authorize_redirect(redirect_uri, state=state)
-    except Exception as e:
-        print(f"❌ OAuth start error: {e}", file=sys.stderr)
-        return jsonify({"error": "تعذّر بدء تسجيل الدخول"}), 500
+    if not _validate_username(username):
+        return jsonify({"error": "اسم المستخدم يجب أن يكون 3-32 حرفاً (a-z, 0-9, _, -)"}), 400
 
+    if len(name) < 2:
+        return jsonify({"error": "الاسم يجب أن يكون حرفين على الأقل"}), 400
 
-@app.get("/auth/google/callback")
-def auth_google_callback():
-    """يستقبل رمز Google، يتحقق منه، وينشئ/يجلب المستخدم."""
-    state = request.args.get("state", "")
-    expected = session.pop("oauth_state", None)
-    if not expected or state != expected:
-        return redirect("/?error=invalid_state")
+    if not _validate_password(password):
+        return jsonify({"error": "كلمة المرور يجب أن تكون 6 أحرف على الأقل"}), 400
 
-    try:
-        token = google.authorize_access_token()
-    except Exception as e:
-        print(f"❌ OAuth token error: {e}", file=sys.stderr)
-        return redirect("/?error=token_exchange")
+    # ─── التحقق من عدم التكرار ───
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "البريد الإلكتروني مستخدم بالفعل"}), 409
 
-    user_info = token.get("userinfo")
-    if not user_info:
-        try:
-            resp = google.get("userinfo")
-            user_info = resp.json()
-        except Exception as e:
-            print(f"❌ Userinfo error: {e}", file=sys.stderr)
-            return redirect("/?error=no_userinfo")
+    if User.query.filter_by(username=username.lower()).first():
+        return jsonify({"error": "اسم المستخدم مستخدم بالفعل"}), 409
 
-    email      = (user_info.get("email") or "").lower().strip()
-    name       = (user_info.get("name") or email.split("@")[0]).strip()
-    google_id  = user_info.get("sub")
-    avatar_url = user_info.get("picture")
-    verified   = user_info.get("email_verified", False)
+    # ─── إنشاء المستخدم ───
+    handle = "@" + username.lower()
+    if User.query.filter_by(handle=handle).first():
+        return jsonify({"error": "اسم المستخدم مستخدم بالفعل"}), 409
 
-    if not email:
-        return redirect("/?error=no_email")
-
-    # بحث عن المستخدم
-    user = None
-    if google_id:
-        user = User.query.filter_by(google_id=google_id).first()
-    if not user:
-        user = User.query.filter_by(email=email).first()
-
-    if not user:
-        base_handle = "@" + email.split("@")[0]
-        handle = base_handle
-        n = 1
-        while User.query.filter_by(handle=handle).first():
-            handle = f"{base_handle}{n}"
-            n += 1
-
-        user = User(
-            google_id=google_id,
-            email=email,
-            name=name,
-            handle=handle,
-            avatar=avatar_url,
-            bio="",
-            verified=bool(verified),
-        )
-        db.session.add(user)
-        db.session.commit()
-        print(f"✅ مستخدم جديد: {user.email} ({user.handle})")
-    else:
-        if google_id and not user.google_id:
-            user.google_id = google_id
-        if avatar_url:
-            user.avatar = avatar_url
-        if name and user.name != name:
-            user.name = name
-        db.session.commit()
+    user = User(
+        email=email,
+        username=username.lower(),
+        name=name,
+        handle=handle,
+        password_hash=generate_password_hash(password, method="pbkdf2:sha256", salt_length=16),
+        avatar=f"https://api.dicebear.com/7.x/initials/svg?seed={name}&backgroundColor=22D3EE,8B5CF6",
+        bio="",
+        verified=False,
+    )
+    db.session.add(user)
+    db.session.commit()
+    print(f"✅ مستخدم جديد: {user.username} ({user.email})")
 
     session.permanent = True
     session["user_id"] = user.id
-    session["user_email"] = user.email
 
-    next_url = session.pop("oauth_next", "/app")
-    if not next_url.startswith("/"):
-        next_url = "/app"
-    return redirect(next_url)
+    return jsonify(user.to_dict()), 201
+
+
+@app.post("/api/auth/login")
+def api_login():
+    data = request.get_json() or {}
+    identifier = (data.get("identifier") or "").strip().lower()
+    password   = data.get("password") or ""
+    remember   = bool(data.get("remember", False))
+
+    if not identifier or not password:
+        return jsonify({"error": "أدخل بيانات الدخول"}), 400
+
+    # ابحث بالبريد أو اسم المستخدم
+    user = User.query.filter(
+        db.or_(User.email == identifier, User.username == identifier)
+    ).first()
+
+    if not user or not check_password_hash(user.password_hash, password):
+        # رسالة موحّدة لمنع تعداد الحسابات
+        return jsonify({"error": "بيانات الدخول غير صحيحة"}), 401
+
+    session.permanent = remember
+    session["user_id"] = user.id
+
+    return jsonify(user.to_dict())
 
 
 @app.post("/api/auth/logout")
-def auth_logout():
+def api_logout():
     session.clear()
     return jsonify({"ok": True})
 
@@ -246,6 +221,26 @@ def auth_logout():
 @app.get("/api/me")
 def api_me():
     return jsonify(_payload(current_user()))
+
+
+@app.post("/api/auth/check-username")
+def api_check_username():
+    data = request.get_json() or {}
+    username = (data.get("username") or "").strip().lower()
+    if not _validate_username(username):
+        return jsonify({"available": False, "reason": "format"})
+    exists = User.query.filter_by(username=username).first() is not None
+    return jsonify({"available": not exists, "reason": "taken" if exists else "ok"})
+
+
+@app.post("/api/auth/check-email")
+def api_check_email():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    if not _validate_email(email):
+        return jsonify({"available": False, "reason": "format"})
+    exists = User.query.filter_by(email=email).first() is not None
+    return jsonify({"available": not exists, "reason": "taken" if exists else "ok"})
 
 
 # ═══════════════════════════════════════════════════════════
@@ -312,8 +307,9 @@ def api_post(pid):
 
 
 @app.post("/api/posts")
+@require_auth
 def api_create_post():
-    u = require_auth()
+    u = g.user
     data = request.get_json() or {}
     title  = (data.get("title") or "").strip()
     prompt = (data.get("prompt") or "").strip()
@@ -338,8 +334,9 @@ def api_create_post():
 
 
 @app.delete("/api/posts/<int:pid>")
+@require_auth
 def api_delete_post(pid):
-    u = require_auth()
+    u = g.user
     post = Post.query.get_or_404(pid)
     if post.author_id != u.id:
         abort(403)
@@ -349,8 +346,9 @@ def api_delete_post(pid):
 
 
 @app.post("/api/posts/<int:pid>/like")
+@require_auth
 def api_like(pid):
-    u = require_auth()
+    u = g.user
     post = Post.query.get_or_404(pid)
     existing = Like.query.filter_by(user_id=u.id, post_id=pid).first()
     if existing:
@@ -366,8 +364,9 @@ def api_like(pid):
 
 
 @app.post("/api/posts/<int:pid>/save")
+@require_auth
 def api_save(pid):
-    u = require_auth()
+    u = g.user
     post = Post.query.get_or_404(pid)
     existing = Save.query.filter_by(user_id=u.id, post_id=pid).first()
     if existing:
@@ -401,8 +400,9 @@ def api_comments(pid):
 
 
 @app.post("/api/posts/<int:pid>/comments")
+@require_auth
 def api_add_comment(pid):
-    u = require_auth()
+    u = g.user
     Post.query.get_or_404(pid)
     text = ((request.get_json() or {}).get("text") or "").strip()
     if not text:
@@ -414,8 +414,9 @@ def api_add_comment(pid):
 
 
 @app.delete("/api/comments/<int:cid>")
+@require_auth
 def api_delete_comment(cid):
-    u = require_auth()
+    u = g.user
     c = Comment.query.get_or_404(cid)
     if c.author_id != u.id:
         abort(403)
@@ -452,8 +453,9 @@ def api_user_posts(uid):
 
 
 @app.post("/api/users/<int:uid>/follow")
+@require_auth
 def api_follow(uid):
-    me = require_auth()
+    me = g.user
     if me.id == uid:
         return jsonify({"error": "لا يمكن متابعة نفسك"}), 400
     target = User.query.get_or_404(uid)
@@ -473,8 +475,9 @@ def api_follow(uid):
 
 
 @app.patch("/api/me")
+@require_auth
 def api_update_me():
-    u = require_auth()
+    u = g.user
     data = request.get_json() or {}
     if "name" in data:
         u.name = (data["name"] or "").strip() or u.name
@@ -486,12 +489,31 @@ def api_update_me():
     return jsonify(u.to_dict())
 
 
+@app.post("/api/me/password")
+@require_auth
+def api_change_password():
+    u = g.user
+    data = request.get_json() or {}
+    old = data.get("old_password") or ""
+    new = data.get("new_password") or ""
+
+    if not check_password_hash(u.password_hash, old):
+        return jsonify({"error": "كلمة المرور الحالية غير صحيحة"}), 401
+    if not _validate_password(new):
+        return jsonify({"error": "كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل"}), 400
+
+    u.password_hash = generate_password_hash(new, method="pbkdf2:sha256", salt_length=16)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 # ═══════════════════════════════════════════════════════════
 # الدردشة
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/chats")
+@require_auth
 def api_chats():
-    me = require_auth()
+    me = g.user
     chats = Chat.query.filter(db.or_(
         Chat.user_a_id == me.id,
         Chat.user_b_id == me.id,
@@ -513,8 +535,9 @@ def api_chats():
 
 
 @app.get("/api/chats/<int:cid>/messages")
+@require_auth
 def api_messages(cid):
-    me = require_auth()
+    me = g.user
     chat = Chat.query.get_or_404(cid)
     if me.id not in (chat.user_a_id, chat.user_b_id):
         abort(403)
@@ -532,8 +555,9 @@ def api_messages(cid):
 
 
 @app.post("/api/chats/<int:cid>/messages")
+@require_auth
 def api_send_message(cid):
-    me = require_auth()
+    me = g.user
     chat = Chat.query.get_or_404(cid)
     if me.id not in (chat.user_a_id, chat.user_b_id):
         abort(403)
@@ -550,8 +574,9 @@ def api_send_message(cid):
 
 
 @app.post("/api/chats/with/<int:uid>")
+@require_auth
 def api_open_chat(uid):
-    me = require_auth()
+    me = g.user
     if me.id == uid:
         abort(400)
     chat = Chat.query.filter(db.or_(
@@ -574,7 +599,7 @@ def health():
         return jsonify({
             "status": "ok",
             "db": "connected",
-            "oauth": "configured" if GOOGLE_CLIENT_SECRET else "missing_secret",
+            "auth": "local",
             "users": User.query.count(),
             "posts": Post.query.count(),
             "time": datetime.utcnow().isoformat(),
