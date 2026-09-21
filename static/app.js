@@ -1440,4 +1440,1235 @@
           actions.innerHTML = `
             <button class="btn ${u.is_following ? 'btn-secondary' : 'btn-primary'}"
                     data-action="follow" data-user-id="${u.id}" type="button">
-              <i class="ph
+              <i class="ph ${u.is_following ? 'ph-check' : 'ph-user-plus'}" aria-hidden="true"></i>
+              <span>${u.is_following ? 'تتابعه' : 'متابعة'}</span>
+            </button>
+            <button class="btn btn-secondary" data-action="message" data-user-id="${u.id}" type="button">
+              <i class="ph ph-chat-circle" aria-hidden="true"></i>
+              <span>رسالة</span>
+            </button>`;
+        }
+      }
+
+      const coverEdit = document.getElementById('profileCoverEditBtn');
+      const avatarEdit = document.getElementById('profileAvatarEditBtn');
+      if (coverEdit) {
+        coverEdit.hidden = !isMe;
+        if (isMe) coverEdit.setAttribute('data-action', 'open-settings');
+      }
+      if (avatarEdit) {
+        avatarEdit.hidden = !isMe;
+        if (isMe) avatarEdit.setAttribute('data-action', 'open-settings');
+      }
+
+      if (tabs) {
+        tabs.hidden = false;
+        const savedTab = document.getElementById('profileSavedTab');
+        const settingsTab = document.getElementById('profileSettingsTab');
+        if (savedTab) savedTab.hidden = !isMe;
+        if (settingsTab) settingsTab.hidden = !isMe;
+      }
+
+      Feed.reset('profile');
+      Feed.load('profile');
+
+      this.bindActions();
+    },
+
+    bindActions() {
+      const card = document.getElementById('profileCard');
+      if (!card) return;
+
+      card.querySelectorAll('[data-action="follow"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const uid = parseInt(btn.dataset.userId, 10);
+          btn.setAttribute('aria-busy', 'true');
+          try {
+            const res = await API.post(`/api/users/${uid}/follow`);
+            const following = res.following;
+            btn.classList.toggle('btn-primary', !following);
+            btn.classList.toggle('btn-secondary', following);
+            btn.querySelector('i').className = following ? 'ph ph-check' : 'ph ph-user-plus';
+            btn.querySelector('span').textContent = following ? 'تتابعه' : 'متابعة';
+            if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
+          } catch (err) {
+            Toast.show(err.message, 'error');
+          } finally {
+            btn.removeAttribute('aria-busy');
+          }
+        });
+      });
+
+      card.querySelectorAll('[data-action="message"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          Chat.openWith(parseInt(btn.dataset.userId, 10));
+        });
+      });
+
+      card.querySelectorAll('[data-action="open-settings"]').forEach(btn => {
+        btn.addEventListener('click', () => Settings.open());
+      });
+
+      card.querySelectorAll('[data-action="share-profile"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const url = window.location.origin + '/u/' + (this.current && this.current.username);
+          const ok = await U.copy(url);
+          Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600);
+        });
+      });
+    },
+
+    async refresh() {
+      if (this.current) await this.load(this.current.id);
+    },
+
+    save(ev) {
+      if (ev) ev.preventDefault();
+      if (window.Settings) Settings.save();
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     EXPLORE
+     ═══════════════════════════════════════════════════════════════ */
+  const Explore = {
+    openCollection(name) {
+      App.switchTab('explore');
+      S.filterTag = '';
+      S.filterModel = '';
+      switch (name) {
+        case 'trending':
+          S.sort = 'top';
+          App.setSort('top');
+          break;
+        case 'new':
+          S.sort = 'recent';
+          App.setSort('recent');
+          break;
+        case 'editor':
+          S.sort = 'top';
+          App.setSort('top');
+          break;
+      }
+      Feed.reset('explore');
+      Feed.load('explore', { force: true });
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     SETTINGS (v13.5 — Phase C: reset + preferences API)
+     ═══════════════════════════════════════════════════════════════ */
+  function _defaultPreferences() {
+    return {
+      notif: { likes: true, comments: true, follows: true, messages: true },
+      priv:  { public_profile: true, allow_messages: true, show_website: true },
+    };
+  }
+
+  const Settings = {
+    view: null,
+    section: 'posts',
+    postsLoaded: false,
+    dirty: false,
+    _closingPromise: null,
+    _flashHero: null,
+    _flashTimer: null,
+    state: {
+      cover: 'aurora',
+      avatar_frame: 'ring',
+      accent_color: '#22D3EE',
+      card_style: 'glass',
+      name: '',
+      handle: '',
+      avatar: '',
+      bio: '',
+      website: '',
+      pronouns: '',
+      preferences: null,
+    },
+
+    init() {
+      this.view = document.getElementById('settingsView');
+      if (!this.view) {
+        console.error('[خَيال] #settingsView غير موجود.');
+        return;
+      }
+      const self = this;
+
+      // Debounced flash — يمنع reflow قسري في كل keystroke
+      this._flashHero = U.debounce(function () {
+        const hero = document.getElementById('settingsHeroProfile');
+        if (!hero) return;
+        hero.classList.remove('is-updating');
+        requestAnimationFrame(function () {
+          hero.classList.add('is-updating');
+          clearTimeout(self._flashTimer);
+          self._flashTimer = setTimeout(function () {
+            hero.classList.remove('is-updating');
+          }, 600);
+        });
+      }, 120);
+
+      // Warn on page unload if there are unsaved changes
+      window.addEventListener('beforeunload', function (e) {
+        if (self.dirty) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+
+      // Close button
+      this.view.querySelector('[data-action="close-settings"]')
+        ?.addEventListener('click', function () { self.close(); });
+      this.view.querySelector('[data-action="save-settings"]')
+        ?.addEventListener('click', function () { self.save(); });
+
+      // Reset button
+      const resetBtn = document.getElementById('settingsResetBtn');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', function () { self.resetToSaved(); });
+      }
+
+      // Tabs
+      this.view.querySelectorAll('.settings-tab').forEach(function (btn) {
+        btn.addEventListener('click', function () { self.switchSection(btn.dataset.section); });
+      });
+
+      // Cover picker
+      const coverPicker = document.getElementById('settingsCoverPresets');
+      if (coverPicker) {
+        coverPicker.addEventListener('click', function (e) {
+          const b = e.target.closest('.cover-preset');
+          if (!b) return;
+          coverPicker.querySelectorAll('.cover-preset').forEach(function (x) {
+            x.setAttribute('aria-pressed', 'false');
+          });
+          b.setAttribute('aria-pressed', 'true');
+          self.state.cover = b.dataset.cover;
+          self.markDirty();
+          self.updatePreview();
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      }
+
+      // Frame picker
+      const framePicker = document.getElementById('settingsFramePicker');
+      if (framePicker) {
+        framePicker.addEventListener('click', function (e) {
+          const b = e.target.closest('.frame-option');
+          if (!b) return;
+          framePicker.querySelectorAll('.frame-option').forEach(function (x) {
+            x.setAttribute('aria-pressed', 'false');
+          });
+          b.setAttribute('aria-pressed', 'true');
+          self.state.avatar_frame = b.dataset.frame;
+          self.markDirty();
+          self.updatePreview();
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      }
+
+      // Accent picker
+      const accentPicker = document.getElementById('settingsAccentPicker');
+      if (accentPicker) {
+        accentPicker.addEventListener('click', function (e) {
+          const b = e.target.closest('.accent-swatch');
+          if (!b) return;
+          accentPicker.querySelectorAll('.accent-swatch').forEach(function (x) {
+            x.setAttribute('aria-pressed', 'false');
+          });
+          b.setAttribute('aria-pressed', 'true');
+          self.state.accent_color = b.dataset.color;
+          const hint = document.getElementById('accentHint');
+          if (hint) hint.textContent = b.dataset.color;
+          self.markDirty();
+          self.updatePreview();
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      }
+
+      // Card style picker
+      const stylePicker = document.getElementById('settingsCardStylePicker');
+      if (stylePicker) {
+        stylePicker.addEventListener('click', function (e) {
+          const b = e.target.closest('.style-option');
+          if (!b) return;
+          stylePicker.querySelectorAll('.style-option').forEach(function (x) {
+            x.setAttribute('aria-pressed', 'false');
+          });
+          b.setAttribute('aria-pressed', 'true');
+          self.state.card_style = b.dataset.style;
+          self.markDirty();
+          self.updatePreview();
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      }
+
+      // Pronouns picker
+      const pronounPicker = document.getElementById('settingsPronounPicker');
+      const pronounHidden = document.getElementById('setPronouns');
+      if (pronounPicker && pronounHidden) {
+        pronounPicker.addEventListener('click', function (e) {
+          const b = e.target.closest('.pronoun-option');
+          if (!b) return;
+          pronounPicker.querySelectorAll('.pronoun-option').forEach(function (x) {
+            x.setAttribute('aria-checked', 'false');
+          });
+          b.setAttribute('aria-checked', 'true');
+          pronounHidden.value = b.dataset.pronoun || '';
+          self.state.pronouns = pronounHidden.value;
+          self.markDirty();
+          self.updatePreview();
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      }
+
+      // Name input
+      const nameEl = document.getElementById('setName');
+      if (nameEl) {
+        nameEl.addEventListener('input', function () {
+          self.state.name = nameEl.value;
+          self.markDirty();
+          self.updatePreview({ flash: false });
+        });
+      }
+
+      // Bio input
+      const bioEl = document.getElementById('setBio');
+      if (bioEl) {
+        bioEl.addEventListener('input', function () {
+          const c = document.getElementById('setBioCount');
+          if (c) c.textContent = bioEl.value.length;
+          self.markDirty();
+          self.updatePreview({ flash: false });
+        });
+      }
+
+      // Website input
+      const webEl = document.getElementById('setWebsite');
+      if (webEl) {
+        webEl.addEventListener('input', function () {
+          self.state.website = webEl.value;
+          self.markDirty();
+        });
+      }
+
+      // Sounds toggle — immediate localStorage, not dirty
+      const soundToggle = document.getElementById('soundsToggle');
+      if (soundToggle) {
+        soundToggle.addEventListener('click', function () {
+          const next = soundToggle.getAttribute('aria-checked') !== 'true';
+          soundToggle.setAttribute('aria-checked', next ? 'true' : 'false');
+          if (window.Sounds) Sounds.setEnabled(next);
+        });
+      }
+      const vol = document.getElementById('volumeSlider');
+      const volHint = document.getElementById('volumeHint');
+      if (vol) {
+        vol.addEventListener('input', function () {
+          const v = parseInt(vol.value, 10) / 100;
+          if (window.Sounds) Sounds.setVolume(v);
+          if (volHint) volHint.textContent = vol.value + '%';
+        });
+      }
+      this.view.querySelectorAll('.sound-card').forEach(function (card) {
+        card.addEventListener('click', function () {
+          if (window.Sounds) Sounds.play(card.dataset.sound);
+          card.classList.add('is-playing');
+          setTimeout(function () { card.classList.remove('is-playing'); }, 420);
+        });
+      });
+
+      // Notification + Privacy switches — persist to API
+      this.view.querySelectorAll('.switch:not(#soundsToggle)').forEach(function (sw) {
+        sw.addEventListener('click', function () {
+          const next = sw.getAttribute('aria-checked') !== 'true';
+          sw.setAttribute('aria-checked', next ? 'true' : 'false');
+
+          if (!self.state.preferences) self.state.preferences = _defaultPreferences();
+
+          const notifKey = sw.dataset.notif;
+          const privKey = sw.dataset.priv;
+
+          if (notifKey) {
+            self.state.preferences.notif[notifKey] = next;
+          } else if (privKey) {
+            self.state.preferences.priv[privKey] = next;
+          }
+
+          self.markDirty();
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      });
+
+      // Stats button → jump to posts tab
+      this.view.querySelectorAll('[data-stat="posts"]').forEach(function (btn) {
+        btn.addEventListener('click', function () { self.switchSection('posts'); });
+      });
+
+      // Change password
+      const chg = document.getElementById('changePasswordBtn');
+      if (chg) {
+        chg.addEventListener('click', function () {
+          const oldPw = (document.getElementById('setOldPassword') || {}).value || '';
+          const newPw = (document.getElementById('setNewPassword') || {}).value || '';
+          if (!oldPw || !newPw) {
+            if (window.Sounds) Sounds.play('error');
+            return Toast.show('املأ الحقلين', 'warning');
+          }
+          API.post('/api/me/password', { old_password: oldPw, new_password: newPw })
+            .then(function () {
+              if (window.Sounds) Sounds.play('success');
+              Toast.show('تم تحديث كلمة المرور', 'success');
+              document.getElementById('setOldPassword').value = '';
+              document.getElementById('setNewPassword').value = '';
+            })
+            .catch(function (err) {
+              if (window.Sounds) Sounds.play('error');
+              Toast.show(err.message || 'فشل التحديث', 'error');
+            });
+        });
+      }
+
+      // Logout
+      const logout = document.getElementById('logoutBtn');
+      if (logout) {
+        logout.addEventListener('click', function () {
+          self.dirty = false;
+          Auth.logout();
+          self.view.hidden = true;
+          document.body.classList.remove('view-open');
+        });
+      }
+    },
+
+    open() {
+      if (!this.view) this.view = document.getElementById('settingsView');
+      if (!this.view) {
+        console.error('[خَيال] #settingsView مفقود');
+        if (window.Toast) Toast.show('صفحة الإعدادات غير متوفرة', 'error');
+        return;
+      }
+
+      try {
+        this.hydrate();
+      } catch (err) {
+        console.error('[Settings] hydrate failed:', err);
+        if (window.Toast) Toast.show('تعذّر تحميل الإعدادات', 'error');
+        return;
+      }
+
+      this.view.hidden = false;
+      document.body.classList.add('view-open');
+      if (window.Sounds) Sounds.play('open');
+
+      if (!this.postsLoaded) {
+        this.loadUserPosts();
+      }
+    },
+
+    async close() {
+      if (!this.view) return;
+      if (this.view.hidden) return;
+      if (this._closingPromise) return;
+
+      if (this.dirty) {
+        this._closingPromise = this._confirmClose();
+        const choice = await this._closingPromise;
+        this._closingPromise = null;
+
+        if (choice === 'cancel') return;
+        if (choice === 'save') {
+          const ok = await this.save();
+          if (!ok) return;
+        }
+      }
+
+      this.clearDirty();
+      this.view.hidden = true;
+      document.body.classList.remove('view-open');
+      if (window.Sounds) Sounds.play('close');
+    },
+
+    _confirmClose() {
+      return new Promise(function (resolve) {
+        var scrim = document.createElement('div');
+        scrim.className = 'scrim';
+        scrim.setAttribute('data-open', 'false');
+        scrim.setAttribute('role', 'dialog');
+        scrim.setAttribute('aria-modal', 'true');
+        scrim.innerHTML =
+          '<div class="modal" role="document">' +
+            '<h3>تغييرات غير محفوظة</h3>' +
+            '<p>لديك تغييرات لم تُحفظ بعد. ماذا تريد أن تفعل؟</p>' +
+            '<div class="modal-actions">' +
+              '<button class="btn btn-ghost" type="button" data-choice="cancel">بقاء</button>' +
+              '<button class="btn btn-secondary" type="button" data-choice="discard">تجاهل</button>' +
+              '<button class="btn btn-primary" type="button" data-choice="save">حفظ</button>' +
+            '</div>' +
+          '</div>';
+
+        function finish(choice) {
+          scrim.setAttribute('data-open', 'false');
+          setTimeout(function () { scrim.remove(); }, 300);
+          resolve(choice);
+        }
+
+        scrim.addEventListener('click', function (e) {
+          var btn = e.target.closest('[data-choice]');
+          if (btn) { finish(btn.dataset.choice); return; }
+          if (e.target === scrim) finish('cancel');
+        });
+
+        document.body.appendChild(scrim);
+        requestAnimationFrame(function () {
+          scrim.setAttribute('data-open', 'true');
+        });
+        setTimeout(function () {
+          var primary = scrim.querySelector('[data-choice="save"]');
+          if (primary) primary.focus({ preventScroll: true });
+        }, 150);
+      });
+    },
+
+    markDirty() {
+      if (this.dirty) return;
+      this.dirty = true;
+      const saveBtn = document.getElementById('settingsSave');
+      if (saveBtn) saveBtn.hidden = false;
+    },
+
+    clearDirty() {
+      this.dirty = false;
+      const saveBtn = document.getElementById('settingsSave');
+      if (saveBtn) saveBtn.hidden = true;
+    },
+
+    resetToSaved() {
+      this.hydrate();
+      this.clearDirty();
+      Toast.show('تمت استعادة القيم المحفوظة', 'info', 1600);
+      if (window.Sounds) Sounds.play('tab');
+    },
+
+    switchSection(name) {
+      if (!name || !this.view) return;
+      this.section = name;
+
+      this.view.querySelectorAll('.settings-tab').forEach(function (b) {
+        const on = b.dataset.section === name;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      this.view.querySelectorAll('.settings-panel').forEach(function (p) {
+        p.classList.toggle('is-active', p.dataset.panel === name);
+      });
+
+      const activeTab = this.view.querySelector('.settings-tab.is-active');
+      if (activeTab && activeTab.scrollIntoView) {
+        activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+
+      if (window.Sounds) Sounds.play('tab');
+    },
+
+    hydrate() {
+      const u = (S.me && S.me.id && S.me) || window.__ME__ || {};
+      this.state = {
+        cover: u.cover || 'aurora',
+        avatar_frame: u.avatar_shape || 'ring',
+        accent_color: u.accent_color || '#22D3EE',
+        card_style: u.card_style || 'glass',
+        name: u.name || '',
+        handle: u.handle || '',
+        avatar: u.avatar || '',
+        bio: u.bio || '',
+        website: u.website || '',
+        pronouns: u.pronouns || '',
+        preferences: u.preferences
+          ? JSON.parse(JSON.stringify(u.preferences))
+          : _defaultPreferences(),
+      };
+
+      // Fill form fields
+      const set = function (id, v) {
+        const e = document.getElementById(id);
+        if (e) e.value = v;
+      };
+      set('setName', this.state.name);
+      set('setWebsite', this.state.website);
+      set('setBio', this.state.bio);
+      const bc = document.getElementById('setBioCount');
+      if (bc) bc.textContent = (this.state.bio || '').length;
+
+      // Pronouns
+      const pp = document.getElementById('settingsPronounPicker');
+      const ph = document.getElementById('setPronouns');
+      if (pp && ph) {
+        const match = pp.querySelector('.pronoun-option[data-pronoun="' + this.state.pronouns.replace(/"/g, '') + '"]')
+                   || pp.querySelector('.pronoun-option[data-pronoun=""]');
+        pp.querySelectorAll('.pronoun-option').forEach(function (b) {
+          b.setAttribute('aria-checked', b === match ? 'true' : 'false');
+        });
+        ph.value = match ? (match.dataset.pronoun || '') : '';
+      }
+
+      // Cover
+      const cp = document.getElementById('settingsCoverPresets');
+      if (cp) cp.querySelectorAll('.cover-preset').forEach(function (b) {
+        b.setAttribute('aria-pressed', b.dataset.cover === this.state.cover ? 'true' : 'false');
+      }, this);
+
+      // Frame
+      const fp = document.getElementById('settingsFramePicker');
+      if (fp) fp.querySelectorAll('.frame-option').forEach(function (b) {
+        b.setAttribute('aria-pressed', b.dataset.frame === this.state.avatar_frame ? 'true' : 'false');
+      }, this);
+
+      // Accent
+      const ap = document.getElementById('settingsAccentPicker');
+      if (ap) ap.querySelectorAll('.accent-swatch').forEach(function (b) {
+        b.setAttribute('aria-pressed', b.dataset.color === this.state.accent_color ? 'true' : 'false');
+      }, this);
+      const ah = document.getElementById('accentHint');
+      if (ah) ah.textContent = this.state.accent_color;
+
+      // Card style
+      const sp = document.getElementById('settingsCardStylePicker');
+      if (sp) sp.querySelectorAll('.style-option').forEach(function (b) {
+        b.setAttribute('aria-pressed', b.dataset.style === this.state.card_style ? 'true' : 'false');
+      }, this);
+
+      // Sounds toggles
+      const st = document.getElementById('soundsToggle');
+      if (st && window.Sounds) st.setAttribute('aria-checked', Sounds.isEnabled() ? 'true' : 'false');
+      const vs = document.getElementById('volumeSlider');
+      if (vs && window.Sounds) vs.value = Math.round(Sounds.getVolume() * 100);
+      const vh = document.getElementById('volumeHint');
+      if (vh && window.Sounds) vh.textContent = Math.round(Sounds.getVolume() * 100) + '%';
+
+      // Preferences switches (notif + priv)
+      const prefs = this.state.preferences;
+      this.view.querySelectorAll('.switch[data-notif]').forEach(function (sw) {
+        const key = sw.dataset.notif;
+        const val = prefs.notif && prefs.notif[key];
+        sw.setAttribute('aria-checked', val !== false ? 'true' : 'false');
+      });
+      this.view.querySelectorAll('.switch[data-priv]').forEach(function (sw) {
+        const key = sw.dataset.priv;
+        const val = prefs.priv && prefs.priv[key];
+        sw.setAttribute('aria-checked', val !== false ? 'true' : 'false');
+      });
+
+      // Hero
+      this.renderHero(u);
+
+      // Reset dirty
+      this.clearDirty();
+    },
+
+    renderHero(u) {
+      const cover = document.getElementById('settingsHeroCover');
+      if (cover) cover.dataset.cover = u.cover || 'aurora';
+
+      const avatar = document.getElementById('settingsHeroAvatar');
+      if (avatar) {
+        avatar.src = u.avatar || '';
+        avatar.alt = u.name || '';
+        avatar.dataset.frame = u.avatar_shape || 'ring';
+      }
+
+      const name = document.getElementById('settingsHeroName');
+      if (name) name.textContent = u.name || '—';
+
+      const verified = document.getElementById('settingsHeroVerified');
+      if (verified) verified.hidden = !u.verified;
+
+      const handle = document.getElementById('settingsHeroHandle');
+      if (handle) handle.textContent = u.handle || '@—';
+
+      const pronouns = document.getElementById('settingsHeroPronouns');
+      if (pronouns) {
+        if (u.pronouns) {
+          pronouns.textContent = u.pronouns;
+          pronouns.hidden = false;
+        } else {
+          pronouns.hidden = true;
+        }
+      }
+
+      const bio = document.getElementById('settingsHeroBio');
+      if (bio) {
+        if (u.bio && u.bio.trim()) {
+          bio.textContent = u.bio.trim();
+          bio.hidden = false;
+        } else {
+          bio.hidden = true;
+        }
+      }
+
+      const hero = document.getElementById('settingsHeroProfile');
+      if (hero) hero.dataset.style = u.card_style || 'glass';
+
+      const setStat = function (id, v) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = U.formatNumber(v);
+      };
+      setStat('settingsStatPosts', u.posts_count || 0);
+      setStat('settingsStatFollowers', u.followers || 0);
+      setStat('settingsStatFollowing', u.following || 0);
+      setStat('settingsStatLikes', u.total_likes || 0);
+    },
+
+    async loadUserPosts() {
+      const feed = document.getElementById('settingsUserPosts');
+      if (!feed || !S.me) return;
+
+      feed.innerHTML = Feed.skeletonsHtml();
+      feed.setAttribute('aria-busy', 'true');
+
+      try {
+        const items = await API.get('/api/users/' + S.me.id + '/posts');
+        if (!items || !items.length) {
+          feed.innerHTML = Feed.emptyHtml(
+            'ph-image-square',
+            'لا منشورات بعد',
+            'ابدأ بنشر أول برومبت لك.'
+          );
+        } else {
+          feed.innerHTML = '';
+          const frag = document.createDocumentFragment();
+          items.forEach(function (p) { frag.appendChild(Post.renderCard(p)); });
+          feed.appendChild(frag);
+        }
+        this.postsLoaded = true;
+      } catch (err) {
+        feed.innerHTML = Feed.emptyHtml(
+          'ph-cloud-slash',
+          'تعذّر التحميل',
+          err.message || 'حاول مرة أخرى'
+        );
+      } finally {
+        feed.setAttribute('aria-busy', 'false');
+      }
+    },
+
+    updatePreview(opts) {
+      opts = opts || {};
+
+      const heroCover = document.getElementById('settingsHeroCover');
+      if (heroCover) heroCover.dataset.cover = this.state.cover;
+
+      const heroAvatar = document.getElementById('settingsHeroAvatar');
+      if (heroAvatar) {
+        heroAvatar.dataset.frame = this.state.avatar_frame;
+        if (this.state.avatar && !heroAvatar.src) heroAvatar.src = this.state.avatar;
+      }
+
+      const hero = document.getElementById('settingsHeroProfile');
+      if (hero) hero.dataset.style = this.state.card_style;
+
+      const name = document.getElementById('settingsHeroName');
+      if (name) name.textContent = this.state.name || '—';
+
+      const pronouns = document.getElementById('settingsHeroPronouns');
+      if (pronouns) {
+        if (this.state.pronouns) {
+          pronouns.textContent = this.state.pronouns;
+          pronouns.hidden = false;
+        } else {
+          pronouns.hidden = true;
+        }
+      }
+
+      const bio = document.getElementById('settingsHeroBio');
+      if (bio) {
+        const bioVal = (document.getElementById('setBio') || {}).value || '';
+        if (bioVal.trim()) {
+          bio.textContent = bioVal.trim();
+          bio.hidden = false;
+        } else {
+          bio.hidden = true;
+        }
+      }
+
+      if (opts.flash !== false && this._flashHero) {
+        this._flashHero();
+      }
+    },
+
+    async save() {
+      const btn = document.getElementById('settingsSave');
+      if (btn) {
+        btn.setAttribute('aria-busy', 'true');
+        btn.disabled = true;
+      }
+
+      const payload = {
+        name: (document.getElementById('setName') || {}).value || '',
+        bio: (document.getElementById('setBio') || {}).value || '',
+        website: (document.getElementById('setWebsite') || {}).value || '',
+        pronouns: (document.getElementById('setPronouns') || {}).value || '',
+        cover: this.state.cover,
+        avatar_frame: this.state.avatar_frame,
+        accent_color: this.state.accent_color,
+        card_style: this.state.card_style,
+        preferences: this.state.preferences || _defaultPreferences(),
+      };
+
+      try {
+        const user = await API.patch('/api/me', payload);
+        S.me = user;
+        window.__ME__ = user;
+        if (window.Sounds) Sounds.play('success');
+        Toast.show('تم الحفظ', 'success');
+        Auth.updateChrome(user);
+        this.hydrate();
+        if (S.tab === 'profile' && S.viewingUser && S.viewingUser.id === user.id) {
+          Profile.load(user.id);
+        }
+        return true;
+      } catch (err) {
+        if (window.Sounds) Sounds.play('error');
+        Toast.show(err.message || 'تعذّر الحفظ', 'error');
+        return false;
+      } finally {
+        if (btn) {
+          btn.removeAttribute('aria-busy');
+          btn.disabled = false;
+        }
+      }
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     PULL TO REFRESH
+     ═══════════════════════════════════════════════════════════════ */
+  const PTR = {
+    init() {
+      const main = document.querySelector('.app-main');
+      if (!main) return;
+
+      let startY = 0;
+      let pulling = false;
+      let indicator = null;
+      const THRESHOLD = 70;
+
+      const createIndicator = () => {
+        const el = document.createElement('div');
+        el.className = 'ptr';
+        el.innerHTML = '<i class="ph ph-arrow-down" aria-hidden="true"></i>';
+        main.appendChild(el);
+        return el;
+      };
+
+      main.addEventListener('touchstart', (e) => {
+        if (window.scrollY > 5) return;
+        startY = e.touches[0].clientY;
+        pulling = true;
+        indicator = indicator || createIndicator();
+      }, { passive: true });
+
+      main.addEventListener('touchmove', (e) => {
+        if (!pulling || !indicator) return;
+        const delta = e.touches[0].clientY - startY;
+        if (delta <= 0) return;
+        const progress = Math.min(delta / THRESHOLD, 1.2);
+        indicator.classList.add('pulling');
+        indicator.style.marginTop = Math.min(16, delta * 0.35) + 'px';
+        indicator.style.opacity = String(progress);
+        if (delta > THRESHOLD) indicator.classList.add('ready');
+        else indicator.classList.remove('ready');
+      }, { passive: true });
+
+      main.addEventListener('touchend', async () => {
+        if (!pulling || !indicator) return;
+        pulling = false;
+        if (indicator.classList.contains('ready')) {
+          indicator.classList.add('refreshing');
+          await App.refreshAll(true);
+          indicator.classList.remove('refreshing', 'ready');
+        }
+        setTimeout(() => {
+          indicator.classList.remove('pulling');
+          indicator.style.marginTop = '';
+          indicator.style.opacity = '';
+        }, 240);
+      });
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     APP
+     ═══════════════════════════════════════════════════════════════ */
+  const App = {
+    boot() {
+      if (S.booted) return;
+      S.booted = true;
+
+      console.log('[خَيال] booting v' + CFG.BUILD);
+
+      Theme.init();
+      Net.init();
+      Install.init();
+      Composer.init();
+      Comments.init();
+      Settings.init();
+      PTR.init();
+      this.bindGlobal();
+      this.bindNav();
+      this.bindDock();
+      this.bindSearch();
+      this.bindInfiniteScroll();
+      this.bindKeyboard();
+
+      Auth.updateChrome(S.me);
+
+      if (S.me) {
+        this.showApp();
+        this.switchTab('home', { silent: true });
+      } else {
+        this.showLanding();
+        this.bindLanding();
+      }
+
+      this.updateHeroStats();
+
+      console.log('[خَيال] booted. Settings module:',
+                  window.Settings ? 'ready' : 'missing');
+    },
+
+    bindGlobal() {
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
+
+        if (action === 'switch-mode') { e.preventDefault(); Auth.switchMode(btn.dataset.mode); return; }
+        if (action === 'close-auth') { e.preventDefault(); Auth.close(); return; }
+        if (action === 'close-composer') { e.preventDefault(); Composer.close(); return; }
+        if (action === 'close-settings') { e.preventDefault(); Settings.close(); return; }
+        if (action === 'close-edit-profile') { e.preventDefault(); Settings.close(); return; }
+        if (action === 'submit-composer') { e.preventDefault(); Composer.publish(); return; }
+        if (action === 'save-profile') { e.preventDefault(); Settings.save(); return; }
+        if (action === 'save-settings') { e.preventDefault(); Settings.save(); return; }
+        if (action === 'choose-type') { e.preventDefault(); Composer.chooseType(btn.dataset.type); return; }
+        if (action === 'chat-list') { e.preventDefault(); Chat.backToList(); return; }
+        if (action === 'chat-new') { e.preventDefault(); Toast.show('ابدأ محادثة من ملف أي مستخدم', 'info'); return; }
+        if (action === 'share-profile') {
+          const url = window.location.origin + '/u/' + (Profile.current && Profile.current.username);
+          U.copy(url).then(ok => Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error'));
+          return;
+        }
+        if (action === 'open-settings') { e.preventDefault(); Settings.open(); return; }
+        if (action === 'pick-avatar-file') { e.preventDefault(); const i = document.getElementById('avatarFileInput'); if (i) i.click(); return; }
+        if (action === 'pick-cover-file') { e.preventDefault(); const i = document.getElementById('coverFileInput'); if (i) i.click(); return; }
+        if (action === 'toggle-notifications') {
+          e.preventDefault();
+          Drawers.openNotifications();
+          return;
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        const tag = e.target.closest('.tag[data-tag]');
+        if (tag) {
+          const t = tag.dataset.tag;
+          App.filterByTag(t);
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const composerView = document.getElementById('composerView');
+        const settingsView = document.getElementById('settingsView');
+        const authModal = document.getElementById('authModal');
+
+        if (composerView && !composerView.hidden) { Composer.close(); return; }
+        if (settingsView && !settingsView.hidden) { Settings.close(); return; }
+        if (authModal && authModal.getAttribute('data-open') === 'true') { Auth.close(); return; }
+        Drawers.closeAll();
+      });
+    },
+
+    bindNav() {
+      const themeBtn = document.querySelector('button[aria-label="تبديل المظهر"]');
+      if (themeBtn) {
+        themeBtn.removeAttribute('onclick');
+        themeBtn.addEventListener('click', () => Theme.toggle());
+      }
+
+      const signIn = document.getElementById('signInBtn');
+      if (signIn) {
+        signIn.removeAttribute('onclick');
+        signIn.addEventListener('click', () => Auth.open('login'));
+      }
+
+      const avatarBtn = document.getElementById('avatarBtn');
+      if (avatarBtn) {
+        avatarBtn.removeAttribute('onclick');
+        avatarBtn.addEventListener('click', () => {
+          if (S.me) this.switchTab('profile');
+          else Auth.open('login');
+        });
+      }
+
+      let ticking = false;
+      window.addEventListener('scroll', () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          const nav = document.querySelector('.nav');
+          if (nav) nav.classList.toggle('is-scrolled', window.scrollY > 12);
+          ticking = false;
+        });
+      }, { passive: true });
+    },
+
+    bindDock() {
+      document.querySelectorAll('.dock-item[data-tab]').forEach(btn => {
+        btn.removeAttribute('onclick');
+        const tab = btn.dataset.tab;
+        btn.addEventListener('click', () => {
+          if (tab === 'settings') {
+            if (window.Settings) {
+              Settings.open();
+            } else {
+              console.error('[خَيال] Settings module غير محمّل');
+              if (window.Toast) Toast.show('تعذّر فتح الإعدادات', 'error');
+            }
+          } else {
+            this.switchTab(tab);
+          }
+        });
+      });
+
+      const create = document.querySelector('.dock-create');
+      if (create) {
+        create.removeAttribute('onclick');
+        create.addEventListener('click', () => {
+          if (window.Composer) Composer.open();
+        });
+      }
+    },
+
+    bindSearch() {
+      const input = document.getElementById('searchInput');
+      const results = document.getElementById('searchResults');
+      if (!input || !results) return;
+
+      const run = U.debounce(async () => {
+        const q = input.value.trim();
+        if (!q) {
+          results.setAttribute('data-open', 'false');
+          results.innerHTML = '';
+          return;
+        }
+        try {
+          const items = await API.get('/api/posts?q=' + encodeURIComponent(q) + '&limit=6');
+          if (!items || !items.length) {
+            results.innerHTML = `<div style="padding:var(--sp-4);text-align:center;color:var(--fg-3);font-size:var(--fs-2)">لا نتائج</div>`;
+          } else {
+            results.innerHTML = items.map(p => `
+              <div class="search-result" data-post-id="${p.id}">
+                <img src="${U.escapeHtml(p.image || '')}" alt="" loading="lazy">
+                <div class="search-result-info">
+                  <strong>${U.escapeHtml(p.title || '')}</strong>
+                  <span>${U.escapeHtml((p.prompt || '').slice(0, 80))}</span>
+                </div>
+              </div>`).join('');
+            results.querySelectorAll('.search-result').forEach(r => {
+              r.addEventListener('click', () => {
+                const pid = r.dataset.postId;
+                results.setAttribute('data-open', 'false');
+                input.value = '';
+                const existing = document.querySelector(`[data-post-id="${pid}"]`);
+                if (existing) existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              });
+            });
+          }
+          results.setAttribute('data-open', 'true');
+        } catch (err) { /* silent */ }
+      }, CFG.SEARCH_DEBOUNCE);
+
+      input.addEventListener('input', run);
+      input.addEventListener('focus', () => { if (input.value.trim()) results.setAttribute('data-open', 'true'); });
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.search')) results.setAttribute('data-open', 'false');
+      });
+    },
+
+    bindInfiniteScroll() {
+      const onScroll = () => {
+        if (window.innerHeight + window.scrollY < document.body.offsetHeight - 800) return;
+        const fs = feedState(S.tab);
+        if (!fs.hasMore || fs.busy || !fs.loaded) return;
+        Feed.loadMore(S.tab);
+      };
+      window.addEventListener('scroll', U.debounce(onScroll, 200), { passive: true });
+    },
+
+    bindKeyboard() {
+      document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          const input = document.getElementById('searchInput');
+          if (input) input.focus();
+        }
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+          e.preventDefault();
+          if (S.me) Composer.open();
+        }
+      });
+    },
+
+    bindLanding() {
+      document.querySelectorAll('button[onclick*="previewFeed"]').forEach(b => {
+        b.removeAttribute('onclick');
+        b.addEventListener('click', () => this.previewFeed());
+      });
+      document.querySelectorAll('button[onclick*="Auth.open"]').forEach(b => {
+        b.removeAttribute('onclick');
+        b.addEventListener('click', () => Auth.open('register'));
+      });
+    },
+
+    showLanding() {
+      const landing = document.getElementById('view-landing');
+      const appView = document.getElementById('view-app');
+      if (landing) { landing.hidden = false; landing.classList.add('is-active'); }
+      if (appView) appView.hidden = true;
+      const dock = document.getElementById('dock');
+      if (dock) dock.hidden = true;
+      document.querySelectorAll('.nav-links').forEach(n => { n.style.display = ''; });
+    },
+
+    showApp() {
+      const landing = document.getElementById('view-landing');
+      const appView = document.getElementById('view-app');
+      if (landing) { landing.hidden = true; landing.classList.remove('is-active'); }
+      if (appView) { appView.hidden = false; appView.classList.add('is-active'); }
+      const dock = document.getElementById('dock');
+      if (dock) dock.hidden = !S.me;
+      document.querySelectorAll('.nav-links').forEach(n => { n.style.display = 'none'; });
+    },
+
+    previewFeed() {
+      if (!S.me) { Auth.open('register'); return; }
+      this.showApp();
+      this.switchTab('home');
+    },
+
+    activateTab(name) {
+      document.querySelectorAll('.tab-panel').forEach(p => {
+        p.classList.toggle('is-active', p.dataset.tab === name);
+      });
+      document.querySelectorAll('.dock-item[data-tab]').forEach(b => {
+        const on = b.dataset.tab === name;
+        b.setAttribute('aria-current', on ? 'page' : 'false');
+      });
+    },
+
+    switchTab(name, opts) {
+      if (!name) return;
+      opts = opts || {};
+      if (S.tab !== name) S.tabHistory.push(S.tab);
+      S.tab = name;
+      this.activateTab(name);
+
+      if (window.Sounds && !opts.silent) Sounds.play('tab');
+
+      if (name === 'home' || name === 'explore') {
+        Feed.load(name);
+      } else if (name === 'chat') {
+        Chat.loadList();
+      } else if (name === 'profile') {
+        if (S.viewingUser) Profile.load(S.viewingUser.id);
+        else Profile.load();
+      } else if (name === 'liked' || name === 'saved') {
+        Feed.load(name);
+      }
+
+      if (!opts.noScroll) window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+
+    setSort(sort) {
+      S.sort = sort;
+      document.querySelectorAll('.sort-tab').forEach(b => {
+        b.setAttribute('aria-selected', b.dataset.sort === sort ? 'true' : 'false');
+      });
+      Feed.reset('home');
+      Feed.reset('explore');
+      Feed.load(S.tab === 'explore' ? 'explore' : 'home', { force: true });
+    },
+
+    filterByTag(tag) {
+      if (!tag) return;
+      S.filterTag = tag;
+      S.sort = 'recent';
+      this.switchTab('explore');
+      Feed.reset('explore');
+      Feed.load('explore', { force: true });
+    },
+
+    openProfile(userId) {
+      if (!userId) return;
+      Profile.load(userId);
+    },
+
+    async refreshAll(force) {
+      Feed.reset(S.tab);
+      await Feed.load(S.tab, { force: true });
+      if (S.tab === 'chat') await Chat.loadList();
+      if (S.tab === 'profile' && S.viewingUser) await Profile.load(S.viewingUser.id);
+      if (force) Toast.show('تم التحديث', 'success', 1600);
+    },
+
+    async updateHeroStats() {
+      try {
+        const health = await API.get('/api/health');
+        const postEl = document.getElementById('heroStatPosts');
+        const userEl = document.getElementById('heroStatUsers');
+        if (postEl) postEl.textContent = U.formatNumber(health.posts || 0);
+        if (userEl) userEl.textContent = U.formatNumber(health.users || 0);
+      } catch (e) { /* silent */ }
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     UNLOCK AUDIO ON FIRST GESTURE
+     ═══════════════════════════════════════════════════════════════ */
+  function unlockAudioOnce() {
+    if (window.Sounds) Sounds.unlock();
+    ['click', 'touchstart', 'keydown'].forEach(evt => {
+      document.removeEventListener(evt, unlockAudioOnce);
+    });
+  }
+  ['click', 'touchstart', 'keydown'].forEach(evt => {
+    document.addEventListener(evt, unlockAudioOnce, { once: true, passive: true });
+  });
+
+  /* ═══════════════════════════════════════════════════════════════
+     EXPORT + BOOT
+     ═══════════════════════════════════════════════════════════════ */
+  window.App = App;
+  window.Auth = Auth;
+  window.Post = Post;
+  window.Chat = Chat;
+  window.Comments = Comments;
+  window.Drawers = Drawers;
+  window.Composer = Composer;
+  window.Profile = Profile;
+  window.Explore = Explore;
+  window.Settings = Settings;
+  window.Toast = Toast;
+  window.Install = Install;
+  window.U = U;
+  window.Theme = Theme;
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => App.boot());
+  } else {
+    App.boot();
+  }
+})();
