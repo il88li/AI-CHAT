@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — Design System v7.0
+   خَيال — Design System v8.0
    Aurora · RTL-first · Dark/Light · Container Queries · 4px Grid
+   + Infinite Scroll · PTR · New Posts Pill · Performance
    ═══════════════════════════════════════════════════════════════════════ */
 
 /* ─────────────── 1. RESET ─────────────── */
@@ -602,6 +603,9 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   border:1px solid var(--border-1);
   border-radius:var(--r-4);
   overflow:hidden;
+  contain:layout style paint;
+  content-visibility:auto;
+  contain-intrinsic-size:auto 400px;
   transition:
     border-color var(--dur-3) var(--ease-out),
     box-shadow var(--dur-3) var(--ease-out),
@@ -640,6 +644,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 .prompt-media>img{
   width:100%;height:100%;
   object-fit:cover;
+  aspect-ratio:4/3;
   transition:
     transform var(--dur-4) var(--ease-out),
     filter var(--dur-3) var(--ease-out);
@@ -1003,9 +1008,9 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 .tab-panel{display:none}
 .tab-panel.is-active{
   display:block;
-  animation:tab-in var(--dur-3) var(--ease-out);
+  animation:tab-panel-in var(--dur-3) var(--ease-out);
 }
-@keyframes tab-in{
+@keyframes tab-panel-in{
   from{opacity:0;transform:translateY(6px)}
   to{opacity:1;transform:translateY(0)}
 }
@@ -1116,9 +1121,30 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   display:grid;
   grid-template-columns:repeat(auto-fill, minmax(min(100%, 320px), 1fr));
   gap:clamp(14px, 2.5vw, 22px);
+  content-visibility:auto;
 }
 
-/* ─────────────── 19. EMPTY STATE ─────────────── */
+/* ─────────────── 19. LOAD MORE ─────────────── */
+.load-more{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:var(--sp-3);
+  padding:var(--sp-8);
+  color:var(--fg-3);
+  font-size:var(--fs-2);
+  grid-column:1/-1;
+  min-height:80px;
+}
+.load-more .spinner{
+  width:18px;height:18px;
+  border:2px solid var(--border-2);
+  border-top-color:var(--c-brand);
+  border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+
+/* ─────────────── 20. EMPTY STATE ─────────────── */
 .empty-block{
   grid-column:1/-1;
   display:flex;flex-direction:column;
@@ -1144,7 +1170,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   line-height:var(--lh-relaxed);
 }
 
-/* ─────────────── 20. SKELETON ─────────────── */
+/* ─────────────── 21. SKELETON ─────────────── */
 .skeleton{
   background:linear-gradient(90deg,
     var(--surface-1) 25%,
@@ -1162,7 +1188,67 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 .skeleton-card{pointer-events:none;opacity:.7}
 .skeleton-media{aspect-ratio:4/3;border-radius:0}
 
-/* ─────────────── 21. BENTO ─────────────── */
+/* ─────────────── 22. PULL-TO-REFRESH ─────────────── */
+.ptr-wrap{position:relative}
+.ptr{
+  position:absolute;
+  top:0;left:50%;
+  width:44px;height:44px;
+  margin-left:-22px;
+  margin-top:-56px;
+  border-radius:50%;
+  background:var(--grad-brand);
+  color:#0A0A0F;
+  display:grid;place-items:center;
+  box-shadow:var(--sh-brand);
+  opacity:0;
+  z-index:10;
+  will-change:transform;
+  transition:
+    transform .25s var(--ease-out),
+    opacity .25s var(--ease-out),
+    margin-top .25s var(--ease-out);
+}
+.ptr>i{font-size:20px;font-weight:var(--fw-bold);transition:transform .25s var(--ease-out)}
+.ptr.pulling{opacity:1}
+.ptr.ready{transform:scale(1.1)}
+.ptr.ready>i{transform:rotate(180deg)}
+.ptr.refreshing{opacity:1;margin-top:16px}
+.ptr.refreshing>i{animation:spin 1s linear infinite}
+
+/* ─────────────── 23. NEW POSTS PILL ─────────────── */
+.new-posts-pill{
+  position:fixed;
+  top:calc(var(--nav-h) + var(--sp-4) + var(--safe-top) + var(--sp-3));
+  left:50%;
+  transform:translate(-50%, -80px);
+  z-index:var(--z-nav);
+  display:inline-flex;
+  align-items:center;
+  gap:var(--sp-2);
+  height:40px;
+  padding:0 var(--sp-5);
+  background:var(--grad-brand);
+  color:#0A0A0F;
+  border:none;
+  border-radius:var(--r-full);
+  font-family:inherit;
+  font-size:var(--fs-2);
+  font-weight:var(--fw-bold);
+  box-shadow:var(--sh-brand);
+  cursor:pointer;
+  opacity:0;
+  transition:
+    transform var(--dur-3) var(--ease-spring),
+    opacity var(--dur-3) var(--ease-out);
+}
+.new-posts-pill.show{
+  transform:translate(-50%, 0);
+  opacity:1;
+}
+.new-posts-pill>i{font-size:16px}
+
+/* ─────────────── 24. BENTO ─────────────── */
 .bento{
   display:grid;
   gap:clamp(12px, 2vw, 18px);
@@ -1201,7 +1287,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 .bento-d{grid-column:span 4}
 .bento-3{grid-template-columns:repeat(3, 1fr)}
 
-/* ─────────────── 22. COLLECTION CARDS ─────────────── */
+/* ─────────────── 25. COLLECTION CARDS ─────────────── */
 .collections{
   display:grid;
   grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
@@ -1241,7 +1327,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   line-height:var(--lh-snug);
 }
 
-/* ─────────────── 23. SCRIM / MODAL / SHEET / DRAWER ─────────────── */
+/* ─────────────── 26. SCRIM / MODAL / SHEET / DRAWER ─────────────── */
 .scrim{
   position:fixed;inset:0;
   z-index:var(--z-modal);
@@ -1375,7 +1461,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 }
 .drawer-scrim[data-open="true"]{opacity:1;pointer-events:auto}
 
-/* ─────────────── 24. AUTH ─────────────── */
+/* ─────────────── 27. AUTH ─────────────── */
 .auth{
   position:relative;
   width:100%;
@@ -1525,7 +1611,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 .pw-strength[data-level="3"] span:nth-child(-n+3){background:var(--c-brand)}
 .pw-strength[data-level="4"] span{background:var(--c-success)}
 
-/* ─────────────── 25. COMPOSER ─────────────── */
+/* ─────────────── 28. COMPOSER ─────────────── */
 .composer-trigger{
   display:flex;align-items:center;gap:var(--sp-3);
   padding:var(--sp-3) var(--sp-4);
@@ -1643,7 +1729,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 }
 .composer-img-clear:hover{background:var(--c-danger)}
 
-/* ─────────────── 26. CHAT ─────────────── */
+/* ─────────────── 29. CHAT ─────────────── */
 .chat-layout{
   display:grid;
   grid-template-columns:minmax(0, 320px) 1fr;
@@ -1700,6 +1786,8 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   cursor:pointer;
   align-items:center;
   min-height:70px;
+  width:100%;
+  text-align:start;
   transition:background var(--dur-2) var(--ease-out);
 }
 .chat-item:hover{background:var(--surface-2)}
@@ -1801,7 +1889,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 }
 .chat-composer textarea:focus{border-color:var(--c-brand)}
 
-/* ─────────────── 27. PROFILE ─────────────── */
+/* ─────────────── 30. PROFILE ─────────────── */
 .profile-card{
   position:relative;
   background:var(--surface-1);
@@ -1988,7 +2076,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 }
 .settings-list a>i{font-size:18px}
 
-/* ─────────────── 28. COMMENT ─────────────── */
+/* ─────────────── 31. COMMENT ─────────────── */
 .comment{
   display:flex;gap:var(--sp-3);
   padding:var(--sp-4);
@@ -2024,7 +2112,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   transition:color var(--dur-2) var(--ease-out);
 }
 .comment-actions button:hover{color:var(--c-brand)}
-.comment-actions button[data-action="delete"]:hover{color:var(--c-danger)}
+.comment-actions button[data-action="delete-comment"]:hover{color:var(--c-danger)}
 .comment-actions button>i{font-size:14px}
 
 .comment-composer{
@@ -2049,7 +2137,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 }
 .comment-composer textarea:focus{border-color:var(--c-brand)}
 
-/* ─────────────── 29. COUNT PILL ─────────────── */
+/* ─────────────── 32. COUNT PILL ─────────────── */
 .count-pill{
   display:inline-flex;align-items:center;gap:6px;
   height:36px;
@@ -2072,7 +2160,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   background:var(--surface-2);
 }
 
-/* ─────────────── 30. TOAST ─────────────── */
+/* ─────────────── 33. TOAST ─────────────── */
 .toast-wrap{
   position:fixed;
   bottom:calc(var(--dock-h) + var(--sp-6) + var(--safe-bot));
@@ -2107,7 +2195,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   to{opacity:1;transform:translateY(0) scale(1)}
 }
 
-/* ─────────────── 31. INSTALL BANNER ─────────────── */
+/* ─────────────── 34. INSTALL BANNER ─────────────── */
 .install-banner{
   position:fixed;
   bottom:calc(var(--dock-h) + var(--sp-4) + var(--safe-bot));
@@ -2141,7 +2229,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 .install-text strong{display:block;font-size:var(--fs-2);margin-bottom:2px}
 .install-text span{font-size:var(--fs-1);color:var(--fg-3)}
 
-/* ─────────────── 32. NETWORK BAR ─────────────── */
+/* ─────────────── 35. NETWORK BAR ─────────────── */
 .net-bar{
   position:fixed;
   top:0;inset-inline:0;
@@ -2160,7 +2248,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 .net-bar[data-open="true"]{transform:translateY(0)}
 .net-bar>i{font-size:18px}
 
-/* ─────────────── 33. LANDING HERO ─────────────── */
+/* ─────────────── 36. LANDING HERO ─────────────── */
 .hero{
   position:relative;
   z-index:var(--z-content);
@@ -2296,7 +2384,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   direction:ltr;text-align:left;
 }
 
-/* ─────────────── 34. SECTION ─────────────── */
+/* ─────────────── 37. SECTION ─────────────── */
 .section{
   position:relative;
   z-index:var(--z-content);
@@ -2338,7 +2426,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   line-height:var(--lh-relaxed);
 }
 
-/* ─────────────── 35. FOOTER ─────────────── */
+/* ─────────────── 38. FOOTER ─────────────── */
 .footer{
   position:relative;
   z-index:var(--z-content);
@@ -2361,15 +2449,17 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
 .footer-links a{transition:color var(--dur-2) var(--ease-out)}
 .footer-links a:hover{color:var(--c-brand)}
 
-/* ─────────────── 36. DIVIDER ─────────────── */
-.divider{
-  height:1px;
-  background:var(--border-1);
-  margin-block:var(--sp-6);
-  border:none;
-}
+/* ─────────────── 39. UTILITIES ─────────────── */
+.hidden{display:none !important}
+.text-center{text-align:center}
+.text-muted{color:var(--fg-3)}
+.text-brand{color:var(--c-brand)}
+.flex{display:flex}
+.grid{display:grid}
+.relative{position:relative}
+.cluster-2{gap:var(--sp-2)}
+.cluster-3{gap:var(--sp-3)}
 
-/* ─────────────── 37. AVATAR BUTTON ─────────────── */
 #avatarBtn{
   padding:0;
   border:none;
@@ -2383,35 +2473,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   border:2px solid color-mix(in srgb, var(--c-brand) 40%, transparent);
 }
 
-/* ─────────────── 38. UTILITIES ─────────────── */
-.hidden{display:none !important}
-.invisible{visibility:hidden}
-.flex{display:flex}
-.grid{display:grid}
-.relative{position:relative}
-.text-center{text-align:center}
-.text-muted{color:var(--fg-3)}
-.text-brand{color:var(--c-brand)}
-.text-grad{
-  background:var(--grad-brand-text);
-  -webkit-background-clip:text;
-  background-clip:text;
-  color:transparent;
-}
-.fw-medium{font-weight:var(--fw-medium)}
-.fw-semibold{font-weight:var(--fw-semibold)}
-.fw-bold{font-weight:var(--fw-bold)}
-.gap-1{gap:var(--sp-1)}
-.gap-2{gap:var(--sp-2)}
-.gap-3{gap:var(--sp-3)}
-.gap-4{gap:var(--sp-4)}
-.mt-2{margin-top:var(--sp-2)}
-.mt-4{margin-top:var(--sp-4)}
-.mb-2{margin-bottom:var(--sp-2)}
-.mb-4{margin-bottom:var(--sp-4)}
-.mb-6{margin-bottom:var(--sp-6)}
-
-/* ─────────────── 39. RESPONSIVE ─────────────── */
+/* ─────────────── 40. RESPONSIVE ─────────────── */
 @media (max-width:1024px){
   .nav-links{display:none}
 }
@@ -2435,7 +2497,6 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   .chat-list{display:none}
   .chat-layout[data-view="list"] .chat-list{display:flex}
   .chat-layout[data-view="list"] .chat-thread{display:none}
-  #chatBackBtn{display:grid}
 
   .feed{grid-template-columns:1fr}
 
@@ -2477,6 +2538,10 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   .hero-preview .card:nth-child(1){
     grid-column:span 2;grid-row:span 1;
   }
+
+  .new-posts-pill{
+    top:calc(var(--nav-h) + var(--sp-3) + var(--safe-top));
+  }
 }
 
 @media (max-width:560px){
@@ -2509,7 +2574,7 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   .dock-create>span{width:40px;height:40px}
 }
 
-/* ─────────────── 40. REDUCED MOTION ─────────────── */
+/* ─────────────── 41. REDUCED MOTION ─────────────── */
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{
     animation-duration:.01ms !important;
@@ -2520,11 +2585,14 @@ code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
   .aurora::before,
   .aurora::after,
   .aurora-mid{animation:none}
+  .tab-panel.is-active{animation:none}
+  .prompt-card{transition:none !important}
 }
 
-/* ─────────────── 41. PRINT ─────────────── */
+/* ─────────────── 42. PRINT ─────────────── */
 @media print{
-  .nav,.dock,.toast-wrap,.scrim,.drawer,.aurora,.install-banner{
+  .nav,.dock,.toast-wrap,.scrim,.drawer,.aurora,.install-banner,
+  .new-posts-pill,.ptr{
     display:none !important;
   }
   body{background:#fff;color:#000;padding:0}
