@@ -1,2041 +1,2357 @@
-/* ═══════════════════════════════════════════════════════════════
-   خَيال — app.js v9.0
-   Instagram-style feed · Profile complete · All modules
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   خَيال — app.js v12.0
+   Full client controller · RTL-first · Dark/Light · PWA-aware
+   + Settings page · Sound hooks · Improved responsiveness
+   ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
-  console.log('[خَيال] app.js v9.0');
 
-  var $ = function (s) { return document.querySelector(s); };
-  var $$ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
-  var byId = function (x) { return document.getElementById(x); };
-  var esc = function (s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c;
-    });
+  /* ═══════════════════════════════════════════════════════════════
+     CONFIG & STATE
+     ═══════════════════════════════════════════════════════════════ */
+  const CFG = {
+    PAGE_SIZE: 20,
+    TOAST_MS: 3200,
+    SEARCH_DEBOUNCE: 280,
+    DRAFT_KEY: 'khayal.composer.draft',
+    THEME_KEY: 'khayal.theme',
   };
 
-  var S = {
-    me: (typeof window.__ME__ !== 'undefined' && window.__ME__) || null,
+  const S = {
+    me: window.__ME__ || null,
     tab: 'home',
     sort: 'recent',
-    filter: null,
-    posts: { home: [], explore: [], liked: [], saved: [], profile: [], landing: [] },
-    activePost: null,
-    activeChat: null,
-    chats: [],
-    reducedMotion: false,
-    pendingLikes: {},
-    pendingSaves: {}
+    filterTag: '',
+    filterModel: '',
+    viewingUser: null,
+    openChatId: null,
+    feeds: Object.create(null),
+    lastFocused: null,
+    booted: false,
+    tabHistory: [],
   };
-  window.__State = S;
-  try { S.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) {}
 
-  function toast(msg, tone) {
-    var wrap = byId('toastWrap');
-    if (!wrap) { console.log('[toast]', msg); return; }
-    var t = document.createElement('div');
-    t.className = 'toast';
-    if (tone) t.setAttribute('data-tone', tone);
-    var icon = tone === 'success' ? 'ph-check-circle'
-             : tone === 'error' ? 'ph-warning-circle'
-             : tone === 'warning' ? 'ph-warning-circle'
-             : 'ph-info';
-    t.innerHTML = '<i class="ph ' + icon + '"></i><span>' + esc(msg) + '</span>';
-    wrap.appendChild(t);
-    setTimeout(function () {
-      t.style.opacity = '0';
-      t.style.transition = 'opacity .2s';
-      setTimeout(function () { t.remove(); }, 220);
-    }, 2400);
+  function feedState(key) {
+    if (!S.feeds[key]) {
+      S.feeds[key] = {
+        items: [],
+        before: null,
+        busy: false,
+        hasMore: true,
+        loaded: false,
+        controller: null,
+      };
+    }
+    return S.feeds[key];
   }
 
-  var Layer = {
-    open: function (ref) {
-      var n = typeof ref === 'string' ? byId(ref) : ref;
-      if (!n) return;
-      n.setAttribute('data-open', 'true');
-      n.removeAttribute('hidden');
-      document.body.style.overflow = 'hidden';
-    },
-    close: function (ref) {
-      var n = typeof ref === 'string' ? byId(ref) : ref;
-      if (!n) return;
-      n.setAttribute('data-open', 'false');
-      document.body.style.overflow = '';
-    }
-  };
+  /* ═══════════════════════════════════════════════════════════════
+     UTILITIES
+     ═══════════════════════════════════════════════════════════════ */
+  const U = {
+    qs(sel, root) { return (root || document).querySelector(sel); },
+    qsa(sel, root) { return Array.from((root || document).querySelectorAll(sel)); },
 
-  var Render = {
-    prompt: function (p) {
-      var a = p.author_data || {};
-      var tags = Array.isArray(p.tags) ? p.tags : [];
-      var img = p.image || 'https://placehold.co/800x600/0E0E14/22D3EE?text=خَيال';
-      var liked = p.liked ? 'true' : 'false';
-      var saved = p.saved ? 'true' : 'false';
-      return '<article class="prompt-card" data-post-id="' + p.id + '">' +
-        '<div class="prompt-media">' +
-          '<img src="' + esc(img) + '" alt="' + esc(p.title) + '" loading="lazy" decoding="async" data-state="loading" onload="this.dataset.state=\'loaded\'" onerror="this.dataset.state=\'error\'">' +
-          (p.model ? '<span class="prompt-model"><i class="ph ph-sparkle"></i> ' + esc(p.model) + '</span>' : '') +
-          '<div class="prompt-floats">' +
-            '<button class="float-btn" data-action="like" data-post="' + p.id + '" aria-pressed="' + liked + '" aria-label="إعجاب" type="button"><i class="ph ph-heart"></i></button>' +
-            '<button class="float-btn" data-action="save" data-post="' + p.id + '" aria-pressed="' + saved + '" aria-label="حفظ" type="button"><i class="ph ph-bookmark-simple"></i></button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="prompt-body">' +
-          (a.id ? '<div class="prompt-author" data-action="open-user-profile" data-user="' + a.id + '"><img class="avatar avatar-sm" src="' + esc(a.avatar || '') + '" alt="" loading="lazy"><div class="prompt-author-info"><span class="prompt-author-name">' + esc(a.name || '') + (a.verified ? ' <i class="ph ph-seal-check"></i>' : '') + '</span><span class="prompt-author-meta">' + esc(a.handle || '') + '</span></div></div>' : '') +
-          '<h3 class="prompt-title">' + esc(p.title) + '</h3>' +
-          '<div class="prompt-excerpt" data-action="copy" data-post="' + p.id + '">' + esc(p.prompt) + '<button type="button" class="prompt-excerpt-copy" aria-label="نسخ"><i class="ph ph-copy"></i></button></div>' +
-          (tags.length ? '<div class="prompt-tags">' + tags.slice(0, 4).map(function (t) { return '<button class="tag" type="button" data-action="filter-tag" data-tag="' + esc(t) + '">' + esc(t) + '</button>'; }).join('') + '</div>' : '') +
-        '</div>' +
-        '<div class="prompt-actions">' +
-          '<button class="action" data-action="like" data-post="' + p.id + '" aria-pressed="' + liked + '" type="button"><i class="ph ph-heart"></i><span data-likes-count>' + U.num(p.likes) + '</span></button>' +
-          '<button class="action" data-action="open-comments" data-post="' + p.id + '" type="button"><i class="ph ph-chat-circle"></i><span>' + U.num(p.comments) + '</span></button>' +
-          '<button class="action action-primary" data-action="copy" data-post="' + p.id + '" type="button"><i class="ph ph-copy"></i><span>نسخ</span></button>' +
-        '</div>' +
-      '</article>';
+    el(tag, attrs, html) {
+      const node = document.createElement(tag);
+      if (attrs) {
+        for (const k in attrs) {
+          if (k === 'class') node.className = attrs[k];
+          else if (k === 'dataset') Object.assign(node.dataset, attrs[k]);
+          else if (k.startsWith('on') && typeof attrs[k] === 'function') {
+            node.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
+          } else if (attrs[k] !== null && attrs[k] !== undefined) {
+            node.setAttribute(k, attrs[k]);
+          }
+        }
+      }
+      if (html !== undefined) node.innerHTML = html;
+      return node;
     },
 
-    skeleton: function () {
-      return '<article class="prompt-card skeleton-card" aria-hidden="true"><div class="prompt-media skeleton skeleton-media"></div><div class="prompt-body"><div class="skeleton skeleton-line" style="width:55%"></div><div class="skeleton skeleton-line" style="width:85%;height:18px"></div><div class="skeleton skeleton-line" style="width:100%"></div><div class="skeleton skeleton-line" style="width:75%"></div></div></article>';
+    escapeHtml(s) {
+      if (s == null) return '';
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     },
 
-    empty: function (title, icon, text) {
-      return '<div class="empty-block"><i class="ph ' + (icon || 'ph-sparkle') + '"></i><h4>' + esc(title) + '</h4>' + (text ? '<p>' + esc(text) + '</p>' : '') + '</div>';
+    relativeTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const now = Date.now();
+      const diff = Math.max(0, now - d.getTime());
+      const sec = Math.floor(diff / 1000);
+      if (sec < 60) return 'الآن';
+      const min = Math.floor(sec / 60);
+      if (min < 60) return min + ' د';
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return hr + ' س';
+      const day = Math.floor(hr / 24);
+      if (day < 7) return day + ' ي';
+      const wk = Math.floor(day / 7);
+      if (wk < 5) return wk + ' أ';
+      const mo = Math.floor(day / 30);
+      if (mo < 12) return mo + ' ش';
+      return Math.floor(day / 365) + ' سنة';
     },
 
-    emptyFor: function (which) {
-      var m = {
-        home: ['لا توجد برومبتات بعد', 'ph-sparkle', 'كن أول من ينشر!'],
-        explore: ['لا يوجد استكشاف بعد', 'ph-compass', 'عُد لاحقاً'],
-        liked: ['لا توجد إعجابات بعد', 'ph-heart', 'ابدأ بوضع قلبك'],
-        saved: ['المكتبة فارغة', 'ph-bookmark-simple', 'احفظ البرومبتات'],
-        profile: ['لم تنشر بعد', 'ph-image-square', 'شارك أول برومبت']
-      };
-      var c = m[which] || m.home;
-      return Render.empty(c[0], c[1], c[2]);
-    },
-
-    comment: function (c) {
-      var a = c.author_data || {};
-      var canDel = S.me && a.id === S.me.id;
-      return '<div class="comment" data-comment-id="' + c.id + '">' +
-        '<img class="avatar avatar-sm" src="' + esc(a.avatar || '') + '" alt="" loading="lazy">' +
-        '<div class="comment-body">' +
-          '<div class="comment-top"><span class="comment-name">' + esc(a.name || '') + '</span><span class="comment-time">' + U.time(c.time) + '</span></div>' +
-          '<div class="comment-text">' + esc(c.text || '') + '</div>' +
-          (canDel ? '<div class="comment-actions"><button type="button" data-action="delete-comment" data-comment="' + c.id + '"><i class="ph ph-trash"></i> حذف</button></div>' : '') +
-        '</div>' +
-      '</div>';
-    },
-
-    chatItem: function (c) {
-      var o = c.with_user || {};
-      return '<button class="chat-item" data-action="open-chat" data-chat="' + c.id + '" data-name="' + esc(o.name || '') + '" aria-current="' + (S.activeChat === c.id ? 'true' : 'false') + '" type="button">' +
-        '<img class="avatar" src="' + esc(o.avatar || '') + '" alt="" loading="lazy">' +
-        '<div class="chat-item-info">' +
-          '<div class="chat-item-top"><span class="chat-item-name">' + esc(o.name || 'محادثة') + '</span><span class="chat-item-time">' + esc(c.time || '') + '</span></div>' +
-          '<div class="chat-item-preview">' + esc(c.last || '') + '</div>' +
-        '</div>' +
-        (c.unread ? '<span class="badge badge-dot"></span>' : '') +
-      '</button>';
-    },
-
-    message: function (m) {
-      return '<div class="msg msg-' + (m.from === 'me' ? 'me' : 'them') + '">' + esc(m.text) + '<span class="msg-time">' + esc(m.time || '') + '</span></div>';
-    }
-  };
-
-  var U = {
-    toast: toast,
-    num: function (n) {
-      if (n == null) return '0';
+    formatNumber(n) {
       n = Number(n) || 0;
       if (n < 1000) return String(n);
-      if (n < 1e6) return (n / 1000).toFixed(n < 1e4 ? 1 : 0).replace(/\.0$/, '') + 'K';
-      return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+      if (n < 1000000) return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'ألف';
+      return (n / 1000000).toFixed(1) + 'م';
     },
-    time: function (iso) {
-      if (!iso) return '';
-      var d = new Date(iso);
-      var sec = (Date.now() - d.getTime()) / 1000;
-      if (sec < 60) return 'الآن';
-      if (sec < 3600) return 'قبل ' + Math.floor(sec / 60) + ' د';
-      if (sec < 86400) return 'قبل ' + Math.floor(sec / 3600) + ' س';
-      if (sec < 604800) return 'قبل ' + Math.floor(sec / 86400) + ' ي';
-      return d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' });
-    },
-    autoGrow: function (ta) {
-      if (!ta) return;
-      ta.style.height = 'auto';
-      ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
-    },
-    debounce: function (fn, wait) {
-      var t;
+
+    debounce(fn, ms) {
+      let t;
       return function () {
-        var a = arguments, c = this;
+        const args = arguments, ctx = this;
         clearTimeout(t);
-        t = setTimeout(function () { fn.apply(c, a); }, wait || 250);
+        t = setTimeout(() => fn.apply(ctx, args), ms);
       };
     },
-    copy: function (text) {
-      if (navigator.clipboard && window.isSecureContext) {
-        return navigator.clipboard.writeText(text);
-      }
-      return new Promise(function (resolve, reject) {
-        var ta = document.createElement('textarea');
+
+    autoGrow(el) {
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+    },
+
+    async copy(text) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (e) { /* fall through */ }
+      try {
+        const ta = document.createElement('textarea');
         ta.value = text;
         ta.style.position = 'fixed';
         ta.style.opacity = '0';
         document.body.appendChild(ta);
         ta.select();
-        var ok = false;
-        try { ok = document.execCommand('copy'); } catch (_) {}
-        ta.remove();
-        ok ? resolve() : reject();
-      });
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch (e) { return false; }
     },
-    buzz: function (ms) {
-      if (S.reducedMotion) return;
-      try { navigator.vibrate && navigator.vibrate(ms || 10); } catch (_) {}
-    },
-    lockScroll: function (lock) {
-      document.body.style.overflow = lock ? 'hidden' : '';
-    },
-    focusTrap: function (container) {
-      if (!container) return function () {};
-      var sel = 'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
-      var focusables = $$(sel).filter(function (x) { return container.contains(x) && x.offsetParent !== null; });
-      var prev = document.activeElement;
-      var first = focusables[0];
-      var last = focusables[focusables.length - 1];
-      function onKey(e) {
-        if (e.key !== 'Tab' || focusables.length === 0) return;
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+
+    $(tag, attrs, ...children) {
+      const node = document.createElement(tag);
+      if (attrs) {
+        for (const k in attrs) {
+          if (k === 'class') node.className = attrs[k];
+          else if (k.startsWith('on') && typeof attrs[k] === 'function') {
+            node.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
+          } else if (k === 'html') node.innerHTML = attrs[k];
+          else if (attrs[k] !== null && attrs[k] !== undefined && attrs[k] !== false) {
+            node.setAttribute(k, attrs[k]);
+          }
+        }
       }
-      container.addEventListener('keydown', onKey);
-      if (first) setTimeout(function () { try { first.focus(); } catch (_) {} }, 60);
-      return function () {
-        container.removeEventListener('keydown', onKey);
-        if (prev && prev.focus) { try { prev.focus(); } catch (_) {} }
+      children.flat().forEach(c => {
+        if (c == null || c === false) return;
+        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      });
+      return node;
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     API CLIENT
+     ═══════════════════════════════════════════════════════════════ */
+  const API = {
+    async call(method, path, body, opts) {
+      const init = {
+        method,
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' },
       };
-    }
-  };
+      if (body !== undefined && body !== null) {
+        init.headers['Content-Type'] = 'application/json';
+        init.body = JSON.stringify(body);
+      }
+      if (opts && opts.signal) init.signal = opts.signal;
 
-  /* ═══════ INFINITE SCROLL ═══════ */
-  var Infinite = {
-    _observers: {},
-    _loading: {},
-    _hasMore: { home: true, explore: true, liked: true, saved: true },
-
-    attach: function (which) {
-      var feedId = { home: 'homeFeed', explore: 'exploreFeed', liked: 'likedFeed', saved: 'savedFeed' }[which];
-      var feed = byId(feedId);
-      if (!feed) return;
-      Infinite.detach(which);
-      Infinite._hasMore[which] = true;
-
-      var sentinelId = 'sentinel-' + which;
-      var sentinel = byId(sentinelId);
-      if (!sentinel) {
-        sentinel = document.createElement('div');
-        sentinel.id = sentinelId;
-        sentinel.style.cssText = 'height:1px;width:100%;grid-column:1/-1;pointer-events:none;';
-        feed.parentNode.insertBefore(sentinel, feed.nextSibling);
+      let res;
+      try {
+        res = await fetch(path, init);
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+        throw new Error('تعذّر الاتصال بالخادم');
       }
 
-      Infinite._observers[which] = new IntersectionObserver(function (entries) {
-        if (!entries[0].isIntersecting) return;
-        if (Infinite._loading[which] || !Infinite._hasMore[which]) return;
-        Infinite.loadMore(which);
-      }, { rootMargin: '600px 0px' });
-
-      Infinite._observers[which].observe(sentinel);
-    },
-
-    detach: function (which) {
-      if (Infinite._observers[which]) {
-        Infinite._observers[which].disconnect();
-        delete Infinite._observers[which];
-      }
-      var sentinel = byId('sentinel-' + which);
-      if (sentinel) sentinel.remove();
-    },
-
-    loadMore: function (which) {
-      if (Infinite._loading[which] || !Infinite._hasMore[which]) return;
-      Infinite._loading[which] = true;
-
-      var posts = S.posts[which] || [];
-      var lastId = posts.length ? posts[posts.length - 1].id : null;
-      if (!lastId) { Infinite._loading[which] = false; return; }
-
-      var feedId = { home: 'homeFeed', explore: 'exploreFeed', liked: 'likedFeed', saved: 'savedFeed' }[which];
-      var feed = byId(feedId);
-      if (!feed) { Infinite._loading[which] = false; return; }
-
-      var loader = document.createElement('div');
-      loader.className = 'load-more';
-      loader.id = 'loader-' + which;
-      loader.innerHTML = '<span class="spinner"></span><span>جارٍ التحميل…</span>';
-      var sentinel = byId('sentinel-' + which);
-      feed.parentNode.insertBefore(loader, sentinel);
-
-      var url = '/api/posts?limit=20&before_id=' + lastId;
-      if (which === 'home') {
-        url += '&sort=' + (S.sort || 'recent');
-        if (S.filter) url += '&tag=' + encodeURIComponent(S.filter);
-      } else if (which === 'explore') {
-        url += '&sort=top';
+      let data = null;
+      const ct = res.headers.get('Content-Type') || '';
+      if (ct.includes('application/json')) {
+        try { data = await res.json(); } catch (e) { data = null; }
       }
 
-      fetch(url, { credentials: 'same-origin' })
-        .then(function (r) {
-          Infinite._hasMore[which] = r.headers.get('X-Has-More') === 'true';
-          return r.json();
-        })
-        .then(function (newPosts) {
-          loader.remove();
-          if (!newPosts.length) { Infinite._hasMore[which] = false; return; }
-          var filtered = newPosts;
-          if (which === 'liked') filtered = newPosts.filter(function (p) { return p.liked; });
-          if (which === 'saved') filtered = newPosts.filter(function (p) { return p.saved; });
+      if (!res.ok) {
+        const msg = (data && (data.error || data.message)) || `خطأ ${res.status}`;
+        const err = new Error(msg);
+        err.status = res.status;
+        err.data = data;
+        throw err;
+      }
+      return data;
+    },
 
-          var frag = document.createDocumentFragment();
-          filtered.forEach(function (p, i) {
-            var wrap = document.createElement('div');
-            wrap.innerHTML = Render.prompt(p);
-            var card = wrap.firstElementChild;
-            card.style.opacity = '0';
-            card.style.transform = 'translateY(12px)';
-            card.style.transition = 'opacity .35s var(--ease-out) ' + Math.min(i * 30, 300) + 'ms, transform .35s var(--ease-out) ' + Math.min(i * 30, 300) + 'ms';
-            frag.appendChild(card);
-            S.posts[which].push(p);
-          });
-          feed.appendChild(frag);
-          requestAnimationFrame(function () {
-            var newCards = feed.querySelectorAll('.prompt-card[style*="opacity: 0"]');
-            newCards.forEach(function (c) { c.style.opacity = '1'; c.style.transform = 'translateY(0)'; });
-          });
-        })
-        .catch(function () {
-          var l = byId('loader-' + which);
-          if (l) l.remove();
-          toast('تعذّر تحميل المزيد', 'error');
-        })
-        .finally(function () { Infinite._loading[which] = false; });
-    }
+    get(path, opts) { return API.call('GET', path, null, opts); },
+    post(path, body) { return API.call('POST', path, body); },
+    patch(path, body) { return API.call('PATCH', path, body); },
+    del(path) { return API.call('DELETE', path); },
   };
 
-  /* ═══════ PTR ═══════ */
-  var PTR = {
-    _startY: 0, _currentY: 0, _pulling: false, _threshold: 80, _ptr: null,
-    init: function () {
-      PTR._ptr = byId('ptr');
-      if (!PTR._ptr) return;
-      document.addEventListener('touchstart', PTR.onStart, { passive: true });
-      document.addEventListener('touchmove', PTR.onMove, { passive: false });
-      document.addEventListener('touchend', PTR.onEnd, { passive: true });
+  /* ═══════════════════════════════════════════════════════════════
+     THEME
+     ═══════════════════════════════════════════════════════════════ */
+  const Theme = {
+    get() { return document.documentElement.dataset.theme || 'dark'; },
+
+    set(mode) {
+      document.documentElement.dataset.theme = mode;
+      try { localStorage.setItem(CFG.THEME_KEY, mode); } catch (e) {}
+      this.syncIcon();
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', mode === 'dark' ? '#08080C' : '#F7F7FA');
     },
-    onStart: function (e) {
-      if (window.scrollY > 5) return;
-      if (document.querySelector('.scrim[data-open="true"]')) return;
-      if (S.tab !== 'home') return;
-      PTR._startY = e.touches[0].clientY;
-      PTR._pulling = true;
+
+    toggle() {
+      this.set(this.get() === 'dark' ? 'light' : 'dark');
+      if (window.Sounds) Sounds.play('toggle');
     },
-    onMove: function (e) {
-      if (!PTR._pulling) return;
-      PTR._currentY = e.touches[0].clientY;
-      var diff = PTR._currentY - PTR._startY;
-      if (diff <= 0) { PTR.reset(); return; }
-      var pull = Math.min(diff * 0.5, 120);
-      PTR._ptr.classList.add('pulling');
-      PTR._ptr.style.transform = 'translateY(' + pull + 'px)';
-      PTR._ptr.style.marginTop = '0';
-      if (pull > PTR._threshold) PTR._ptr.classList.add('ready');
-      else PTR._ptr.classList.remove('ready');
+
+    syncIcon() {
+      const icon = document.getElementById('themeIcon');
+      if (!icon) return;
+      const dark = this.get() === 'dark';
+      icon.className = dark ? 'ph ph-moon' : 'ph ph-sun';
     },
-    onEnd: function () {
-      if (!PTR._pulling) return;
-      PTR._pulling = false;
-      var diff = PTR._currentY - PTR._startY;
-      var pull = Math.min(diff * 0.5, 120);
-      if (pull > PTR._threshold) {
-        PTR._ptr.classList.add('refreshing');
-        PTR._ptr.style.transform = 'translateY(60px)';
-        App.refreshAll().finally(function () { setTimeout(PTR.reset, 500); });
-      } else { PTR.reset(); }
+
+    init() {
+      try {
+        const saved = localStorage.getItem(CFG.THEME_KEY);
+        if (saved === 'light' || saved === 'dark') this.set(saved);
+        else {
+          const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+          this.set(prefersLight ? 'light' : 'dark');
+        }
+      } catch (e) { this.syncIcon(); }
     },
-    reset: function () {
-      if (!PTR._ptr) return;
-      PTR._ptr.classList.remove('pulling', 'ready', 'refreshing');
-      PTR._ptr.style.transform = '';
-      PTR._ptr.style.marginTop = '';
-      PTR._startY = 0;
-      PTR._currentY = 0;
-    }
   };
 
-  /* ═══════ NEW POSTS PILL ═══════ */
-  var NewPostsPill = {
-    _pill: null,
-    ensure: function () {
-      if (NewPostsPill._pill) return NewPostsPill._pill;
-      var p = document.createElement('button');
-      p.className = 'new-posts-pill';
-      p.type = 'button';
-      p.innerHTML = '<i class="ph ph-arrow-up"></i><span>منشورات جديدة</span>';
-      p.addEventListener('click', function () {
-        App.refreshAll();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        NewPostsPill.hide();
+  /* ═══════════════════════════════════════════════════════════════
+     TOAST
+     ═══════════════════════════════════════════════════════════════ */
+  const Toast = {
+    wrap() { return document.getElementById('toastWrap'); },
+
+    show(msg, tone, ms) {
+      const wrap = this.wrap();
+      if (!wrap) return;
+      const icons = {
+        success: 'ph-check-circle',
+        error: 'ph-warning-circle',
+        warning: 'ph-warning',
+        info: 'ph-info',
+      };
+      const t = U.el('div', { class: 'toast', 'data-tone': tone || 'info' },
+        `<i class="ph ${icons[tone] || icons.info}" aria-hidden="true"></i><span></span>`);
+      t.querySelector('span').textContent = msg;
+      wrap.appendChild(t);
+
+      setTimeout(() => {
+        t.style.opacity = '0';
+        t.style.transform = 'translateY(12px)';
+        setTimeout(() => t.remove(), 260);
+      }, ms || CFG.TOAST_MS);
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     INSTALL (PWA)
+     ═══════════════════════════════════════════════════════════════ */
+  const Install = {
+    deferred: null,
+    dismissed: false,
+
+    init() {
+      const banner = document.getElementById('installBanner');
+      if (!banner) return;
+
+      try { this.dismissed = localStorage.getItem('khayal.install.dismissed') === '1'; } catch (e) {}
+
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        this.deferred = e;
+        if (!this.dismissed) banner.hidden = false;
+        setTimeout(() => banner.setAttribute('data-open', 'true'), 60);
       });
-      document.body.appendChild(p);
-      NewPostsPill._pill = p;
-      return p;
+
+      window.addEventListener('appinstalled', () => {
+        banner.setAttribute('data-open', 'false');
+        setTimeout(() => { banner.hidden = true; }, 400);
+        Toast.show('تم تثبيت التطبيق', 'success');
+      });
     },
-    show: function () {
-      var p = NewPostsPill.ensure();
-      requestAnimationFrame(function () { p.classList.add('show'); });
+
+    async prompt() {
+      if (!this.deferred) return;
+      this.deferred.prompt();
+      const choice = await this.deferred.userChoice;
+      if (choice && choice.outcome === 'accepted') {
+        this.dismiss();
+      }
+      this.deferred = null;
     },
-    hide: function () {
-      if (NewPostsPill._pill) NewPostsPill._pill.classList.remove('show');
-    }
+
+    dismiss() {
+      this.dismissed = true;
+      try { localStorage.setItem('khayal.install.dismissed', '1'); } catch (e) {}
+      const banner = document.getElementById('installBanner');
+      if (banner) {
+        banner.setAttribute('data-open', 'false');
+        setTimeout(() => { banner.hidden = true; }, 400);
+      }
+    },
   };
 
-  /* ═══════ SCROLL MEMORY ═══════ */
-  var ScrollMemory = {
-    positions: {},
-    save: function (tab) { ScrollMemory.positions[tab] = window.scrollY; },
-    restore: function (tab) {
-      var y = ScrollMemory.positions[tab] || 0;
-      requestAnimationFrame(function () { window.scrollTo(0, y); });
-    }
+  /* ═══════════════════════════════════════════════════════════════
+     NETWORK MONITOR
+     ═══════════════════════════════════════════════════════════════ */
+  const Net = {
+    init() {
+      const bar = document.getElementById('netBar');
+      if (!bar) return;
+      const update = () => {
+        const offline = !navigator.onLine;
+        bar.setAttribute('data-open', offline ? 'true' : 'false');
+      };
+      window.addEventListener('online', () => { update(); Toast.show('عدت متصلاً', 'success'); });
+      window.addEventListener('offline', update);
+      update();
+    },
   };
 
-  /* ═══════ AUTH ═══════ */
-  var Auth = {
-    open: function (mode) {
-      mode = mode || 'login';
-      if (S.me) { toast('أنت مسجل دخول بالفعل'); return; }
-      var m = byId('authModal');
-      if (!m) { alert('نافذة الدخول غير موجودة'); return; }
-      var tabs = $('.auth-tabs');
-      if (tabs) tabs.setAttribute('data-mode', mode);
-      $$('.auth-tab').forEach(function (t) {
-        t.setAttribute('aria-selected', t.getAttribute('data-mode') === mode ? 'true' : 'false');
-      });
-      $$('.auth-form').forEach(function (f) {
-        f.classList.toggle('is-active', f.id === mode + 'Form');
-      });
-      var title = byId('authTitle');
-      if (title) title.textContent = mode === 'login' ? 'تسجيل الدخول' : 'أنشئ حسابك';
-      var sub = byId('authSub');
-      if (sub) sub.textContent = mode === 'login' ? 'أهلاً بعودتك إلى خَيال' : 'دقيقة واحدة للانضمام';
-      Layer.open(m);
-      setTimeout(function () {
-        var inp = byId(mode === 'register' ? 'regName' : 'loginIdentifier');
-        if (inp) { try { inp.focus(); } catch (_) {} }
+  /* ═══════════════════════════════════════════════════════════════
+     AUTH
+     ═══════════════════════════════════════════════════════════════ */
+  const Auth = {
+    modal() { return document.getElementById('authModal'); },
+
+    open(mode) {
+      const m = this.modal();
+      if (!m) return;
+      S.lastFocused = document.activeElement;
+      this.switchMode(mode || 'login');
+      m.setAttribute('data-open', 'true');
+      document.documentElement.style.overflow = 'hidden';
+      setTimeout(() => {
+        const first = m.querySelector('.auth-form.is-active input');
+        if (first) first.focus({ preventScroll: true });
       }, 200);
     },
-    close: function (e) {
-      if (e && e.target !== e.currentTarget) return;
-      Layer.close('authModal');
+
+    close(e) {
+      if (e && e.target && e.target.closest('.auth')) return;
+      const m = this.modal();
+      if (!m) return;
+      m.setAttribute('data-open', 'false');
+      document.documentElement.style.overflow = '';
+      if (S.lastFocused) S.lastFocused.focus({ preventScroll: true });
     },
-    switchMode: function (mode) { Auth.open(mode); },
-    togglePassword: function (btn) {
-      var wrap = btn.closest('.input-wrap');
-      var inp = wrap ? wrap.querySelector('input') : null;
-      if (!inp) return;
-      inp.type = inp.type === 'password' ? 'text' : 'password';
-      var i = btn.querySelector('i');
-      if (i) i.className = inp.type === 'password' ? 'ph ph-eye' : 'ph ph-eye-slash';
+
+    switchMode(mode) {
+      const m = this.modal();
+      if (!m) return;
+      const tabs = m.querySelector('.auth-tabs');
+      if (tabs) tabs.dataset.mode = mode;
+
+      m.querySelectorAll('.auth-tab').forEach(t => {
+        t.setAttribute('aria-selected', t.dataset.mode === mode ? 'true' : 'false');
+      });
+      m.querySelectorAll('.auth-form').forEach(f => {
+        f.classList.toggle('is-active', f.id === mode + 'Form');
+      });
+
+      const title = m.querySelector('#authTitle');
+      const sub = m.querySelector('#authSub');
+      if (title) title.textContent = mode === 'register' ? 'حساب جديد' : 'تسجيل الدخول';
+      if (sub) sub.textContent = mode === 'register' ? 'انضم إلى خَيال' : 'أهلاً بعودتك إلى خَيال';
     },
-    checkStrength: function () {},
-    login: function (e) {
-      if (e) e.preventDefault();
-      var idn = (byId('loginIdentifier') || {}).value;
-      var pw = (byId('loginPassword') || {}).value;
-      if (!idn || !pw) { toast('أدخل البيانات', 'warning'); return; }
-      var btn = byId('loginSubmit');
-      if (btn) btn.setAttribute('aria-busy', 'true');
-      fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ identifier: idn.trim(), password: pw, remember: true })
-      })
-        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-        .then(function (res) {
-          if (!res.ok) throw new Error((res.d && res.d.error) || 'فشل الدخول');
-          toast('مرحباً ' + (res.d.name || '') + '!', 'success');
-          setTimeout(function () { location.reload(); }, 500);
-        })
-        .catch(function (err) {
-          toast(err.message || 'فشل الدخول', 'error');
-          if (btn) btn.removeAttribute('aria-busy');
-        });
+
+    togglePassword(btn) {
+      const wrap = btn.closest('.input-wrap');
+      const input = wrap && wrap.querySelector('input');
+      if (!input) return;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      const i = btn.querySelector('i');
+      if (i) i.className = show ? 'ph ph-eye-slash' : 'ph ph-eye';
+      btn.setAttribute('aria-label', show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور');
     },
-    register: function (e) {
-      if (e) e.preventDefault();
-      var name = (byId('regName') || {}).value;
-      var username = (byId('regUsername') || {}).value;
-      var email = (byId('regEmail') || {}).value;
-      var password = (byId('regPassword') || {}).value;
-      var agree = byId('agreeTerms');
-      if (agree && !agree.checked) { toast('وافق على الشروط أولاً', 'warning'); return; }
-      if (!name || !username || !email || !password) { toast('أكمل كل الحقول', 'warning'); return; }
-      var btn = byId('registerSubmit');
-      if (btn) btn.setAttribute('aria-busy', 'true');
-      fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ name: name.trim(), username: username.trim(), email: email.trim(), password: password })
-      })
-        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-        .then(function (res) {
-          if (!res.ok) throw new Error((res.d && res.d.error) || 'فشل التسجيل');
-          toast('مرحباً بك في خَيال!', 'success');
-          setTimeout(function () { location.reload(); }, 600);
-        })
-        .catch(function (err) {
-          toast(err.message || 'فشل التسجيل', 'error');
-          if (btn) btn.removeAttribute('aria-busy');
-        });
+
+    checkStrength(v) {
+      const el = document.querySelector('.pw-strength');
+      if (!el) return;
+      let score = 0;
+      if (v.length >= 6) score++;
+      if (v.length >= 10) score++;
+      if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score++;
+      if (/[0-9]/.test(v)) score++;
+      if (/[^A-Za-z0-9]/.test(v)) score = Math.min(4, score + 1);
+      el.setAttribute('data-level', String(Math.min(4, score)));
     },
-    logout: function () {
-      if (!confirm('تسجيل الخروج؟')) return;
-      fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
-        .then(function () { location.reload(); })
-        .catch(function () { location.reload(); });
+
+    async login(ev) {
+      ev.preventDefault();
+      const form = ev.target;
+      const btn = form.querySelector('#loginSubmit');
+      const identifier = (form.querySelector('#loginIdentifier') || {}).value || '';
+      const password = (form.querySelector('#loginPassword') || {}).value || '';
+      const remember = !!(form.querySelector('#rememberMe') || {}).checked;
+
+      if (!identifier || !password) {
+        if (window.Sounds) Sounds.play('error');
+        return Toast.show('أدخل بيانات الدخول', 'warning');
+      }
+
+      btn.setAttribute('aria-busy', 'true');
+      btn.disabled = true;
+
+      try {
+        const user = await API.post('/api/auth/login', { identifier, password, remember });
+        S.me = user;
+        window.__ME__ = user;
+        this.afterLogin(user);
+      } catch (err) {
+        if (window.Sounds) Sounds.play('error');
+        Toast.show(err.message, 'error');
+      } finally {
+        btn.removeAttribute('aria-busy');
+        btn.disabled = false;
+      }
     },
-    openEditProfile: function () { Profile.openEdit(); },
-    closeEditProfile: function (e) { Profile.closeEdit(e); },
-    saveProfile: function (e) { Profile.save(e); }
+
+    async register(ev) {
+      ev.preventDefault();
+      const form = ev.target;
+      const btn = form.querySelector('#registerSubmit');
+      const payload = {
+        name: (form.querySelector('#regName') || {}).value || '',
+        username: (form.querySelector('#regUsername') || {}).value || '',
+        email: (form.querySelector('#regEmail') || {}).value || '',
+        password: (form.querySelector('#regPassword') || {}).value || '',
+      };
+
+      if (!payload.name || !payload.username || !payload.email || !payload.password) {
+        if (window.Sounds) Sounds.play('error');
+        return Toast.show('املأ جميع الحقول', 'warning');
+      }
+
+      const agree = form.querySelector('#agreeTerms');
+      if (agree && !agree.checked) {
+        if (window.Sounds) Sounds.play('error');
+        return Toast.show('وافق على الشروط أولاً', 'warning');
+      }
+
+      btn.setAttribute('aria-busy', 'true');
+      btn.disabled = true;
+
+      try {
+        const user = await API.post('/api/auth/register', payload);
+        S.me = user;
+        window.__ME__ = user;
+        this.afterLogin(user);
+        Toast.show('أهلاً بك في خَيال', 'success');
+      } catch (err) {
+        if (window.Sounds) Sounds.play('error');
+        Toast.show(err.message, 'error');
+      } finally {
+        btn.removeAttribute('aria-busy');
+        btn.disabled = false;
+      }
+    },
+
+    afterLogin(user) {
+      this.close();
+      this.updateChrome(user);
+      App.showApp();
+      App.switchTab('home');
+      if (window.Sounds) Sounds.play('success');
+    },
+
+    forgot(e) {
+      e.preventDefault();
+      Toast.show('تواصل مع الدعم لاستعادة كلمة المرور', 'info');
+    },
+
+    updateChrome(user) {
+      const signIn = document.getElementById('signInBtn');
+      const avatarBtn = document.getElementById('avatarBtn');
+      const avatarImg = document.getElementById('avatarImg');
+      if (signIn) signIn.hidden = !!user;
+      if (avatarBtn) avatarBtn.hidden = !user;
+      if (avatarImg && user) {
+        avatarImg.src = user.avatar || '';
+        avatarImg.alt = user.name || '';
+      }
+      const dock = document.getElementById('dock');
+      if (dock) dock.hidden = !user;
+      const header = document.querySelector('.nav');
+      if (header && user) header.classList.add('nav--authed');
+    },
+
+    logout() {
+      API.post('/api/auth/logout').then(() => {
+        S.me = null;
+        window.__ME__ = null;
+        this.updateChrome(null);
+        App.showLanding();
+        Toast.show('تم تسجيل الخروج', 'info');
+      }).catch(() => Toast.show('تعذّر تسجيل الخروج', 'error'));
+    },
   };
 
-  /* ═══════ APP ═══════ */
-  var App = {
-    switchTab: function (tab, opts) {
-      opts = opts || {};
-      if (!tab) return;
-      if (['liked', 'saved', 'profile', 'chat'].indexOf(tab) >= 0 && !S.me) {
-        Auth.open('login');
+  /* ═══════════════════════════════════════════════════════════════
+     POST (card render + actions)
+     ═══════════════════════════════════════════════════════════════ */
+  const Post = {
+    renderCard(p) {
+      const a = p.author_data || {};
+      const liked = !!p.liked;
+      const saved = !!p.saved;
+      const image = p.image || 'https://placehold.co/800x600/0E0E14/22D3EE?text=خَيال';
+      const tags = Array.isArray(p.tags) ? p.tags : [];
+      const model = p.model || '';
+
+      const card = U.el('article', {
+        class: 'prompt-card',
+        'data-post-id': String(p.id),
+      });
+
+      const tagsHtml = tags.length
+        ? `<div class="prompt-tags">${tags.slice(0, 4).map(t =>
+            `<button class="tag" type="button" data-tag="${U.escapeHtml(t)}">${U.escapeHtml(t)}</button>`
+          ).join('')}</div>`
+        : '';
+
+      card.innerHTML = `
+        <div class="prompt-media">
+          <img src="${U.escapeHtml(image)}" alt="${U.escapeHtml(p.title || '')}"
+               loading="lazy" data-state="loading">
+          ${model ? `<span class="prompt-model"><i class="ph ph-sparkle" aria-hidden="true"></i>${U.escapeHtml(model)}</span>` : ''}
+          <div class="prompt-floats">
+            <button class="float-btn" data-action="like" aria-pressed="${liked}"
+                    aria-label="إعجاب" type="button">
+              <i class="ph ph-heart" aria-hidden="true"></i>
+            </button>
+            <button class="float-btn" data-action="save" aria-pressed="${saved}"
+                    aria-label="حفظ" type="button">
+              <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+        <div class="prompt-body">
+          <div class="prompt-author" data-action="open-author" data-author-id="${a.id || ''}">
+            <img class="avatar avatar-sm" src="${U.escapeHtml(a.avatar || '')}" alt="" loading="lazy">
+            <div class="prompt-author-info">
+              <span class="prompt-author-name">
+                ${U.escapeHtml(a.name || 'مستخدم')}
+                ${a.verified ? '<i class="ph ph-seal-check" aria-label="موثّق"></i>' : ''}
+              </span>
+              <span class="prompt-author-meta">${U.escapeHtml(a.handle || '')}</span>
+            </div>
+          </div>
+          <h3 class="prompt-title">${U.escapeHtml(p.title || '')}</h3>
+          <div class="prompt-excerpt" data-action="copy-excerpt">
+            ${U.escapeHtml(p.prompt || '')}
+            <button type="button" class="prompt-excerpt-copy" aria-label="نسخ">
+              <i class="ph ph-copy" aria-hidden="true"></i>
+            </button>
+          </div>
+          ${tagsHtml}
+        </div>
+        <div class="prompt-actions">
+          <button class="action" data-action="like" aria-pressed="${liked}" type="button">
+            <i class="ph ph-heart" aria-hidden="true"></i>
+            <span data-count="likes">${U.formatNumber(p.likes || 0)}</span>
+          </button>
+          <button class="action" data-action="comments" type="button">
+            <i class="ph ph-chat-circle" aria-hidden="true"></i>
+            <span>${U.formatNumber(p.comments || 0)}</span>
+          </button>
+          <button class="action action-primary" data-action="copy" type="button">
+            <i class="ph ph-copy" aria-hidden="true"></i>
+            <span>نسخ</span>
+          </button>
+        </div>`;
+
+      const img = card.querySelector('.prompt-media > img');
+      img.addEventListener('load', () => { img.dataset.state = 'loaded'; });
+      img.addEventListener('error', () => { img.dataset.state = 'error'; });
+
+      card.addEventListener('click', (e) => this.onCardClick(e, card, p));
+
+      return card;
+    },
+
+    onCardClick(e, card, p) {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+
+      if (action === 'like') { e.stopPropagation(); this.like(btn, p.id); return; }
+      if (action === 'save') { e.stopPropagation(); this.save(btn, p.id); return; }
+      if (action === 'copy' || action === 'copy-excerpt') {
+        e.stopPropagation();
+        this.copy(p.id, btn);
         return;
       }
-      var prevTab = S.tab;
-      if (prevTab !== tab) ScrollMemory.save(prevTab);
-      S.tab = tab;
-
-      $$('.tab-panel').forEach(function (p) {
-        p.classList.toggle('is-active', p.getAttribute('data-tab') === tab);
-      });
-      $$('.dock-item[data-tab]').forEach(function (b) {
-        b.setAttribute('aria-current', b.getAttribute('data-tab') === tab ? 'page' : 'false');
-      });
-
-      if (!opts.silent) {
-        try {
-          var url = new URL(location.href);
-          url.hash = tab === 'home' ? '' : tab;
-          history.replaceState(null, '', url.toString());
-        } catch (_) {}
+      if (action === 'comments') {
+        e.stopPropagation();
+        Drawers.openComments(p.id);
+        return;
       }
-
-      var loaders = {
-        home: function () { App.loadFeed('home'); },
-        explore: function () { App.loadFeed('explore'); },
-        liked: function () { App.loadFeed('liked'); },
-        saved: function () { App.loadFeed('saved'); },
-        profile: function () { Profile.openMine(); },
-        chat: function () { App.loadChats(); }
-      };
-      if (loaders[tab]) {
-        try { loaders[tab](); } catch (e) { console.error(e); }
-      }
-
-      if (ScrollMemory.positions[tab]) ScrollMemory.restore(tab);
-      else window.scrollTo(0, 0);
-    },
-
-    toggleTheme: function () {
-      var cur = document.documentElement.getAttribute('data-theme') || 'dark';
-      var next = cur === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      var i = byId('themeIcon');
-      if (i) i.className = next === 'dark' ? 'ph ph-moon' : 'ph ph-sun';
-      try { localStorage.setItem('kh_theme', next); } catch (_) {}
-    },
-
-    previewFeed: function () {
-      try { localStorage.setItem('kh_entered_app', 'true'); } catch (_) {}
-      var landing = byId('view-landing');
-      var app = byId('view-app');
-      var dock = byId('dock');
-      if (landing) landing.hidden = true;
-      if (app) app.hidden = false;
-      if (dock) dock.hidden = false;
-      window.scrollTo(0, 0);
-      App.switchTab('home', { silent: true });
-    },
-
-    goHome: function () {
-      try { localStorage.removeItem('kh_entered_app'); } catch (_) {}
-      var landing = byId('view-landing');
-      var app = byId('view-app');
-      var dock = byId('dock');
-      if (landing) landing.hidden = false;
-      if (app) app.hidden = true;
-      if (dock) dock.hidden = true;
-      window.scrollTo(0, 0);
-    },
-
-    setSort: function (sort) {
-      S.sort = sort;
-      $$('.sort-tab').forEach(function (t) {
-        t.setAttribute('aria-selected', t.getAttribute('data-sort') === sort ? 'true' : 'false');
-      });
-      S.posts.home = [];
-      App.loadFeed('home');
-    },
-
-    filterByTag: function (tag) {
-      S.filter = tag || null;
-      S.posts.home = [];
-      App.loadFeed('home');
-    },
-
-    refreshAll: function () {
-      var btn = $('.refresh-btn');
-      if (btn) btn.setAttribute('aria-busy', 'true');
-      var promises = [];
-      if (S.tab === 'home') {
-        S.posts.home = [];
-        promises.push(App.loadFeed('home'));
-      }
-      promises.push(App.loadChats());
-      return Promise.all(promises).finally(function () {
-        if (btn) btn.removeAttribute('aria-busy');
-      });
-    },
-
-    loadLandingFeed: function () {
-      var feed = byId('landingFeed');
-      if (!feed) return;
-      fetch('/api/posts?limit=6', { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (posts) {
-          S.posts.landing = posts;
-          feed.innerHTML = posts.length ? posts.map(Render.prompt).join('') : Render.empty('لا توجد برومبتات بعد', 'ph-sparkle');
-        })
-        .catch(function () {});
-    },
-
-    loadFeed: function (which) {
-      var feedId = { home: 'homeFeed', explore: 'exploreFeed', liked: 'likedFeed', saved: 'savedFeed' }[which];
-      var feed = byId(feedId);
-      if (!feed) return Promise.resolve();
-
-      var isEmpty = !S.posts[which] || S.posts[which].length === 0;
-      if (isEmpty) {
-        feed.setAttribute('aria-busy', 'true');
-        feed.innerHTML = Array(6).fill(Render.skeleton()).join('');
-      }
-
-      var url;
-      if (which === 'liked' || which === 'saved') {
-        url = '/api/posts?limit=50';
-      } else if (which === 'home') {
-        url = '/api/posts?limit=20&sort=' + S.sort;
-        if (S.filter) url += '&tag=' + encodeURIComponent(S.filter);
-      } else if (which === 'explore') {
-        url = '/api/posts?limit=20&sort=top';
-      }
-
-      return fetch(url, { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (posts) {
-          if (which === 'liked') posts = posts.filter(function (p) { return p.liked; });
-          if (which === 'saved') posts = posts.filter(function (p) { return p.saved; });
-          S.posts[which] = posts;
-
-          if (which === 'liked' || which === 'saved') {
-            App.updateCountPill(which, posts.length);
-          }
-
-          if (!posts.length) {
-            feed.innerHTML = Render.emptyFor(which);
-          } else {
-            feed.innerHTML = posts.map(Render.prompt).join('');
-            var cards = feed.querySelectorAll('.prompt-card:not(.skeleton-card)');
-            cards.forEach(function (c, i) {
-              c.style.opacity = '0';
-              c.style.transform = 'translateY(8px)';
-              c.style.transition = 'opacity .35s var(--ease-out) ' + Math.min(i * 30, 300) + 'ms, transform .35s var(--ease-out) ' + Math.min(i * 30, 300) + 'ms';
-            });
-            requestAnimationFrame(function () {
-              cards.forEach(function (c) { c.style.opacity = '1'; c.style.transform = 'translateY(0)'; });
-            });
-
-            if (['home', 'explore', 'liked', 'saved'].indexOf(which) >= 0) {
-              Infinite.attach(which);
-            }
-          }
-
-          if (which === 'home') App.loadFilters(posts);
-          if (which === 'explore') App.loadExploreFilters(posts);
-
-          feed.setAttribute('aria-busy', 'false');
-        })
-        .catch(function (e) {
-          console.error(e);
-          feed.innerHTML = Render.empty('تعذّر التحميل', 'ph-warning-circle');
-          feed.setAttribute('aria-busy', 'false');
-        });
-    },
-
-    updateCountPill: function (which, n) {
-      var pill = byId(which === 'liked' ? 'likedCount' : 'savedCount');
-      if (!pill) return;
-      pill.dataset.count = String(n);
-      var lbl = pill.querySelector('[data-count-label]');
-      if (lbl) lbl.textContent = U.num(n);
-    },
-
-    loadFilters: function (posts) {
-      var wrap = byId('filters');
-      if (!wrap) return;
-      var tags = {};
-      posts.forEach(function (p) { (p.tags || []).forEach(function (t) { tags[t] = true; }); });
-      var keys = Object.keys(tags);
-      if (keys.length === 0) { wrap.innerHTML = ''; return; }
-      var top = keys.slice(0, 12);
-      var html = '<button class="filter" data-tag="" aria-pressed="' + (!S.filter ? 'true' : 'false') + '" type="button"><i class="ph ph-squares-four"></i> الكل</button>';
-      top.forEach(function (t) {
-        html += '<button class="filter" data-tag="' + esc(t) + '" aria-pressed="' + (S.filter === t ? 'true' : 'false') + '" type="button">' + esc(t) + '</button>';
-      });
-      wrap.innerHTML = html;
-    },
-
-    loadExploreFilters: function (posts) {
-      var wrap = byId('exploreFilters');
-      if (!wrap) return;
-      var models = {};
-      posts.forEach(function (p) { if (p.model) models[p.model] = true; });
-      var keys = Object.keys(models);
-      if (keys.length === 0) { wrap.innerHTML = ''; return; }
-      var html = '<button class="filter" aria-pressed="true" type="button"><i class="ph ph-squares-four"></i> الكل</button>';
-      keys.slice(0, 8).forEach(function (m) {
-        html += '<button class="filter" aria-pressed="false" type="button">' + esc(m) + '</button>';
-      });
-      wrap.innerHTML = html;
-    },
-
-    updateUserUI: function () {
-      var signIn = byId('signInBtn');
-      var avatarBtn = byId('avatarBtn');
-      var avatarImg = byId('avatarImg');
-      var cAvatar = byId('composerAvatar');
-      var cFormAvatar = byId('composerFormAvatar');
-      var cName = byId('composerUserName');
-      if (S.me) {
-        if (signIn) signIn.hidden = true;
-        if (avatarBtn) avatarBtn.hidden = false;
-        if (avatarImg) avatarImg.src = S.me.avatar || '';
-        if (cAvatar) cAvatar.src = S.me.avatar || '';
-        if (cFormAvatar) cFormAvatar.src = S.me.avatar || '';
-        if (cName) cName.textContent = S.me.name || '—';
-      } else {
-        if (signIn) signIn.hidden = false;
-        if (avatarBtn) avatarBtn.hidden = true;
+      if (action === 'open-author') {
+        e.stopPropagation();
+        const aid = btn.dataset.authorId;
+        if (aid) App.openProfile(parseInt(aid, 10));
+        return;
       }
     },
 
-    loadChats: function () {
-      var list = byId('chatList');
-      if (!list) return Promise.resolve();
-      if (!S.me) {
-        list.innerHTML = Render.empty('سجّل دخولك', 'ph-lock');
-        return Promise.resolve();
-      }
-      return fetch('/api/chats', { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (chats) {
-          S.chats = chats;
-          list.innerHTML = chats.length ? chats.map(Render.chatItem).join('') : Render.empty('لا محادثات', 'ph-chat-circle-dots');
-          App.refreshChatsBadge();
-        })
-        .catch(function () {});
-    },
-
-    refreshChatsBadge: function () {
-      if (!S.me) return;
-      fetch('/api/chats', { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (chats) {
-          var unread = chats.reduce(function (s, c) { return s + (c.unread || 0); }, 0);
-          var badge = byId('dockChatBadge');
-          if (badge) {
-            badge.hidden = unread === 0;
-            badge.textContent = unread > 99 ? '99+' : String(unread);
-          }
-        })
-        .catch(function () {});
-    },
-
-    doSearch: function (q) {
-      var results = byId('searchResults');
-      if (!results) return;
-      if (!q || q.length < 2) { results.dataset.open = 'false'; return; }
-      fetch('/api/posts?q=' + encodeURIComponent(q) + '&limit=8', { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (posts) {
-          if (!posts.length) {
-            results.innerHTML = '<div style="padding:20px;text-align:center;color:var(--fg-3);font-size:14px">لا نتائج</div>';
-          } else {
-            results.innerHTML = posts.map(function (p) {
-              return '<div class="search-result" data-action="open-post" data-post="' + p.id + '">' +
-                '<img src="' + esc(p.image || '') + '" alt="">' +
-                '<div class="search-result-info"><strong>' + esc(p.title) + '</strong><span>' + esc((p.prompt || '').slice(0, 60)) + '…</span></div>' +
-                '</div>';
-            }).join('');
-          }
-          results.dataset.open = 'true';
-        })
-        .catch(function () { results.dataset.open = 'false'; });
-    },
-
-    handleHash: function () {
-      var h = (location.hash || '').replace('#', '') || 'home';
-      var valid = ['home', 'explore', 'liked', 'saved', 'chat', 'profile'];
-      if (valid.indexOf(h) >= 0) App.switchTab(h, { silent: true });
-    },
-
-    init: function () {
-      var nav = byId('nav');
-      if (nav) {
-        window.addEventListener('scroll', function () {
-          nav.classList.toggle('is-scrolled', window.scrollY > 12);
-        }, { passive: true });
-      }
-
-      var search = byId('searchInput');
-      if (search) {
-        search.addEventListener('input', U.debounce(function (e) { App.doSearch(e.target.value); }, 260));
-      }
-
-      window.addEventListener('online', function () {
-        var nb = byId('netBar');
-        if (nb) nb.dataset.open = 'false';
-        toast('عاد الاتصال', 'success');
-      });
-      window.addEventListener('offline', function () {
-        var nb = byId('netBar');
-        if (nb) nb.dataset.open = 'true';
-      });
-
-      document.addEventListener('click', function (e) {
-        if (!e.target.closest('.search')) {
-          var r = byId('searchResults');
-          if (r) r.dataset.open = 'false';
-        }
-      });
-
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') {
-          var r = byId('searchResults');
-          if (r && r.dataset.open === 'true') {
-            r.dataset.open = 'false';
-            var si = byId('searchInput');
-            if (si) si.blur();
-          }
-        }
-      });
-
-      var ci = byId('chatInput');
-      if (ci) {
-        ci.addEventListener('input', function () { U.autoGrow(ci); });
-        ci.addEventListener('keydown', function (e) {
-          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); Chat.send(e); }
-        });
-      }
-      var cmi = byId('commentInput');
-      if (cmi) cmi.addEventListener('input', function () { U.autoGrow(cmi); });
-
-      PTR.init();
-
-      document.addEventListener('visibilitychange', function () {
-        if (document.visibilityState === 'visible' && S.me && S.tab === 'home') {
-          fetch('/api/posts?limit=1', { credentials: 'same-origin' })
-            .then(function (r) { return r.json(); })
-            .then(function (posts) {
-              if (posts.length && S.posts.home.length) {
-                if (posts[0].id !== S.posts.home[0].id) NewPostsPill.show();
-              }
-            })
-            .catch(function () {});
-        }
-      });
-
-      if ('serviceWorker' in navigator && location.protocol === 'https:') {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
-      }
-
-      App.updateUserUI();
-      App.handleHash();
-
-      if (S.me) {
-        App.loadFeed('home');
-        App.loadChats();
-      } else {
-        App.loadLandingFeed();
-      }
-    }
-  };
-
-  /* ═══════ POST ═══════ */
-  var Post = {
-    like: function (btn, postId) {
+    async like(btn, id) {
       if (!S.me) { Auth.open('login'); return; }
-      if (!postId || S.pendingLikes[postId]) return;
-      S.pendingLikes[postId] = true;
-      var wasLiked = btn.getAttribute('aria-pressed') === 'true';
-      var next = !wasLiked;
-      $$('[data-post-id="' + postId + '"] [data-action="like"]').forEach(function (x) {
-        x.setAttribute('aria-pressed', next ? 'true' : 'false');
+
+      const currently = btn.getAttribute('aria-pressed') === 'true';
+      const next = !currently;
+
+      // Optimistic
+      document.querySelectorAll(`[data-post-id="${id}"] [data-action="like"]`).forEach(b => {
+        b.setAttribute('aria-pressed', String(next));
       });
-      U.buzz(12);
-      fetch('/api/posts/' + postId + '/like', { method: 'POST', credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          $$('[data-post-id="' + postId + '"] [data-action="like"]').forEach(function (x) {
-            x.setAttribute('aria-pressed', d.liked ? 'true' : 'false');
-          });
-          $$('[data-post-id="' + postId + '"] [data-likes-count]').forEach(function (x) {
-            x.textContent = U.num(d.likes);
-          });
-          Object.keys(S.posts).forEach(function (k) {
-            var p = S.posts[k].find(function (x) { return x.id === postId; });
-            if (p) { p.liked = d.liked; p.likes = d.likes; }
-          });
-        })
-        .catch(function () {
-          $$('[data-post-id="' + postId + '"] [data-action="like"]').forEach(function (x) {
-            x.setAttribute('aria-pressed', wasLiked ? 'true' : 'false');
-          });
-          toast('فشل الإعجاب', 'error');
-        })
-        .finally(function () { delete S.pendingLikes[postId]; });
+
+      try {
+        const res = await API.post(`/api/posts/${id}/like`);
+        const liked = !!res.liked;
+        const count = res.likes;
+        document.querySelectorAll(`[data-post-id="${id}"] [data-action="like"]`).forEach(b => {
+          b.setAttribute('aria-pressed', String(liked));
+        });
+        document.querySelectorAll(`[data-post-id="${id}"] [data-count="likes"]`).forEach(el => {
+          el.textContent = U.formatNumber(count);
+        });
+        if (window.Sounds) Sounds.play('like');
+      } catch (err) {
+        document.querySelectorAll(`[data-post-id="${id}"] [data-action="like"]`).forEach(b => {
+          b.setAttribute('aria-pressed', String(currently));
+        });
+        Toast.show(err.message || 'تعذّر الإعجاب', 'error');
+      }
     },
-    save: function (btn, postId) {
+
+    async save(btn, id) {
       if (!S.me) { Auth.open('login'); return; }
-      if (!postId || S.pendingSaves[postId]) return;
-      S.pendingSaves[postId] = true;
-      var wasSaved = btn.getAttribute('aria-pressed') === 'true';
-      var next = !wasSaved;
-      $$('[data-post-id="' + postId + '"] [data-action="save"]').forEach(function (x) {
-        x.setAttribute('aria-pressed', next ? 'true' : 'false');
+
+      const currently = btn.getAttribute('aria-pressed') === 'true';
+      const next = !currently;
+
+      document.querySelectorAll(`[data-post-id="${id}"] [data-action="save"]`).forEach(b => {
+        b.setAttribute('aria-pressed', String(next));
       });
-      U.buzz(8);
-      fetch('/api/posts/' + postId + '/save', { method: 'POST', credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          $$('[data-post-id="' + postId + '"] [data-action="save"]').forEach(function (x) {
-            x.setAttribute('aria-pressed', d.saved ? 'true' : 'false');
-          });
-          toast(d.saved ? 'تم الحفظ' : 'أُزيل من المحفوظة', 'success');
-          Object.keys(S.posts).forEach(function (k) {
-            var p = S.posts[k].find(function (x) { return x.id === postId; });
-            if (p) { p.saved = d.saved; p.saves = d.saves; }
-          });
-        })
-        .catch(function () {
-          $$('[data-post-id="' + postId + '"] [data-action="save"]').forEach(function (x) {
-            x.setAttribute('aria-pressed', wasSaved ? 'true' : 'false');
-          });
-          toast('فشل الحفظ', 'error');
-        })
-        .finally(function () { delete S.pendingSaves[postId]; });
+
+      try {
+        const res = await API.post(`/api/posts/${id}/save`);
+        const saved = !!res.saved;
+        document.querySelectorAll(`[data-post-id="${id}"] [data-action="save"]`).forEach(b => {
+          b.setAttribute('aria-pressed', String(saved));
+        });
+        Toast.show(saved ? 'تم الحفظ' : 'أُزيل من المحفوظة', 'success', 1800);
+        if (saved && S.feeds.saved) S.feeds.saved.loaded = false;
+      } catch (err) {
+        document.querySelectorAll(`[data-post-id="${id}"] [data-action="save"]`).forEach(b => {
+          b.setAttribute('aria-pressed', String(currently));
+        });
+        Toast.show(err.message || 'تعذّر الحفظ', 'error');
+      }
     },
-    copy: function (postId, btn) {
-      var text = '';
-      Object.keys(S.posts).forEach(function (k) {
-        var p = S.posts[k].find(function (x) { return x.id === Number(postId); });
-        if (p && p.prompt) text = p.prompt;
-      });
-      if (!text && btn) {
-        var card = btn.closest('.prompt-card');
-        var ex = card ? card.querySelector('.prompt-excerpt') : null;
+
+    async copy(id, btn) {
+      const card = btn.closest('[data-post-id]');
+      let text = '';
+      if (card) {
+        const ex = card.querySelector('.prompt-excerpt');
         if (ex) text = ex.textContent.trim();
       }
-      if (!text) { toast('لا يوجد نص', 'warning'); return; }
-      U.copy(text)
-        .then(function () {
-          toast('تم النسخ', 'success');
-          U.buzz([10, 30, 10]);
-          fetch('/api/posts/' + postId + '/copy', { method: 'POST', credentials: 'same-origin' }).catch(function () {});
-        })
-        .catch(function () { toast('فشل النسخ', 'error'); });
+      if (!text) {
+        try {
+          const p = await API.get(`/api/posts/${id}`);
+          text = p.prompt || '';
+        } catch (e) { /* ignore */ }
+      }
+
+      const ok = await U.copy(text);
+      if (ok) {
+        if (window.Sounds) Sounds.play('copy');
+        Toast.show('تم النسخ', 'success', 1600);
+        API.post(`/api/posts/${id}/copy`).catch(() => {});
+      } else {
+        Toast.show('تعذّر النسخ', 'error');
+      }
     },
-    open: function () { toast('قريباً', 'ph-eye'); }
   };
 
-  /* ═══════ COMPOSER ═══════ */
-  var Composer = {
-    _type: 'text',
-    open: function () {
+  /* ═══════════════════════════════════════════════════════════════
+     FEED (list rendering + pagination)
+     ═══════════════════════════════════════════════════════════════ */
+  const Feed = {
+    container(name) {
+      const map = {
+        home: 'homeFeed',
+        explore: 'exploreFeed',
+        liked: 'likedFeed',
+        saved: 'savedFeed',
+        profile: 'profilePanel',
+      };
+      return document.getElementById(map[name] || '');
+    },
+
+    skeletonsHtml() {
+      let html = '';
+      for (let i = 0; i < 6; i++) html += Feed.skeletonCardHtml();
+      return html;
+    },
+
+    skeletonCardHtml() {
+      return `<article class="prompt-card skeleton-card" aria-hidden="true">
+        <div class="prompt-media skeleton skeleton-media"></div>
+        <div class="prompt-body">
+          <div class="skeleton skeleton-line" style="width:55%"></div>
+          <div class="skeleton skeleton-line" style="width:85%;height:18px"></div>
+          <div class="skeleton skeleton-line" style="width:100%"></div>
+          <div class="skeleton skeleton-line" style="width:75%"></div>
+          <div class="cluster" style="gap:6px">
+            <div class="skeleton skeleton-line" style="width:60px;height:22px;border-radius:999px"></div>
+            <div class="skeleton skeleton-line" style="width:80px;height:22px;border-radius:999px"></div>
+          </div>
+        </div>
+      </article>`;
+    },
+
+    emptyHtml(icon, title, msg) {
+      return `<div class="empty-block" data-empty-state>
+        <i class="ph ${icon}" aria-hidden="true"></i>
+        <h4>${U.escapeHtml(title)}</h4>
+        <p>${U.escapeHtml(msg)}</p>
+      </div>`;
+    },
+
+    async load(name, opts) {
+      opts = opts || {};
+      const fs = feedState(name);
+      if (fs.busy && !opts.force) return;
+      if (!opts.force && fs.loaded && fs.items.length > 0) return;
+
+      const container = this.container(name);
+      if (!container) return;
+
+      if (opts.reset !== false) {
+        fs.items = [];
+        fs.before = null;
+        fs.hasMore = true;
+        fs.loaded = false;
+      }
+
+      // Show skeletons only on first load
+      if (fs.items.length === 0) {
+        container.innerHTML = this.skeletonsHtml();
+        container.setAttribute('aria-busy', 'true');
+      }
+
+      fs.busy = true;
+      if (fs.controller) fs.controller.abort();
+      fs.controller = new AbortController();
+
+      const params = new URLSearchParams();
+      if (name === 'home' || name === 'explore') {
+        params.set('sort', S.sort);
+        if (S.filterTag) params.set('tag', S.filterTag);
+        if (S.filterModel) params.set('model', S.filterModel);
+      }
+      if (name === 'liked') {
+        // لاحقاً: إن أردت API specific
+      }
+      if (name === 'profile' && S.viewingUser) {
+        params.set('author', String(S.viewingUser.id));
+      }
+      params.set('limit', String(CFG.PAGE_SIZE));
+      if (fs.before) params.set('before_id', String(fs.before));
+
+      const path = name === 'profile' && S.viewingUser
+        ? `/api/users/${S.viewingUser.id}/posts`
+        : '/api/posts';
+
+      try {
+        const items = await API.get(path + '?' + params.toString(), { signal: fs.controller.signal });
+        const list = Array.isArray(items) ? items : [];
+
+        if (list.length === 0 && fs.items.length === 0) {
+          this.showEmpty(name);
+          fs.hasMore = false;
+          fs.loaded = true;
+          return;
+        }
+
+        const frag = document.createDocumentFragment();
+        list.forEach(p => frag.appendChild(Post.renderCard(p)));
+        // Clear skeletons
+        if (fs.items.length === 0) container.innerHTML = '';
+        container.appendChild(frag);
+        fs.items = fs.items.concat(list);
+        fs.before = list[list.length - 1].id;
+        fs.hasMore = list.length === CFG.PAGE_SIZE;
+        fs.loaded = true;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        if (fs.items.length === 0) {
+          container.innerHTML = this.emptyHtml(
+            'ph-cloud-slash', 'تعذّر التحميل', err.message || 'حاول مرة أخرى'
+          );
+        } else {
+          Toast.show(err.message || 'تعذّر تحميل المزيد', 'error');
+        }
+      } finally {
+        fs.busy = false;
+        container.setAttribute('aria-busy', 'false');
+      }
+    },
+
+    showEmpty(name) {
+      const c = this.container(name);
+      if (!c) return;
+      const emptyMap = {
+        home: ['ph-image-square', 'لا توجد برومبتات', 'كن أول من ينشر.'],
+        explore: ['ph-compass', 'لا شيء هنا', 'جرّب تصفية أخرى.'],
+        liked: ['ph-heart', 'لا توجد إعجابات بعد', 'ابدأ بتصفح المنصة وضع قلبك على ما يعجبك.'],
+        saved: ['ph-bookmark-simple', 'المكتبة فارغة', 'احفظ البرومبتات المميزة للرجوع إليها لاحقاً.'],
+        profile: ['ph-image-square', 'لا منشورات', 'لم ينشر هذا المستخدم بعد.'],
+      };
+      const [icon, title, msg] = emptyMap[name] || ['ph-info', 'لا يوجد شيء', ''];
+      c.innerHTML = this.emptyHtml(icon, title, msg);
+    },
+
+    async loadMore(name) {
+      const fs = feedState(name);
+      if (fs.busy || !fs.hasMore) return;
+      await this.load(name, { reset: false });
+    },
+
+    reset(name) {
+      const fs = feedState(name);
+      fs.items = [];
+      fs.before = null;
+      fs.hasMore = true;
+      fs.loaded = false;
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     COMMENTS (drawer)
+     ═══════════════════════════════════════════════════════════════ */
+  const Comments = {
+    currentPostId: null,
+
+    async load(postId) {
+      const body = document.getElementById('commentsBody');
+      const form = document.getElementById('commentForm');
+      const countEl = document.getElementById('commentCount');
+      if (!body) return;
+
+      body.innerHTML = `<div class="load-more"><div class="spinner"></div></div>`;
+      if (form) form.style.display = S.me ? 'flex' : 'none';
+
+      try {
+        const items = await API.get(`/api/posts/${postId}/comments`);
+        if (!items || items.length === 0) {
+          body.innerHTML = `<div class="empty-block">
+            <i class="ph ph-chat-circle-dots" aria-hidden="true"></i>
+            <h4>لا تعليقات بعد</h4>
+            <p>كن أول المعلّقين.</p>
+          </div>`;
+          if (countEl) countEl.textContent = '';
+          return;
+        }
+        if (countEl) countEl.textContent = '(' + items.length + ')';
+        body.innerHTML = items.map(c => this.rowHtml(c)).join('');
+      } catch (err) {
+        body.innerHTML = `<div class="empty-block">
+          <i class="ph ph-warning-circle" aria-hidden="true"></i>
+          <h4>تعذّر التحميل</h4>
+          <p>${U.escapeHtml(err.message)}</p>
+        </div>`;
+      }
+    },
+
+    rowHtml(c) {
+      const a = c.author_data || {};
+      const mine = S.me && S.me.id === c.author;
+      return `<div class="comment" data-comment-id="${c.id}">
+        <img class="avatar avatar-sm" src="${U.escapeHtml(a.avatar || '')}" alt="" loading="lazy">
+        <div class="comment-body">
+          <div class="comment-top">
+            <span class="comment-name">${U.escapeHtml(a.name || 'مستخدم')}</span>
+            <span class="comment-time">${U.relativeTime(c.time)}</span>
+          </div>
+          <div class="comment-text">${U.escapeHtml(c.text || '')}</div>
+          ${mine ? `<div class="comment-actions">
+            <button type="button" data-action="delete-comment" data-comment-id="${c.id}">
+              <i class="ph ph-trash" aria-hidden="true"></i> حذف
+            </button>
+          </div>` : ''}
+        </div>
+      </div>`;
+    },
+
+    async send(ev) {
+      ev.preventDefault();
       if (!S.me) { Auth.open('login'); return; }
-      Composer._type = 'text';
-      Composer.reset();
-      var view = byId('composerView');
+      const input = document.getElementById('commentInput');
+      if (!input) return;
+      const text = input.value.trim();
+      if (!text || !this.currentPostId) return;
+
+      input.disabled = true;
+      try {
+        const c = await API.post(`/api/posts/${this.currentPostId}/comments`, { text });
+        input.value = '';
+        U.autoGrow(input);
+        if (window.Sounds) Sounds.play('send');
+
+        const body = document.getElementById('commentsBody');
+        if (body) {
+          const empty = body.querySelector('.empty-block');
+          if (empty) empty.remove();
+          body.insertAdjacentHTML('afterbegin', this.rowHtml(c));
+          const countEl = document.getElementById('commentCount');
+          if (countEl) {
+            const n = body.querySelectorAll('.comment').length;
+            countEl.textContent = '(' + n + ')';
+          }
+        }
+      } catch (err) {
+        Toast.show(err.message || 'تعذّر الإرسال', 'error');
+      } finally {
+        input.disabled = false;
+        input.focus();
+      }
+    },
+
+    async delete(id) {
+      if (!confirm('حذف التعليق؟')) return;
+      try {
+        await API.del(`/api/comments/${id}`);
+        const row = document.querySelector(`.comment[data-comment-id="${id}"]`);
+        if (row) row.remove();
+        Toast.show('تم الحذف', 'success', 1500);
+      } catch (err) {
+        Toast.show(err.message || 'تعذّر الحذف', 'error');
+      }
+    },
+
+    init() {
+      document.addEventListener('click', (e) => {
+        const del = e.target.closest('[data-action="delete-comment"]');
+        if (del) this.delete(parseInt(del.dataset.commentId, 10));
+      });
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     DRAWERS (comments + notifications)
+     ═══════════════════════════════════════════════════════════════ */
+  const Drawers = {
+    openComments(postId) {
+      this.closeNotifications();
+      Comments.currentPostId = postId;
+      const scrim = document.getElementById('commentsScrim');
+      const drawer = document.getElementById('commentsDrawer');
+      if (!scrim || !drawer) return;
+      scrim.setAttribute('data-open', 'true');
+      drawer.setAttribute('data-open', 'true');
+      document.documentElement.style.overflow = 'hidden';
+      Comments.load(postId);
+      if (window.Sounds) Sounds.play('open');
+    },
+
+    closeComments() {
+      const scrim = document.getElementById('commentsScrim');
+      const drawer = document.getElementById('commentsDrawer');
+      if (scrim) scrim.setAttribute('data-open', 'false');
+      if (drawer) drawer.setAttribute('data-open', 'false');
+      document.documentElement.style.overflow = '';
+    },
+
+    openNotifications() {
+      this.closeComments();
+      const scrim = document.getElementById('notificationsScrim');
+      const drawer = document.getElementById('notificationsDrawer');
+      if (!scrim || !drawer) return;
+      scrim.setAttribute('data-open', 'true');
+      drawer.setAttribute('data-open', 'true');
+      document.documentElement.style.overflow = 'hidden';
+      if (window.Sounds) Sounds.play('open');
+    },
+
+    closeNotifications() {
+      const scrim = document.getElementById('notificationsScrim');
+      const drawer = document.getElementById('notificationsDrawer');
+      if (scrim) scrim.setAttribute('data-open', 'false');
+      if (drawer) drawer.setAttribute('data-open', 'false');
+      document.documentElement.style.overflow = '';
+    },
+
+    closeAll() {
+      this.closeComments();
+      this.closeNotifications();
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     COMPOSER (new post)
+     ═══════════════════════════════════════════════════════════════ */
+  const Composer = {
+    type: 'text',
+
+    open() {
+      if (!S.me) { Auth.open('login'); return; }
+      const view = document.getElementById('composerView');
       if (!view) return;
-      var av = byId('composerFormAvatar');
-      var nm = byId('composerUserName');
-      if (av) av.src = (S.me.avatar || '');
-      if (nm) nm.textContent = S.me.name || '—';
+
+      // Fill avatar
+      const av = document.getElementById('composerFormAvatar');
+      if (av) av.src = S.me.avatar || '';
+      const name = document.getElementById('composerUserName');
+      if (name) name.textContent = S.me.name || '—';
+
+      // Restore draft
+      this.restoreDraft();
+
       view.hidden = false;
       document.body.classList.add('view-open');
-      document.body.style.overflow = 'hidden';
-      setTimeout(function () {
-        var t = byId('cTitle');
-        if (t) t.focus();
-      }, 180);
+      if (window.Sounds) Sounds.play('open');
     },
-    close: function () {
-      var view = byId('composerView');
-      if (view) view.hidden = true;
+
+    close() {
+      const view = document.getElementById('composerView');
+      if (!view) return;
+      this.saveDraft();
+      view.hidden = true;
       document.body.classList.remove('view-open');
-      document.body.style.overflow = '';
-      Composer.reset();
+      if (window.Sounds) Sounds.play('close');
     },
-    reset: function () {
-      var form = byId('composerForm');
-      var prev = byId('imgPreview');
-      var imgF = byId('imageField');
-      if (form) form.reset();
-      if (prev) prev.hidden = true;
-      if (imgF) imgF.hidden = true;
-      Composer._type = 'text';
-      $$('.type-pill').forEach(function (p) {
-        p.setAttribute('aria-selected', p.dataset.type === 'text' ? 'true' : 'false');
-      });
-      var promptEl = byId('cPrompt');
-      if (promptEl) promptEl.placeholder = 'اكتب نص المنشور…';
-      var btn = byId('composerSubmit');
-      if (btn) btn.removeAttribute('aria-busy');
+
+    saveDraft() {
+      if (!S.me) return;
+      const draft = {
+        title: (document.getElementById('cTitle') || {}).value || '',
+        prompt: (document.getElementById('cPrompt') || {}).value || '',
+        image: (document.getElementById('cImage') || {}).value || '',
+        model: (document.getElementById('cModel') || {}).value || '',
+        tags: (document.getElementById('cTags') || {}).value || '',
+        type: this.type,
+      };
+      try { localStorage.setItem(CFG.DRAFT_KEY, JSON.stringify(draft)); } catch (e) {}
     },
-    chooseType: function (type) {
-      Composer._type = type;
-      var imgF = byId('imageField');
-      var promptEl = byId('cPrompt');
-      if (imgF) imgF.hidden = type !== 'prompt';
-      if (promptEl) promptEl.placeholder = type === 'prompt' ? 'اكتب البرومبت…' : 'اكتب نص المنشور…';
-      $$('.type-pill').forEach(function (p) {
-        p.setAttribute('aria-selected', p.dataset.type === type ? 'true' : 'false');
-      });
-      setTimeout(function () {
-        var t = byId('cTitle');
-        if (t) t.focus();
-      }, 80);
+
+    restoreDraft() {
+      try {
+        const raw = localStorage.getItem(CFG.DRAFT_KEY);
+        if (!raw) return;
+        const d = JSON.parse(raw);
+        const el = (id) => document.getElementById(id);
+        if (d.title && el('cTitle')) el('cTitle').value = d.title;
+        if (d.prompt && el('cPrompt')) el('cPrompt').value = d.prompt;
+        if (d.image && el('cImage')) el('cImage').value = d.image;
+        if (d.model && el('cModel')) el('cModel').value = d.model;
+        if (d.tags && el('cTags')) el('cTags').value = d.tags;
+      } catch (e) {}
     },
-    previewImage: function (url) {
-      var p = byId('imgPreview');
-      var i = byId('imgPreviewEl');
-      if (!p || !i) return;
-      if (url && /^https?:\/\//.test(url)) {
-        i.src = url;
-        p.hidden = false;
+
+    clearDraft() {
+      try { localStorage.removeItem(CFG.DRAFT_KEY); } catch (e) {}
+    },
+
+    chooseType(type) {
+      this.type = type;
+      const switchEl = document.querySelector('.type-switch');
+      if (switchEl) {
+        switchEl.querySelectorAll('.type-pill').forEach(b => {
+          b.setAttribute('aria-selected', b.dataset.type === type ? 'true' : 'false');
+        });
+      }
+      const imageField = document.getElementById('imageField');
+      if (imageField) imageField.hidden = type !== 'prompt';
+      if (window.Sounds) Sounds.play('toggle');
+    },
+
+    previewImage(url) {
+      const wrap = document.getElementById('imgPreview');
+      const img = document.getElementById('imgPreviewEl');
+      if (!wrap || !img) return;
+      if (url && /^https?:\/\//i.test(url)) {
+        img.src = url;
+        wrap.hidden = false;
       } else {
-        p.hidden = true;
+        wrap.hidden = true;
       }
     },
-    clearPreview: function () {
-      var p = byId('imgPreview');
-      var i = byId('imgPreviewEl');
-      var inp = byId('cImage');
-      if (p) p.hidden = true;
-      if (i) i.src = '';
-      if (inp) inp.value = '';
-    },
-    publish: function (e) {
-      if (e) e.preventDefault();
-      if (!S.me) { Auth.open('login'); return; }
-      var title = (byId('cTitle') || {}).value || '';
-      var prompt = (byId('cPrompt') || {}).value || '';
-      if (!title.trim() || !prompt.trim()) { toast('أكمل العنوان والنص', 'warning'); return; }
-      var tags = ((byId('cTags') || {}).value || '').split(/[،,]/).map(function (s) { return s.trim(); }).filter(Boolean);
-      var btn = byId('composerSubmit');
-      if (btn) btn.setAttribute('aria-busy', 'true');
-      fetch('/api/posts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          title: title.trim(),
-          prompt: prompt.trim(),
-          image: (byId('cImage') || {}).value || '',
-          model: (byId('cModel') || {}).value || '',
-          tags: tags
-        })
-      })
-        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-        .then(function (res) {
-          if (!res.ok) throw new Error((res.d && res.d.error) || 'فشل النشر');
-          toast('تم النشر!', 'success');
-          Composer.close();
-          if (S.posts.home) S.posts.home.unshift(res.d);
-          setTimeout(function () { location.reload(); }, 600);
-        })
-        .catch(function (err) {
-          toast(err.message || 'فشل النشر', 'error');
-          if (btn) btn.removeAttribute('aria-busy');
-        });
-    }
-  };
 
-  /* ═══════ CHAT ═══════ */
-  var Chat = {
-    open: function (chatId) {
-      S.activeChat = chatId;
-      var layout = byId('chatLayout');
-      var head = byId('chatHead');
-      var body = byId('chatBody');
-      if (!layout || !head || !body) return;
-      layout.dataset.view = 'thread';
-      var chat = null;
-      for (var i = 0; i < S.chats.length; i++) {
-        if (S.chats[i].id === chatId) { chat = S.chats[i]; break; }
+    clearPreview() {
+      const wrap = document.getElementById('imgPreview');
+      const img = document.getElementById('imgPreviewEl');
+      const input = document.getElementById('cImage');
+      if (wrap) wrap.hidden = true;
+      if (img) img.src = '';
+      if (input) input.value = '';
+    },
+
+    async publish(ev) {
+      if (ev) ev.preventDefault();
+      if (!S.me) { Auth.open('login'); return; }
+
+      const title = ((document.getElementById('cTitle') || {}).value || '').trim();
+      const prompt = ((document.getElementById('cPrompt') || {}).value || '').trim();
+      const image = ((document.getElementById('cImage') || {}).value || '').trim();
+      const model = ((document.getElementById('cModel') || {}).value || '').trim();
+      const tagsRaw = ((document.getElementById('cTags') || {}).value || '').trim();
+
+      if (!title || !prompt) {
+        if (window.Sounds) Sounds.play('error');
+        return Toast.show('العنوان والمحتوى مطلوبان', 'warning');
       }
-      var other = (chat && chat.with_user) || {};
-      head.innerHTML = '<button class="btn btn-icon btn-ghost btn-sm" data-action="chat-list" aria-label="رجوع" type="button"><i class="ph ph-arrow-right"></i></button>' +
-        '<img class="avatar avatar-sm" src="' + esc(other.avatar || '') + '" alt="">' +
-        '<div class="chat-thread-info"><strong>' + esc(other.name || 'محادثة') + '</strong><span>متصل</span></div>';
-      body.innerHTML = '<div style="text-align:center;padding:var(--sp-6)"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite;font-size:24px;color:var(--c-brand)"></i></div>';
-      fetch('/api/chats/' + chatId + '/messages', { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (msgs) {
-          body.innerHTML = msgs.length ? msgs.map(Render.message).join('') : Render.empty('ابدأ المحادثة', 'ph-chat-circle');
-          Chat.scrollBottom();
-        })
-        .catch(function () { body.innerHTML = Render.empty('تعذّر التحميل', 'ph-warning-circle'); });
-    },
-    showList: function () {
-      var layout = byId('chatLayout');
-      if (layout) layout.dataset.view = 'list';
-      S.activeChat = null;
-    },
-    send: function (e) {
-      if (e) e.preventDefault();
-      var input = byId('chatInput');
-      var text = (input && input.value || '').trim();
-      if (!text || !S.activeChat) return;
-      var body = byId('chatBody');
-      var empty = body.querySelector('.empty-block');
-      if (empty) empty.remove();
-      body.insertAdjacentHTML('beforeend', '<div class="msg msg-me" data-temp>' + esc(text) + '<span class="msg-time">الآن</span></div>');
-      input.value = '';
-      U.autoGrow(input);
-      Chat.scrollBottom();
-      fetch('/api/chats/' + S.activeChat + '/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ text: text })
-      })
-        .then(function (r) { return r.json(); })
-        .then(function (m) {
-          var t = body.querySelector('[data-temp]');
-          if (t) t.remove();
-          body.insertAdjacentHTML('beforeend', Render.message(m));
-          Chat.scrollBottom();
-        })
-        .catch(function () {
-          var t = body.querySelector('[data-temp]');
-          if (t) t.remove();
-          toast('تعذّر الإرسال', 'error');
+
+      const tags = tagsRaw
+        ? tagsRaw.split(/[,،]/).map(t => t.trim()).filter(Boolean)
+        : [];
+
+      const btn = document.getElementById('composerSubmit');
+      if (btn) { btn.setAttribute('aria-busy', 'true'); btn.disabled = true; }
+
+      try {
+        const post = await API.post('/api/posts', {
+          title, prompt, image: image || null, model: model || null, tags,
         });
+        // Prepend to home feed
+        const homeEl = document.getElementById('homeFeed');
+        if (homeEl && post) {
+          const empty = homeEl.querySelector('.empty-block');
+          if (empty) empty.remove();
+          const card = Post.renderCard(post);
+          homeEl.insertBefore(card, homeEl.firstChild);
+        }
+        this.clearDraft();
+        this.close();
+        if (window.Sounds) Sounds.play('success');
+        Toast.show('تم النشر', 'success');
+      } catch (err) {
+        if (window.Sounds) Sounds.play('error');
+        Toast.show(err.message || 'تعذّر النشر', 'error');
+      } finally {
+        if (btn) { btn.removeAttribute('aria-busy'); btn.disabled = false; }
+      }
     },
-    scrollBottom: function () {
-      var body = byId('chatBody');
-      if (body) body.scrollTop = body.scrollHeight;
-    },
-    filterList: function (q) {
-      var list = byId('chatList');
-      if (!list) return;
-      var query = (q || '').trim().toLowerCase();
-      $$('.chat-item', list).forEach(function (item) {
-        var name = (item.dataset.name || '').toLowerCase();
-        item.hidden = !!(query && name.indexOf(query) < 0);
+
+    init() {
+      // Type pills
+      document.querySelectorAll('.type-pill').forEach(btn => {
+        btn.addEventListener('click', () => this.chooseType(btn.dataset.type));
+      });
+      // Autosave draft every 2s
+      ['cTitle', 'cPrompt', 'cImage', 'cTags'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', U.debounce(() => this.saveDraft(), 1500));
       });
     },
-    newChat: function () { toast('اختر مستخدماً للبدء', 'ph-note-pencil'); },
-    attach: function () { toast('قريباً', 'ph-paperclip'); }
   };
 
-  /* ═══════ DRAWERS + COMMENTS ═══════ */
-  var Drawers = {
-    openComments: function (postId) {
-      S.activePost = postId;
-      var m = byId('commentsDrawer');
-      var scrim = byId('commentsScrim');
-      var body = byId('commentsBody');
-      var form = byId('commentForm');
-      if (!m) return;
-      body.innerHTML = '<div class="empty-block"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite"></i></div>';
-      Layer.open(m);
-      if (scrim) scrim.dataset.open = 'true';
-      if (form) form.style.display = S.me ? 'flex' : 'none';
-      fetch('/api/posts/' + postId + '/comments', { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (list) {
-          var count = byId('commentCount');
-          if (count) count.textContent = list.length ? '(' + list.length + ')' : '';
-          body.innerHTML = list.length ? list.map(Render.comment).join('') : Render.empty('لا تعليقات بعد', 'ph-chat-circle', 'كن أول من يعلّق');
-        })
-        .catch(function () { body.innerHTML = Render.empty('تعذّر التحميل', 'ph-warning-circle'); });
+  /* ═══════════════════════════════════════════════════════════════
+     CHAT
+     ═══════════════════════════════════════════════════════════════ */
+  const Chat = {
+    allChats: [],
+
+    async loadList() {
+      const list = document.getElementById('chatList');
+      if (!list || !S.me) return;
+
+      list.innerHTML = `<div class="load-more"><div class="spinner"></div></div>`;
+
+      try {
+        const chats = await API.get('/api/chats');
+        this.allChats = chats || [];
+
+        if (!this.allChats.length) {
+          list.innerHTML = `<div class="empty-block">
+            <i class="ph ph-chat-circle-dots" aria-hidden="true"></i>
+            <h4>لا محادثات</h4>
+            <p>ابدأ محادثة جديدة من ملف أي مستخدم.</p>
+          </div>`;
+          return;
+        }
+
+        list.innerHTML = this.allChats.map(c => this.rowHtml(c)).join('');
+        this.bindRows();
+      } catch (err) {
+        list.innerHTML = `<div class="empty-block">
+          <i class="ph ph-warning-circle" aria-hidden="true"></i>
+          <h4>تعذّر التحميل</h4>
+          <p>${U.escapeHtml(err.message)}</p>
+        </div>`;
+      }
     },
-    closeComments: function () {
-      Layer.close('commentsDrawer');
-      var scrim = byId('commentsScrim');
-      if (scrim) scrim.dataset.open = 'false';
-      S.activePost = null;
-    }
-  };
 
-  var Comments = {
-    send: function (e) {
-      if (e) e.preventDefault();
-      if (!S.activePost || !S.me) return;
-      var input = byId('commentInput');
-      var text = (input && input.value || '').trim();
+    rowHtml(c) {
+      const u = c.with_user || {};
+      const unread = c.unread > 0 ? `<span class="badge">${c.unread}</span>` : '';
+      return `<button class="chat-item" type="button" data-chat-id="${c.id}">
+        <div style="position:relative">
+          <img class="avatar avatar-sm" src="${U.escapeHtml(u.avatar || '')}" alt="">
+          ${unread}
+        </div>
+        <div class="chat-item-info">
+          <div class="chat-item-top">
+            <span class="chat-item-name">${U.escapeHtml(u.name || 'محادثة')}</span>
+            <span class="chat-item-time">${U.escapeHtml(c.time || '')}</span>
+          </div>
+          <div class="chat-item-preview">${U.escapeHtml(c.last || 'لا رسائل بعد')}</div>
+        </div>
+      </button>`;
+    },
+
+    bindRows() {
+      document.querySelectorAll('.chat-item').forEach(row => {
+        row.addEventListener('click', () => this.openThread(parseInt(row.dataset.chatId, 10)));
+      });
+    },
+
+    async openThread(chatId) {
+      if (!S.me) return;
+      S.openChatId = chatId;
+      const layout = document.getElementById('chatLayout');
+      const name = document.getElementById('chatThreadName');
+      const body = document.getElementById('chatBody');
+      const composer = document.querySelector('.chat-composer');
+
+      const chat = this.allChats.find(c => c.id === chatId);
+      if (name && chat && chat.with_user) name.textContent = chat.with_user.name;
+
+      if (layout) layout.dataset.view = 'thread';
+      document.body.classList.add('chat-fullscreen');
+      if (body) body.innerHTML = `<div class="load-more"><div class="spinner"></div></div>`;
+      if (composer) composer.style.display = 'flex';
+
+      document.querySelectorAll('.chat-item').forEach(r => {
+        r.setAttribute('aria-current', r.dataset.chatId === String(chatId) ? 'true' : 'false');
+      });
+
+      try {
+        const msgs = await API.get(`/api/chats/${chatId}/messages`);
+        if (!msgs || !msgs.length) {
+          body.innerHTML = `<div class="empty-block">
+            <i class="ph ph-chat-circle-dots" aria-hidden="true"></i>
+            <h4>ابدأ المحادثة</h4>
+            <p>أرسل أول رسالة.</p>
+          </div>`;
+        } else {
+          body.innerHTML = msgs.map(m => this.msgHtml(m)).join('');
+          body.scrollTop = body.scrollHeight;
+        }
+      } catch (err) {
+        body.innerHTML = `<div class="empty-block">
+          <i class="ph ph-warning-circle" aria-hidden="true"></i>
+          <h4>تعذّر التحميل</h4>
+          <p>${U.escapeHtml(err.message)}</p>
+        </div>`;
+      }
+    },
+
+    msgHtml(m) {
+      const cls = m.from === 'me' ? 'msg-me' : 'msg-them';
+      return `<div class="msg ${cls}">
+        ${U.escapeHtml(m.text)}
+        <span class="msg-time">${U.escapeHtml(m.time || '')}</span>
+      </div>`;
+    },
+
+    async send(ev) {
+      ev.preventDefault();
+      if (!S.me || !S.openChatId) return;
+      const input = document.getElementById('chatInput');
+      const body = document.getElementById('chatBody');
+      if (!input || !body) return;
+
+      const text = input.value.trim();
       if (!text) return;
-      var body = byId('commentsBody');
-      var tmp = 'tmp-' + Date.now();
-      var empty = body.querySelector('.empty-block');
-      if (empty) empty.remove();
-      body.insertAdjacentHTML('afterbegin', '<div class="comment" data-temp="' + tmp + '"><img class="avatar avatar-sm" src="' + esc(S.me.avatar) + '" alt=""><div class="comment-body"><div class="comment-top"><span class="comment-name">' + esc(S.me.name) + '</span><span class="comment-time">الآن</span></div><div class="comment-text">' + esc(text) + '</div></div></div>');
+
       input.value = '';
       U.autoGrow(input);
-      fetch('/api/posts/' + S.activePost + '/comments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ text: text })
-      })
-        .then(function (r) { return r.json(); })
-        .then(function (c) {
-          var t = body.querySelector('[data-temp="' + tmp + '"]');
-          if (t) t.remove();
-          body.insertAdjacentHTML('afterbegin', Render.comment(Object.assign({}, c, { author_data: S.me })));
-          var count = byId('commentCount');
-          if (count) {
-            var n = body.querySelectorAll('.comment').length;
-            count.textContent = '(' + n + ')';
-          }
-        })
-        .catch(function () {
-          var t = body.querySelector('[data-temp="' + tmp + '"]');
-          if (t) t.remove();
-          toast('تعذّر الإرسال', 'error');
-        });
+
+      // Optimistic render
+      const empty = body.querySelector('.empty-block');
+      if (empty) empty.remove();
+      body.insertAdjacentHTML('beforeend', this.msgHtml({ from: 'me', text, time: 'الآن' }));
+      body.scrollTop = body.scrollHeight;
+
+      if (window.Sounds) Sounds.play('send');
+
+      try {
+        await API.post(`/api/chats/${this.openChatId}/messages`, { text });
+      } catch (err) {
+        Toast.show(err.message || 'تعذّر الإرسال', 'error');
+      }
     },
-    delete: function (cid) {
-      var node = document.querySelector('[data-comment-id="' + cid + '"]');
-      if (node) node.style.opacity = '0.5';
-      fetch('/api/comments/' + cid, { method: 'DELETE', credentials: 'same-origin' })
-        .then(function () {
-          if (node) node.remove();
-          var count = byId('commentCount');
-          var body = byId('commentsBody');
-          if (count && body) {
-            var n = body.querySelectorAll('.comment').length;
-            count.textContent = n ? '(' + n + ')' : '';
-          }
-        })
-        .catch(function () {
-          if (node) node.style.opacity = '1';
-          toast('تعذّر الحذف', 'error');
-        });
-    }
+
+    filterList(query) {
+      const q = (query || '').trim().toLowerCase();
+      document.querySelectorAll('.chat-item').forEach(row => {
+        const name = (row.querySelector('.chat-item-name') || {}).textContent || '';
+        row.style.display = !q || name.toLowerCase().includes(q) ? '' : 'none';
+      });
+    },
+
+    backToList() {
+      const layout = document.getElementById('chatLayout');
+      if (layout) layout.dataset.view = 'list';
+      document.body.classList.remove('chat-fullscreen');
+      S.openChatId = null;
+    },
+
+    async openWith(userId) {
+      if (!S.me) { Auth.open('login'); return; }
+      try {
+        const res = await API.post(`/api/chats/with/${userId}`);
+        App.switchTab('chat');
+        await this.loadList();
+        if (res && res.id) setTimeout(() => this.openThread(res.id), 200);
+      } catch (err) {
+        Toast.show(err.message || 'تعذّر فتح المحادثة', 'error');
+      }
+    },
   };
 
-  /* ═══════ PROFILE ═══════ */
-  var Profile = {
-    _viewing: null,
-    _isOwn: true,
-    _currentTab: 'posts',
-    _data: null,
-    _pickedCover: null,
+  /* ═══════════════════════════════════════════════════════════════
+     PROFILE
+     ═══════════════════════════════════════════════════════════════ */
+  const Profile = {
+    current: null,
 
-    open: function (userId) {
-      if (!userId) return;
+    async load(userId) {
+      const id = userId || (S.me && S.me.id);
+      if (!id) return;
+
+      S.viewingUser = { id };
       S.tab = 'profile';
-      $$('.tab-panel').forEach(function (p) {
-        p.classList.toggle('is-active', p.getAttribute('data-tab') === 'profile');
-      });
-      $$('.dock-item[data-tab]').forEach(function (b) {
-        b.setAttribute('aria-current', b.getAttribute('data-tab') === 'profile' ? 'page' : 'false');
-      });
-      Profile._viewing = userId;
-      Profile._isOwn = !!(S.me && S.me.id === userId);
-      Profile._currentTab = 'posts';
-      Profile.load();
-    },
+      App.activateTab('profile');
+      Feed.reset('profile');
 
-    openMine: function () {
-      if (!S.me) { Auth.open('login'); return; }
-      S.tab = 'profile';
-      $$('.tab-panel').forEach(function (p) {
-        p.classList.toggle('is-active', p.getAttribute('data-tab') === 'profile');
-      });
-      $$('.dock-item[data-tab]').forEach(function (b) {
-        b.setAttribute('aria-current', b.getAttribute('data-tab') === 'profile' ? 'page' : 'false');
-      });
-      Profile._viewing = S.me.id;
-      Profile._isOwn = true;
-      Profile._currentTab = 'posts';
-      Profile.load();
-    },
+      const skeleton = document.getElementById('profileSkeleton');
+      const card = document.getElementById('profileCard');
+      const tabs = document.getElementById('profileTabs');
+      const panel = document.getElementById('profilePanel');
 
-    load: function () {
-      var skeleton = byId('profileSkeleton');
-      var card = byId('profileCard');
-      var tabs = byId('profileTabs');
       if (skeleton) skeleton.hidden = false;
       if (card) card.hidden = true;
       if (tabs) tabs.hidden = true;
+      if (panel) panel.innerHTML = '';
 
-      fetch('/api/users/' + Profile._viewing, { credentials: 'same-origin' })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-        .then(function (user) {
-          Profile._data = user;
-          var av = byId('profileAvatar');
-          if (av) av.src = user.avatar || '';
-          var editAv = byId('editAvatarImg');
-          if (editAv) editAv.src = user.avatar || '';
-          var name = byId('profileName');
-          if (name) name.textContent = user.name || '—';
-          var verified = byId('profileVerified');
-          if (verified) verified.hidden = !user.verified;
-          var handle = byId('profileHandle');
-          if (handle) handle.textContent = user.handle || '@—';
-          var bio = byId('profileBio');
-          if (bio) {
-            bio.textContent = user.bio || '';
-            bio.hidden = !user.bio;
-          }
-          Profile._renderMeta(user);
-          Profile._renderStats(user);
-          var cover = byId('profileCover');
-          if (cover) cover.dataset.cover = user.cover || 'aurora';
-          var editCover = byId('editCoverPreview');
-          if (editCover) editCover.dataset.cover = user.cover || 'aurora';
-          Profile._renderActions(user);
-          Profile._renderTabsVisibility();
-          if (skeleton) skeleton.hidden = true;
-          if (card) card.hidden = false;
-          if (tabs) tabs.hidden = false;
-          Profile.loadPanel(Profile._currentTab);
-        })
-        .catch(function (err) {
-          console.error('[Profile] load failed:', err);
-          if (skeleton) skeleton.hidden = true;
-          var panel = byId('profilePanel');
-          if (panel) panel.innerHTML = Render.empty('تعذّر تحميل الملف', 'ph-warning-circle', 'حاول مرة أخرى');
-        });
+      try {
+        const u = await API.get(`/api/users/${id}`);
+        this.current = u;
+        this.render(u);
+      } catch (err) {
+        Toast.show(err.message || 'تعذّر تحميل الملف', 'error');
+      } finally {
+        if (skeleton) skeleton.hidden = true;
+      }
     },
 
-    _renderMeta: function (user) {
-      var meta = byId('profileMeta');
-      if (!meta) return;
-      var hasLocation = !!user.location;
-      var hasWebsite = !!user.website;
-      var hasJoined = !!user.created_at;
-      var anyVisible = hasLocation || hasWebsite || hasJoined;
-      meta.hidden = !anyVisible;
-      if (!anyVisible) return;
-      var locEl = byId('profileLocation');
-      if (locEl) {
-        locEl.hidden = !hasLocation;
-        if (hasLocation) locEl.querySelector('span').textContent = user.location;
+    render(u) {
+      const isMe = S.me && S.me.id === u.id;
+      const card = document.getElementById('profileCard');
+      const tabs = document.getElementById('profileTabs');
+      if (!card) return;
+
+      card.hidden = false;
+      card.setAttribute('data-style', u.card_style || 'glass');
+      card.style.setProperty('--_accent', u.accent_color || '#22D3EE');
+
+      const cover = document.getElementById('profileCover');
+      if (cover) cover.dataset.cover = u.cover || 'aurora';
+
+      const avatar = document.getElementById('profileAvatar');
+      if (avatar) {
+        avatar.src = u.avatar || '';
+        avatar.alt = u.name || '';
+        avatar.dataset.frame = u.avatar_shape || 'ring';
       }
-      var webEl = byId('profileWebsite');
-      if (webEl) {
-        webEl.hidden = !hasWebsite;
-        if (hasWebsite) {
-          var a = webEl.querySelector('a');
-          a.href = user.website;
-          a.textContent = user.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
+
+      const name = document.getElementById('profileName');
+      if (name) name.textContent = u.name || '—';
+
+      const verified = document.getElementById('profileVerified');
+      if (verified) verified.hidden = !u.verified;
+
+      const handle = document.getElementById('profileHandle');
+      if (handle) handle.textContent = u.handle || '@—';
+
+      const pronouns = document.getElementById('profilePronouns');
+      if (pronouns) {
+        if (u.pronouns) {
+          pronouns.textContent = u.pronouns;
+          pronouns.hidden = false;
+        } else {
+          pronouns.hidden = true;
         }
       }
-      var joinedEl = byId('profileJoined');
-      if (joinedEl) {
-        joinedEl.hidden = !hasJoined;
-        if (hasJoined) {
-          var d = new Date(user.created_at);
-          var months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-          joinedEl.querySelector('span').textContent = 'انضم ' + months[d.getMonth()] + ' ' + d.getFullYear();
+
+      const bio = document.getElementById('profileBio');
+      if (bio) bio.textContent = u.bio || '';
+
+      // Meta: website only
+      const meta = document.getElementById('profileMeta');
+      const website = document.getElementById('profileWebsite');
+      const link = website ? website.querySelector('a') : null;
+
+      if (u.website && link) {
+        link.href = u.website;
+        link.textContent = u.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        website.hidden = false;
+      } else if (website) {
+        website.hidden = true;
+      }
+
+      const joined = document.getElementById('profileJoined');
+      if (joined && u.created_at) {
+        const d = new Date(u.created_at);
+        joined.querySelector('span').textContent = 'انضم ' + d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' });
+        joined.hidden = false;
+      } else if (joined) {
+        joined.hidden = true;
+      }
+
+      if (meta && (website.hidden === false || joined.hidden === false)) meta.hidden = false;
+      else if (meta) meta.hidden = true;
+
+      // Stats
+      const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
+      setStat('statFollowers', u.followers || 0);
+      setStat('statFollowing', u.following || 0);
+      setStat('statPosts', u.posts_count || 0);
+      setStat('statLikes', u.total_likes || 0);
+
+      // Actions
+      const actions = document.getElementById('profileActions');
+      if (actions) {
+        if (isMe) {
+          actions.innerHTML = `
+            <button class="btn btn-secondary" data-action="open-settings" type="button">
+              <i class="ph ph-pencil-simple" aria-hidden="true"></i>
+              <span>تعديل الملف</span>
+            </button>
+            <button class="btn btn-ghost btn-icon" data-action="share-profile" aria-label="مشاركة" type="button">
+              <i class="ph ph-share-network" aria-hidden="true"></i>
+            </button>`;
+        } else {
+          actions.innerHTML = `
+            <button class="btn ${u.is_following ? 'btn-secondary' : 'btn-primary'}"
+                    data-action="follow" data-user-id="${u.id}" type="button">
+              <i class="ph ${u.is_following ? 'ph-check' : 'ph-user-plus'}" aria-hidden="true"></i>
+              <span>${u.is_following ? 'تتابعه' : 'متابعة'}</span>
+            </button>
+            <button class="btn btn-secondary" data-action="message" data-user-id="${u.id}" type="button">
+              <i class="ph ph-chat-circle" aria-hidden="true"></i>
+              <span>رسالة</span>
+            </button>`;
         }
       }
-    },
 
-    _renderStats: function (user) {
-      var set = function (id, v) { var n = byId(id); if (n) n.textContent = U.num(v || 0); };
-      set('statFollowers', user.followers);
-      set('statFollowing', user.following);
-      set('statPosts', user.posts_count);
-      set('statLikes', user.total_likes || 0);
-    },
+      // Edit buttons on cover/avatar (only if me)
+      const coverEdit = document.getElementById('profileCoverEditBtn');
+      const avatarEdit = document.getElementById('profileAvatarEditBtn');
+      if (coverEdit) coverEdit.hidden = !isMe;
+      if (avatarEdit) avatarEdit.hidden = !isMe;
+      if (coverEdit && isMe) coverEdit.setAttribute('data-action', 'open-settings');
+      if (avatarEdit && isMe) avatarEdit.setAttribute('data-action', 'open-settings');
 
-    _renderActions: function (user) {
-      var box = byId('profileActions');
-      if (!box) return;
-      if (Profile._isOwn) {
-        box.innerHTML =
-          '<button class="btn btn-primary btn-sm" data-action="edit-profile" type="button">' +
-            '<i class="ph ph-pencil-simple"></i><span>تعديل الملف</span>' +
-          '</button>' +
-          '<button class="btn btn-secondary btn-sm" data-action="share-profile" type="button">' +
-            '<i class="ph ph-share-network"></i><span>مشاركة</span>' +
-          '</button>';
-      } else {
-        var isFollowing = !!user.is_following;
-        box.innerHTML =
-          '<button class="btn ' + (isFollowing ? 'btn-secondary' : 'btn-primary') + ' btn-sm" ' +
-                  'data-action="toggle-follow" data-user="' + user.id + '" ' +
-                  'aria-pressed="' + (isFollowing ? 'true' : 'false') + '" type="button">' +
-            '<i class="ph ' + (isFollowing ? 'ph-user-check' : 'ph-user-plus') + '"></i>' +
-            '<span>' + (isFollowing ? 'متابَع' : 'متابعة') + '</span>' +
-          '</button>' +
-          '<button class="btn btn-secondary btn-sm" data-action="message-user" data-user="' + user.id + '" type="button">' +
-            '<i class="ph ph-chat-circle"></i><span>رسالة</span>' +
-          '</button>' +
-          '<button class="btn btn-ghost btn-sm" data-action="share-profile" type="button" aria-label="مشاركة">' +
-            '<i class="ph ph-share-network"></i>' +
-          '</button>';
-      }
-    },
-
-    _renderTabsVisibility: function () {
-      var savedTab = byId('profileSavedTab');
-      var settingsTab = byId('profileSettingsTab');
-      if (savedTab) savedTab.hidden = !Profile._isOwn;
-      if (settingsTab) settingsTab.hidden = !Profile._isOwn;
-    },
-
-    loadPanel: function (tab) {
-      Profile._currentTab = tab;
-      $$('#profileTabs .tab').forEach(function (t) {
-        t.setAttribute('aria-selected', t.getAttribute('data-ptab') === tab ? 'true' : 'false');
-      });
-      var panel = byId('profilePanel');
-      if (!panel) return;
-      panel.className = 'profile-panel';
-      panel.innerHTML = '<div class="empty-block"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite"></i></div>';
-
-      if (tab === 'settings') { Profile._renderSettings(panel); return; }
-      if (tab === 'about')    { Profile._renderAbout(panel); return; }
-
-      panel.className = 'profile-panel feed';
-
-      var url;
-      if (tab === 'posts') {
-        url = '/api/users/' + Profile._viewing + '/posts';
-      } else if (tab === 'liked') {
-        url = '/api/posts?limit=100';
-      } else if (tab === 'saved') {
-        url = '/api/posts?limit=100';
+      // Tabs
+      if (tabs) {
+        tabs.hidden = false;
+        const savedTab = document.getElementById('profileSavedTab');
+        const settingsTab = document.getElementById('profileSettingsTab');
+        if (savedTab) savedTab.hidden = !isMe;
+        if (settingsTab) settingsTab.hidden = !isMe;
       }
 
-      fetch(url, { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (posts) {
-          if (tab === 'liked') posts = posts.filter(function (p) { return p.liked; });
-          if (tab === 'saved') posts = posts.filter(function (p) { return p.saved; });
+      // Load posts
+      Feed.reset('profile');
+      Feed.load('profile');
 
-          if (!posts || !posts.length) {
-            var emptyMsg = Profile._isOwn
-              ? { posts: ['لم تنشر بعد', 'ph-image-square', 'شارك أول برومبت لك'],
-                  liked: ['لا إعجابات بعد', 'ph-heart', 'اضغط القلب على ما يعجبك'],
-                  saved: ['المكتبة فارغة', 'ph-bookmark-simple', 'احفظ ما تريد الرجوع إليه'] }[tab]
-              : { posts: ['لا برومبتات', 'ph-image-square', 'لم يشارك هذا المستخدم شيئاً بعد'],
-                  liked: ['لا إعجابات', 'ph-heart', ''],
-                  saved: ['مخفي', 'ph-lock', ''] }[tab];
-            panel.innerHTML = Render.empty(emptyMsg[0], emptyMsg[1], emptyMsg[2]);
-            return;
+      // Bind actions
+      this.bindActions();
+    },
+
+    bindActions() {
+      const card = document.getElementById('profileCard');
+      if (!card) return;
+
+      card.querySelectorAll('[data-action="follow"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const uid = parseInt(btn.dataset.userId, 10);
+          btn.setAttribute('aria-busy', 'true');
+          try {
+            const res = await API.post(`/api/users/${uid}/follow`);
+            const following = res.following;
+            btn.classList.toggle('btn-primary', !following);
+            btn.classList.toggle('btn-secondary', following);
+            btn.querySelector('i').className = following ? 'ph ph-check' : 'ph ph-user-plus';
+            btn.querySelector('span').textContent = following ? 'تتابعه' : 'متابعة';
+            if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
+          } catch (err) {
+            Toast.show(err.message, 'error');
+          } finally {
+            btn.removeAttribute('aria-busy');
           }
-
-          panel.innerHTML = posts.map(Render.prompt).join('');
-          var cards = panel.querySelectorAll('.prompt-card');
-          cards.forEach(function (c, i) {
-            c.style.opacity = '0';
-            c.style.transform = 'translateY(8px)';
-            c.style.transition = 'opacity .3s var(--ease-out) ' + Math.min(i * 30, 250) + 'ms, transform .3s var(--ease-out) ' + Math.min(i * 30, 250) + 'ms';
-          });
-          requestAnimationFrame(function () {
-            cards.forEach(function (c) { c.style.opacity = '1'; c.style.transform = 'translateY(0)'; });
-          });
-        })
-        .catch(function () {
-          panel.innerHTML = Render.empty('تعذّر التحميل', 'ph-warning-circle', 'حاول مرة أخرى');
         });
-    },
+      });
 
-    _renderAbout: function (panel) {
-      var u = Profile._data || {};
-      var joined = u.created_at ? new Date(u.created_at) : null;
-      var months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-      panel.innerHTML =
-        '<div class="profile-about">' +
-          '<div class="about-section">' +
-            '<h4><i class="ph ph-user"></i> نبذة</h4>' +
-            '<p>' + (u.bio ? esc(u.bio) : (Profile._isOwn ? 'لم تضف نبذة بعد.' : 'لا توجد نبذة.')) + '</p>' +
-          '</div>' +
-          '<div class="about-section">' +
-            '<h4><i class="ph ph-info"></i> معلومات</h4>' +
-            (u.location ? '<div class="about-row"><span class="label">الموقع</span><span class="value">' + esc(u.location) + '</span></div>' : '') +
-            (u.website ? '<div class="about-row"><span class="label">الموقع الإلكتروني</span><span class="value"><a href="' + esc(u.website) + '" target="_blank" rel="noopener noreferrer" style="color:var(--c-brand)">' + esc(u.website.replace(/^https?:\/\//, '')) + '</a></span></div>' : '') +
-            '<div class="about-row"><span class="label">المعرّف</span><span class="value" style="font-family:var(--font-mono)">' + esc(u.handle || '') + '</span></div>' +
-            (joined ? '<div class="about-row"><span class="label">تاريخ الانضمام</span><span class="value">' + months[joined.getMonth()] + ' ' + joined.getFullYear() + '</span></div>' : '') +
-            '<div class="about-row"><span class="label">عدد البرومبتات</span><span class="value">' + U.num(u.posts_count || 0) + '</span></div>' +
-          '</div>' +
-          '<div class="about-section">' +
-            '<h4><i class="ph ph-chart-line"></i> الإحصائيات</h4>' +
-            '<div class="about-row"><span class="label">إجمالي الإعجابات</span><span class="value">' + U.num(u.total_likes || 0) + '</span></div>' +
-            '<div class="about-row"><span class="label">إجمالي النسخ</span><span class="value">' + U.num(u.total_copies || 0) + '</span></div>' +
-            '<div class="about-row"><span class="label">المتابعون</span><span class="value">' + U.num(u.followers || 0) + '</span></div>' +
-            '<div class="about-row"><span class="label">يتابع</span><span class="value">' + U.num(u.following || 0) + '</span></div>' +
-          '</div>' +
-        '</div>';
-    },
-
-    _renderSettings: function (panel) {
-      var theme = document.documentElement.getAttribute('data-theme') || 'dark';
-      panel.innerHTML =
-        '<div class="settings-list">' +
-          '<div class="settings-group">' +
-            '<div class="settings-group-title">المظهر</div>' +
-            '<div class="setting-row">' +
-              '<div class="setting-row-info">' +
-                '<strong>الوضع الليلي</strong>' +
-                '<span>تبديل بين المظهر الفاتح والداكن</span>' +
-              '</div>' +
-              '<button class="switch" data-action="toggle-theme" role="switch" ' +
-                     'aria-checked="' + (theme === 'dark' ? 'true' : 'false') + '" ' +
-                     'aria-label="الوضع الليلي" type="button"></button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="settings-group">' +
-            '<div class="settings-group-title">الحساب</div>' +
-            '<div class="setting-row" data-action="edit-profile" style="cursor:pointer">' +
-              '<div class="setting-row-info">' +
-                '<strong>تعديل الملف الشخصي</strong>' +
-                '<span>الاسم، النبذة، الصورة، الغلاف</span>' +
-              '</div>' +
-              '<i class="ph ph-caret-left" style="color:var(--fg-3)"></i>' +
-            '</div>' +
-            '<div class="setting-row" data-action="open-change-password" style="cursor:pointer">' +
-              '<div class="setting-row-info">' +
-                '<strong>تغيير كلمة المرور</strong>' +
-                '<span>حدّث كلمة المرور الخاصة بحسابك</span>' +
-              '</div>' +
-              '<i class="ph ph-caret-left" style="color:var(--fg-3)"></i>' +
-            '</div>' +
-          '</div>' +
-          '<div class="settings-group">' +
-            '<div class="settings-group-title">الخصوصية والأمان</div>' +
-            '<div class="setting-row" data-action="open-privacy" style="cursor:pointer">' +
-              '<div class="setting-row-info">' +
-                '<strong>سياسة الخصوصية</strong>' +
-                '<span>اقرأ كيف نحفظ بياناتك ونحميها</span>' +
-              '</div>' +
-              '<i class="ph ph-caret-left" style="color:var(--fg-3)"></i>' +
-            '</div>' +
-          '</div>' +
-          '<div class="settings-group">' +
-            '<div class="settings-group-title">الجلسة</div>' +
-            '<div class="setting-row" data-action="logout" style="cursor:pointer">' +
-              '<div class="setting-row-info">' +
-                '<strong>تسجيل الخروج</strong>' +
-                '<span>إنهاء الجلسة على هذا الجهاز</span>' +
-              '</div>' +
-              '<i class="ph ph-sign-out" style="color:var(--fg-2)"></i>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
-    },
-
-    toggleFollow: function (btn, userId) {
-      if (!S.me) { Auth.open('login'); return; }
-      if (!userId || userId === S.me.id) return;
-      var wasFollowing = btn.getAttribute('aria-pressed') === 'true';
-      var next = !wasFollowing;
-      btn.setAttribute('aria-pressed', next ? 'true' : 'false');
-      btn.classList.toggle('btn-primary', !next);
-      btn.classList.toggle('btn-secondary', next);
-      var icon = btn.querySelector('i');
-      var label = btn.querySelector('span');
-      if (icon) icon.className = 'ph ' + (next ? 'ph-user-check' : 'ph-user-plus');
-      if (label) label.textContent = next ? 'متابَع' : 'متابعة';
-      var folEl = byId('statFollowers');
-      if (folEl) {
-        var cur = parseInt(folEl.textContent.replace(/[^0-9]/g, '')) || 0;
-        folEl.textContent = U.num(Math.max(0, cur + (next ? 1 : -1)));
-      }
-      fetch('/api/users/' + userId + '/follow', { method: 'POST', credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (res) {
-          btn.setAttribute('aria-pressed', res.following ? 'true' : 'false');
-          if (folEl) folEl.textContent = U.num(res.followers);
-          toast(res.following ? 'بدأت المتابعة' : 'ألغيت المتابعة', 'success');
-        })
-        .catch(function () {
-          btn.setAttribute('aria-pressed', wasFollowing ? 'true' : 'false');
-          btn.classList.toggle('btn-primary', wasFollowing);
-          btn.classList.toggle('btn-secondary', !wasFollowing);
-          if (icon) icon.className = 'ph ' + (wasFollowing ? 'ph-user-check' : 'ph-user-plus');
-          if (label) label.textContent = wasFollowing ? 'متابَع' : 'متابعة';
-          toast('تعذّر تحديث المتابعة', 'error');
+      card.querySelectorAll('[data-action="message"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          Chat.openWith(parseInt(btn.dataset.userId, 10));
         });
+      });
+
+      card.querySelectorAll('[data-action="open-settings"]').forEach(btn => {
+        btn.addEventListener('click', () => Settings.open());
+      });
+
+      card.querySelectorAll('[data-action="share-profile"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const url = window.location.origin + '/u/' + (this.current && this.current.username);
+          const ok = await U.copy(url);
+          Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600);
+        });
+      });
     },
 
-    shareProfile: function () {
-      var url = location.origin + '/u/' + (Profile._data && Profile._data.handle ? Profile._data.handle.replace('@', '') : '');
-      var title = (Profile._data && Profile._data.name) ? Profile._data.name + ' على خَيال' : 'خَيال';
-      if (navigator.share) {
-        navigator.share({ title: title, url: url })
-          .then(function () { toast('تمت المشاركة', 'success'); })
-          .catch(function (e) {
-            if (e.name !== 'AbortError') {
-              U.copy(url).then(function () { toast('تم نسخ الرابط', 'success'); }).catch(function () {});
-            }
-          });
-      } else {
-        U.copy(url).then(function () { toast('تم نسخ الرابط', 'success'); }).catch(function () { toast('تعذّرت المشاركة', 'error'); });
+    async refresh() {
+      if (this.current) await this.load(this.current.id);
+    },
+
+    save(ev) {
+      if (ev) ev.preventDefault();
+      // يستدعي حفظ الإعدادات
+      if (window.Settings) Settings.save();
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     EXPLORE
+     ═══════════════════════════════════════════════════════════════ */
+  const Explore = {
+    openCollection(name) {
+      App.switchTab('explore');
+      // Reset filter then set specific view
+      S.filterTag = '';
+      S.filterModel = '';
+      switch (name) {
+        case 'trending':
+          S.sort = 'top';
+          App.setSort('top');
+          break;
+        case 'new':
+          S.sort = 'recent';
+          App.setSort('recent');
+          break;
+        case 'editor':
+          // demo: mix
+          S.sort = 'top';
+          App.setSort('top');
+          break;
+      }
+      Feed.reset('explore');
+      Feed.load('explore', { force: true });
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     SETTINGS (v12)
+     ═══════════════════════════════════════════════════════════════ */
+  const Settings = {
+    view: null,
+    state: {
+      cover: 'aurora',
+      avatar_frame: 'ring',
+      accent_color: '#22D3EE',
+      card_style: 'glass',
+      name: '',
+      handle: '',
+      avatar: '',
+      bio: '',
+      website: '',
+      pronouns: '',
+    },
+
+    init() {
+      this.view = document.getElementById('settingsView');
+      if (!this.view) return;
+      const self = this;
+
+      this.view.querySelector('[data-action="close-settings"]')
+        ?.addEventListener('click', () => self.close());
+      this.view.querySelector('[data-action="save-settings"]')
+        ?.addEventListener('click', () => self.save());
+
+      this.view.querySelectorAll('.settings-nav-item').forEach(btn => {
+        btn.addEventListener('click', () => self.switchSection(btn.dataset.section));
+      });
+
+      const coverPicker = document.getElementById('settingsCoverPresets');
+      if (coverPicker) {
+        coverPicker.addEventListener('click', (e) => {
+          const b = e.target.closest('.cover-preset');
+          if (!b) return;
+          coverPicker.querySelectorAll('.cover-preset').forEach(x => x.setAttribute('aria-pressed', 'false'));
+          b.setAttribute('aria-pressed', 'true');
+          self.state.cover = b.dataset.cover;
+          self.updatePreview();
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      }
+
+      const framePicker = document.getElementById('settingsFramePicker');
+      if (framePicker) {
+        framePicker.addEventListener('click', (e) => {
+          const b = e.target.closest('.frame-option');
+          if (!b) return;
+          framePicker.querySelectorAll('.frame-option').forEach(x => x.setAttribute('aria-pressed', 'false'));
+          b.setAttribute('aria-pressed', 'true');
+          self.state.avatar_frame = b.dataset.frame;
+          self.updatePreview();
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      }
+
+      const accentPicker = document.getElementById('settingsAccentPicker');
+      if (accentPicker) {
+        accentPicker.addEventListener('click', (e) => {
+          const b = e.target.closest('.accent-swatch');
+          if (!b) return;
+          accentPicker.querySelectorAll('.accent-swatch').forEach(x => x.setAttribute('aria-pressed', 'false'));
+          b.setAttribute('aria-pressed', 'true');
+          self.state.accent_color = b.dataset.color;
+          const hint = document.getElementById('accentHint');
+          if (hint) hint.textContent = b.dataset.color;
+          self.updatePreview();
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      }
+
+      const stylePicker = document.getElementById('settingsCardStylePicker');
+      if (stylePicker) {
+        stylePicker.addEventListener('click', (e) => {
+          const b = e.target.closest('.style-option');
+          if (!b) return;
+          stylePicker.querySelectorAll('.style-option').forEach(x => x.setAttribute('aria-pressed', 'false'));
+          b.setAttribute('aria-pressed', 'true');
+          self.state.card_style = b.dataset.style;
+          self.updatePreview();
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      }
+
+      const pronounPicker = document.getElementById('settingsPronounPicker');
+      const pronounHidden = document.getElementById('setPronouns');
+      if (pronounPicker && pronounHidden) {
+        pronounPicker.addEventListener('click', (e) => {
+          const b = e.target.closest('.pronoun-option');
+          if (!b) return;
+          pronounPicker.querySelectorAll('.pronoun-option').forEach(x => x.setAttribute('aria-checked', 'false'));
+          b.setAttribute('aria-checked', 'true');
+          pronounHidden.value = b.dataset.pronoun || '';
+          self.state.pronouns = pronounHidden.value;
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      }
+
+      const nameEl = document.getElementById('setName');
+      if (nameEl) {
+        nameEl.addEventListener('input', () => {
+          self.state.name = nameEl.value;
+          const p = document.getElementById('settingsPreviewName');
+          if (p) p.textContent = nameEl.value || 'اسمك هنا';
+        });
+      }
+
+      const bioEl = document.getElementById('setBio');
+      if (bioEl) {
+        bioEl.addEventListener('input', () => {
+          const c = document.getElementById('setBioCount');
+          if (c) c.textContent = bioEl.value.length;
+        });
+      }
+
+      const webEl = document.getElementById('setWebsite');
+      if (webEl) webEl.addEventListener('input', () => { self.state.website = webEl.value; });
+
+      const soundToggle = document.getElementById('soundsToggle');
+      if (soundToggle) {
+        soundToggle.addEventListener('click', () => {
+          const next = soundToggle.getAttribute('aria-checked') !== 'true';
+          soundToggle.setAttribute('aria-checked', next ? 'true' : 'false');
+          if (window.Sounds) Sounds.setEnabled(next);
+        });
+      }
+
+      const vol = document.getElementById('volumeSlider');
+      const volHint = document.getElementById('volumeHint');
+      if (vol) {
+        vol.addEventListener('input', () => {
+          const v = parseInt(vol.value, 10) / 100;
+          if (window.Sounds) Sounds.setVolume(v);
+          if (volHint) volHint.textContent = vol.value + '%';
+        });
+      }
+
+      this.view.querySelectorAll('.sound-card').forEach(card => {
+        card.addEventListener('click', () => {
+          if (window.Sounds) Sounds.play(card.dataset.sound);
+          card.classList.add('is-playing');
+          setTimeout(() => card.classList.remove('is-playing'), 420);
+        });
+      });
+
+      this.view.querySelectorAll('.switch:not(#soundsToggle)').forEach(sw => {
+        sw.addEventListener('click', () => {
+          const next = sw.getAttribute('aria-checked') !== 'true';
+          sw.setAttribute('aria-checked', next ? 'true' : 'false');
+          if (window.Sounds) Sounds.play('toggle');
+        });
+      });
+
+      const chg = document.getElementById('changePasswordBtn');
+      if (chg) {
+        chg.addEventListener('click', () => {
+          const oldPw = (document.getElementById('setOldPassword') || {}).value || '';
+          const newPw = (document.getElementById('setNewPassword') || {}).value || '';
+          if (!oldPw || !newPw) {
+            if (window.Sounds) Sounds.play('error');
+            return Toast.show('املأ الحقلين', 'warning');
+          }
+          API.post('/api/me/password', { old_password: oldPw, new_password: newPw })
+            .then(() => {
+              if (window.Sounds) Sounds.play('success');
+              Toast.show('تم تحديث كلمة المرور', 'success');
+              document.getElementById('setOldPassword').value = '';
+              document.getElementById('setNewPassword').value = '';
+            })
+            .catch(err => {
+              if (window.Sounds) Sounds.play('error');
+              Toast.show(err.message || 'فشل التحديث', 'error');
+            });
+        });
+      }
+
+      const logout = document.getElementById('logoutBtn');
+      if (logout) {
+        logout.addEventListener('click', () => {
+          Auth.logout();
+          self.close();
+        });
       }
     },
 
-    copyHandle: function () {
-      var handle = (Profile._data && Profile._data.handle) || '';
-      if (!handle) return;
-      U.copy(handle)
-        .then(function () { toast('تم نسخ ' + handle, 'success'); })
-        .catch(function () { toast('تعذّر النسخ', 'error'); });
-    },
-
-    messageUser: function (userId) {
-      if (!S.me) { Auth.open('login'); return; }
-      fetch('/api/chats/with/' + userId, { method: 'POST', credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (res) {
-          toast('فتح المحادثة…');
-          App.switchTab('chat');
-          setTimeout(function () { Chat.open(res.id); }, 300);
-        })
-        .catch(function () { toast('تعذّر فتح المحادثة', 'error'); });
-    },
-
-    openEdit: function () {
-      if (!S.me) { Auth.open('login'); return; }
-      var u = Profile._data && Profile._viewing === S.me.id ? Profile._data : S.me;
-      var name = byId('epName'); if (name) name.value = u.name || '';
-      var bio = byId('epBio'); if (bio) { bio.value = u.bio || ''; Profile._updateBioCount(); }
-      var loc = byId('epLocation'); if (loc) loc.value = u.location || '';
-      var web = byId('epWebsite'); if (web) web.value = u.website || '';
-      var pronouns = byId('epPronouns'); if (pronouns) pronouns.value = u.pronouns || '';
-      var status = byId('epStatus'); if (status) status.value = u.status || '';
-      var av = byId('epAvatarUrl'); if (av) av.value = '';
-      var editAv = byId('editAvatarImg'); if (editAv) editAv.src = u.avatar || '';
-      var cover = byId('editCoverPreview');
-      if (cover) { cover.dataset.cover = u.cover || 'aurora'; cover.style.backgroundImage = ''; }
-      $$('.cover-preset').forEach(function (p) {
-        p.setAttribute('aria-pressed', p.dataset.cover === (u.cover || 'aurora') ? 'true' : 'false');
-      });
-      /* Restore accent + shape if present */
-      var accent = u.accent || '#22D3EE';
-      $$('.accent-swatch').forEach(function (s) {
-        s.setAttribute('aria-pressed', s.dataset.color === accent ? 'true' : 'false');
-      });
-      var shape = u.avatar_shape || 'rounded';
-      $$('.shape-option').forEach(function (s) {
-        s.setAttribute('aria-pressed', s.dataset.shape === shape ? 'true' : 'false');
-      });
-      var style = u.card_style || 'glass';
-      $$('.style-option').forEach(function (s) {
-        s.setAttribute('aria-pressed', s.dataset.style === style ? 'true' : 'false');
-      });
-      var view = byId('editProfileView');
-      if (!view) return;
-      view.hidden = false;
+    open() {
+      if (!this.view) return;
+      this.hydrate();
+      this.view.hidden = false;
       document.body.classList.add('view-open');
-      document.body.style.overflow = 'hidden';
-      setTimeout(function () { if (name) name.focus(); }, 180);
+      if (window.Sounds) Sounds.play('open');
     },
 
-    closeEdit: function () {
-      var view = byId('editProfileView');
-      if (view) view.hidden = true;
+    close() {
+      if (!this.view) return;
+      this.view.hidden = true;
       document.body.classList.remove('view-open');
-      document.body.style.overflow = '';
+      if (window.Sounds) Sounds.play('close');
     },
 
-    _updateBioCount: function () {
-      var bio = byId('epBio');
-      var counter = byId('epBioCount');
-      if (bio && counter) counter.textContent = String(bio.value.length);
+    switchSection(name) {
+      if (!name || !this.view) return;
+      this.view.querySelectorAll('.settings-nav-item').forEach(b => {
+        const on = b.dataset.section === name;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      this.view.querySelectorAll('.settings-panel').forEach(p => {
+        p.classList.toggle('is-active', p.dataset.panel === name);
+      });
+      if (window.Sounds) Sounds.play('tab');
     },
 
-    pickCover: function () {
-      var input = byId('coverFileInput');
-      if (!input) return;
-      input.value = '';
-      input.click();
-    },
-
-    pickAvatar: function () {
-      var input = byId('avatarFileInput');
-      if (!input) return;
-      input.value = '';
-      input.click();
-    },
-
-    _handleAvatarFile: function (file) {
-      if (!file) return;
-      if (file.size > 2 * 1024 * 1024) { toast('الصورة كبيرة (الحد 2MB)', 'warning'); return; }
-      var reader = new FileReader();
-      reader.onload = function (e) {
-        var editAv = byId('editAvatarImg');
-        if (editAv) editAv.src = e.target.result;
-        var urlInput = byId('epAvatarUrl');
-        if (urlInput) urlInput.value = e.target.result;
+    hydrate() {
+      const u = (S.me && S.me.id && S.me) || window.__ME__ || {};
+      this.state = {
+        cover: u.cover || 'aurora',
+        avatar_frame: u.avatar_shape || 'ring',
+        accent_color: u.accent_color || '#22D3EE',
+        card_style: u.card_style || 'glass',
+        name: u.name || '',
+        handle: u.handle || '',
+        avatar: u.avatar || '',
+        bio: u.bio || '',
+        website: u.website || '',
+        pronouns: u.pronouns || '',
       };
-      reader.readAsDataURL(file);
+
+      const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+      set('setName', this.state.name);
+      set('setWebsite', this.state.website);
+      set('setBio', this.state.bio);
+      const bc = document.getElementById('setBioCount');
+      if (bc) bc.textContent = (this.state.bio || '').length;
+
+      const pp = document.getElementById('settingsPronounPicker');
+      const ph = document.getElementById('setPronouns');
+      if (pp && ph) {
+        const match = pp.querySelector('.pronoun-option[data-pronoun="' + this.state.pronouns.replace(/"/g, '') + '"]')
+                   || pp.querySelector('.pronoun-option[data-pronoun=""]');
+        pp.querySelectorAll('.pronoun-option').forEach(b => {
+          b.setAttribute('aria-checked', b === match ? 'true' : 'false');
+        });
+        ph.value = match ? (match.dataset.pronoun || '') : '';
+      }
+
+      const cp = document.getElementById('settingsCoverPresets');
+      if (cp) cp.querySelectorAll('.cover-preset').forEach(b => {
+        b.setAttribute('aria-pressed', b.dataset.cover === this.state.cover ? 'true' : 'false');
+      });
+
+      const fp = document.getElementById('settingsFramePicker');
+      if (fp) fp.querySelectorAll('.frame-option').forEach(b => {
+        b.setAttribute('aria-pressed', b.dataset.frame === this.state.avatar_frame ? 'true' : 'false');
+      });
+
+      const ap = document.getElementById('settingsAccentPicker');
+      if (ap) ap.querySelectorAll('.accent-swatch').forEach(b => {
+        b.setAttribute('aria-pressed', b.dataset.color === this.state.accent_color ? 'true' : 'false');
+      });
+      const ah = document.getElementById('accentHint');
+      if (ah) ah.textContent = this.state.accent_color;
+
+      const sp = document.getElementById('settingsCardStylePicker');
+      if (sp) sp.querySelectorAll('.style-option').forEach(b => {
+        b.setAttribute('aria-pressed', b.dataset.style === this.state.card_style ? 'true' : 'false');
+      });
+
+      const st = document.getElementById('soundsToggle');
+      if (st && window.Sounds) st.setAttribute('aria-checked', Sounds.isEnabled() ? 'true' : 'false');
+      const vs = document.getElementById('volumeSlider');
+      if (vs && window.Sounds) vs.value = Math.round(Sounds.getVolume() * 100);
+      const vh = document.getElementById('volumeHint');
+      if (vh && window.Sounds) vh.textContent = Math.round(Sounds.getVolume() * 100) + '%';
+
+      this.updatePreview();
     },
 
-    _handleCoverFile: function (file) {
-      if (!file) return;
-      if (file.size > 3 * 1024 * 1024) { toast('الصورة كبيرة (الحد 3MB)', 'warning'); return; }
-      var reader = new FileReader();
-      reader.onload = function (e) {
-        var cover = byId('editCoverPreview');
-        if (cover) {
-          cover.style.backgroundImage = 'url(' + e.target.result + ')';
-          cover.style.backgroundSize = 'cover';
-          cover.style.backgroundPosition = 'center';
+    updatePreview() {
+      const pc = document.getElementById('settingsPreviewCover');
+      const pa = document.getElementById('settingsPreviewAvatar');
+      const pn = document.getElementById('settingsPreviewName');
+      const ph = document.getElementById('settingsPreviewHandle');
+      const card = document.getElementById('settingsPreviewCard');
+
+      if (pc) pc.dataset.cover = this.state.cover;
+      if (pa) {
+        pa.dataset.frame = this.state.avatar_frame;
+        if (this.state.avatar && !pa.src) pa.src = this.state.avatar;
+      }
+      if (pn) pn.textContent = this.state.name || 'اسمك هنا';
+      if (ph) ph.textContent = this.state.handle || '@username';
+      if (card) card.dataset.style = this.state.card_style;
+    },
+
+    async save() {
+      const btn = document.getElementById('settingsSave');
+      if (btn) { btn.setAttribute('aria-busy', 'true'); btn.disabled = true; }
+
+      const payload = {
+        name: (document.getElementById('setName') || {}).value || '',
+        bio: (document.getElementById('setBio') || {}).value || '',
+        website: (document.getElementById('setWebsite') || {}).value || '',
+        pronouns: (document.getElementById('setPronouns') || {}).value || '',
+        cover: this.state.cover,
+        avatar_frame: this.state.avatar_frame,
+        accent_color: this.state.accent_color,
+        card_style: this.state.card_style,
+      };
+
+      try {
+        const user = await API.patch('/api/me', payload);
+        S.me = user;
+        window.__ME__ = user;
+        if (window.Sounds) Sounds.play('success');
+        Toast.show('تم الحفظ', 'success');
+        Auth.updateChrome(user);
+        if (S.tab === 'profile' && S.viewingUser && S.viewingUser.id === user.id) {
+          Profile.load(user.id);
         }
-        Profile._pickedCover = e.target.result;
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        if (window.Sounds) Sounds.play('error');
+        Toast.show(err.message || 'تعذّر الحفظ', 'error');
+      } finally {
+        if (btn) { btn.removeAttribute('aria-busy'); btn.disabled = false; }
+      }
     },
-
-    save: function (e) {
-      if (e) e.preventDefault();
-      if (!S.me) return;
-      var btn = byId('editProfileSubmit');
-      var name = (byId('epName') || {}).value || '';
-      var bio = (byId('epBio') || {}).value || '';
-      var location = (byId('epLocation') || {}).value || '';
-      var website = (byId('epWebsite') || {}).value || '';
-      var pronouns = (byId('epPronouns') || {}).value || '';
-      var status = (byId('epStatus') || {}).value || '';
-      var avatar = (byId('epAvatarUrl') || {}).value || '';
-      var coverEl = byId('editCoverPreview');
-      var cover = coverEl && coverEl.dataset ? coverEl.dataset.cover : 'aurora';
-      var accentEl = document.querySelector('.accent-swatch[aria-pressed="true"]');
-      var shapeEl = document.querySelector('.shape-option[aria-pressed="true"]');
-      var styleEl = document.querySelector('.style-option[aria-pressed="true"]');
-      if (!name.trim()) { toast('الاسم مطلوب', 'warning'); return; }
-      if (btn) btn.setAttribute('aria-busy', 'true');
-      var payload = {
-        name: name.trim(),
-        bio: bio.trim(),
-        location: location.trim(),
-        website: website.trim(),
-        pronouns: pronouns.trim(),
-        status: status.trim(),
-        cover: cover,
-        accent: accentEl ? accentEl.dataset.color : '#22D3EE',
-        avatar_shape: shapeEl ? shapeEl.dataset.shape : 'rounded',
-        card_style: styleEl ? styleEl.dataset.style : 'glass'
-      };
-      if (avatar) payload.avatar = avatar;
-      if (Profile._pickedCover) payload.cover_image = Profile._pickedCover;
-
-      fetch('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify(payload)
-      })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-        .then(function (updated) {
-          S.me = Object.assign({}, S.me, updated);
-          Profile._pickedCover = null;
-          Profile.closeEdit();
-          App.updateUserUI();
-          toast('تم حفظ التعديلات', 'success');
-          if (Profile._viewing === S.me.id) Profile.load();
-        })
-        .catch(function () { toast('تعذّر الحفظ', 'error'); })
-        .finally(function () { if (btn) btn.removeAttribute('aria-busy'); });
-    },
-
-    openFollowers: function (kind) {
-      if (!Profile._viewing) return;
-      var title = byId('followersTitle');
-      if (title) title.textContent = kind === 'followers' ? 'المتابعون' : 'يتابع';
-      var body = byId('followersBody');
-      if (body) body.innerHTML = '<div class="empty-block"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite"></i></div>';
-      Layer.open('followersDrawer');
-      var scrim = byId('followersScrim');
-      if (scrim) scrim.dataset.open = 'true';
-      fetch('/api/users/' + Profile._viewing + '/' + kind, { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (users) {
-          if (!users.length) {
-            body.innerHTML = Render.empty(kind === 'followers' ? 'لا متابعين بعد' : 'لا يتابع أحداً', 'ph-users');
-            return;
-          }
-          body.innerHTML = users.map(function (u) {
-            return '<div class="follower-item" data-action="open-user-profile" data-user="' + u.id + '">' +
-              '<img class="avatar" src="' + esc(u.avatar || '') + '" alt="" loading="lazy">' +
-              '<div class="follower-item-info">' +
-                '<div class="follower-item-name">' + esc(u.name) + '</div>' +
-                '<div class="follower-item-handle">' + esc(u.handle) + '</div>' +
-              '</div>' +
-              '<i class="ph ph-caret-left" style="color:var(--fg-3)"></i>' +
-            '</div>';
-          }).join('');
-        })
-        .catch(function () { body.innerHTML = Render.empty('تعذّر التحميل', 'ph-warning-circle'); });
-    },
-
-    closeFollowers: function () {
-      Layer.close('followersDrawer');
-      var scrim = byId('followersScrim');
-      if (scrim) scrim.dataset.open = 'false';
-    },
-
-    openChangePassword: function () {
-      var oldPw = prompt('كلمة المرور الحالية:');
-      if (!oldPw) return;
-      var newPw = prompt('كلمة المرور الجديدة (6 أحرف على الأقل):');
-      if (!newPw || newPw.length < 6) { toast('كلمة المرور قصيرة', 'warning'); return; }
-      fetch('/api/me/password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ old_password: oldPw, new_password: newPw })
-      })
-        .then(function (r) { if (!r.ok) throw new Error(); toast('تم تغيير كلمة المرور', 'success'); })
-        .catch(function () { toast('فشل التغيير', 'error'); });
-    }
   };
 
-  /* ═══════ EXPLORE ═══════ */
-  var Explore = {
-    openCollection: function (kind) { toast('فتح: ' + kind, 'ph-compass'); App.loadFeed('explore'); }
-  };
+  /* ═══════════════════════════════════════════════════════════════
+     PULL TO REFRESH
+     ═══════════════════════════════════════════════════════════════ */
+  const PTR = {
+    init() {
+      const main = document.querySelector('.app-main');
+      if (!main) return;
 
-  /* ═══════ INSTALL ═══════ */
-  var Install = {
-    _deferred: null,
-    prompt: function () {
-      if (!Install._deferred) { toast('افتح القائمة واختر "إضافة للشاشة"'); return; }
-      Install._deferred.prompt();
-      Install._deferred.userChoice.then(function (r) {
-        if (r.outcome === 'dismissed') Install._deferred = null;
+      let startY = 0;
+      let pulling = false;
+      let indicator = null;
+      const THRESHOLD = 70;
+
+      const createIndicator = () => {
+        const el = document.createElement('div');
+        el.className = 'ptr';
+        el.innerHTML = '<i class="ph ph-arrow-down" aria-hidden="true"></i>';
+        main.appendChild(el);
+        return el;
+      };
+
+      main.addEventListener('touchstart', (e) => {
+        if (window.scrollY > 5) return;
+        startY = e.touches[0].clientY;
+        pulling = true;
+        indicator = indicator || createIndicator();
+      }, { passive: true });
+
+      main.addEventListener('touchmove', (e) => {
+        if (!pulling || !indicator) return;
+        const delta = e.touches[0].clientY - startY;
+        if (delta <= 0) return;
+        const progress = Math.min(delta / THRESHOLD, 1.2);
+        indicator.classList.add('pulling');
+        indicator.style.marginTop = Math.min(16, delta * 0.35) + 'px';
+        indicator.style.opacity = String(progress);
+        if (delta > THRESHOLD) indicator.classList.add('ready');
+        else indicator.classList.remove('ready');
+      }, { passive: true });
+
+      main.addEventListener('touchend', async () => {
+        if (!pulling || !indicator) return;
+        pulling = false;
+        if (indicator.classList.contains('ready')) {
+          indicator.classList.add('refreshing');
+          await App.refreshAll(true);
+          indicator.classList.remove('refreshing', 'ready');
+        }
+        setTimeout(() => {
+          indicator.classList.remove('pulling');
+          indicator.style.marginTop = '';
+          indicator.style.opacity = '';
+        }, 240);
       });
     },
-    dismiss: function () { var b = byId('installBanner'); if (b) b.hidden = true; }
   };
 
-  /* ═══════ DELEGATION ═══════ */
-  var Delegation = {
-    'open-auth': function (t) { Auth.open(t.dataset.mode || 'login'); },
-    'close-auth': function () { Auth.close(); },
-    'switch-tab': function (t) { App.switchTab(t.dataset.tab); },
-    'open-composer': function () { Composer.open(); },
-    'close-composer': function () { Composer.close(); },
-    'submit-composer': function () { Composer.publish(); },
-    'choose-type': function (t) { Composer.chooseType(t.dataset.type); },
-    'save-profile': function () { Profile.save(); },
-    'pick-avatar-file': function () { Profile.pickAvatar(); },
-    'pick-cover-file': function () { Profile.pickCover(); },
-    'toggle-theme': function () { App.toggleTheme(); },
-    'preview-feed': function () { App.previewFeed(); },
-    'go-home': function () { App.goHome(); },
-    'refresh': function () { App.refreshAll(); },
-    'like': function (t) { Post.like(t, Number(t.dataset.post)); },
-    'save': function (t) { Post.save(t, Number(t.dataset.post)); },
-    'copy': function (t) { Post.copy(t.dataset.post, t); },
-    'open-post': function (t) { Post.open(Number(t.dataset.post)); },
-    'open-comments': function (t) { Drawers.openComments(Number(t.dataset.post)); },
-    'close-comments': function () { Drawers.closeComments(); },
-    'delete-comment': function (t) { Comments.delete(Number(t.dataset.comment)); },
-    'filter-tag': function (t) { App.filterByTag(t.dataset.tag); },
-    'open-chat': function (t) { Chat.open(Number(t.dataset.chat)); },
-    'chat-list': function () { Chat.showList(); },
-    'chat-new': function () { Chat.newChat(); },
-    'open-profile': function (t) { Profile.open(Number(t.dataset.user)); },
-    'open-user-profile': function (t) { Profile.open(Number(t.dataset.user)); },
-    'edit-profile': function () { Profile.openEdit(); },
-    'close-edit-profile': function () { Profile.closeEdit(); },
-    'share-profile': function () { Profile.shareProfile(); },
-    'copy-handle': function () { Profile.copyHandle(); },
-    'edit-avatar': function () { Profile.pickAvatar(); },
-    'edit-cover': function () { Profile.pickCover(); },
-    'toggle-follow': function (t) { Profile.toggleFollow(t, Number(t.dataset.user)); },
-    'message-user': function (t) { Profile.messageUser(Number(t.dataset.user)); },
-    'open-followers': function () { Profile.openFollowers('followers'); },
-    'open-following': function () { Profile.openFollowers('following'); },
-    'open-change-password': function () { Profile.openChangePassword(); },
-    'open-privacy': function () { window.open('/privacy', '_blank'); },
-    'logout': function () { Auth.logout(); },
-    'switch-mode': function (t) { Auth.switchMode(t.dataset.mode); },
-    'open-collection': function (t) { Explore.openCollection(t.dataset.kind); },
-    'install-prompt': function () { Install.prompt(); },
-    'install-dismiss': function () { Install.dismiss(); }
-  };
+  /* ═══════════════════════════════════════════════════════════════
+     APP — main controller
+     ═══════════════════════════════════════════════════════════════ */
+  const App = {
+    boot() {
+      if (S.booted) return;
+      S.booted = true;
 
-  document.addEventListener('click', function (e) {
-    var target = e.target.closest('[data-action]');
-    if (!target) return;
-    var action = target.dataset.action;
-    var handler = Delegation[action];
-    if (!handler) return;
-    e.preventDefault();
-    try { handler(target, e); }
-    catch (err) { console.error('[action "' + action + '"]', err); }
-  }, false);
+      Theme.init();
+      Net.init();
+      Install.init();
+      Composer.init();
+      Comments.init();
+      Settings.init();
+      PTR.init();
+      this.bindGlobal();
+      this.bindNav();
+      this.bindDock();
+      this.bindSearch();
+      this.bindInfiniteScroll();
+      this.bindKeyboard();
 
-  document.addEventListener('submit', function (e) {
-    if (e.defaultPrevented) return;
-    var f = e.target;
-    if (!f || f.tagName !== 'FORM') return;
-    var fid = f.id;
-    if (fid === 'loginForm') { e.preventDefault(); Auth.login(e); }
-    else if (fid === 'registerForm') { e.preventDefault(); Auth.register(e); }
-    else if (fid === 'composerForm') { e.preventDefault(); Composer.publish(e); }
-    else if (fid === 'commentForm') { e.preventDefault(); Comments.send(e); }
-    else if (fid === 'editProfileForm') { e.preventDefault(); Profile.save(e); }
-    else if (f.classList && f.classList.contains('chat-composer')) { e.preventDefault(); Chat.send(e); }
-  }, false);
+      // Update chrome with current user state
+      Auth.updateChrome(S.me);
 
-  /* Profile tabs */
-  document.addEventListener('click', function (e) {
-    var tab = e.target.closest('#profileTabs .tab');
-    if (!tab) return;
-    e.preventDefault();
-    Profile.loadPanel(tab.dataset.ptab);
-  }, false);
-
-  /* Cover presets + accent/shape/style pickers + file inputs */
-  document.addEventListener('DOMContentLoaded', function () {
-    var avInput = byId('avatarFileInput');
-    if (avInput) avInput.addEventListener('change', function (e) { Profile._handleAvatarFile(e.target.files[0]); });
-    var covInput = byId('coverFileInput');
-    if (covInput) covInput.addEventListener('change', function (e) { Profile._handleCoverFile(e.target.files[0]); });
-    var bio = byId('epBio');
-    if (bio) bio.addEventListener('input', Profile._updateBioCount);
-
-    var coverPresets = byId('coverPresets');
-    if (coverPresets) coverPresets.addEventListener('click', function (e) {
-      var btn = e.target.closest('.cover-preset');
-      if (!btn) return;
-      $$('.cover-preset').forEach(function (p) { p.setAttribute('aria-pressed', 'false'); });
-      btn.setAttribute('aria-pressed', 'true');
-      var cover = byId('editCoverPreview');
-      if (cover) { cover.dataset.cover = btn.dataset.cover; cover.style.backgroundImage = ''; }
-      Profile._pickedCover = null;
-    });
-
-    var accentPicker = byId('accentPicker');
-    if (accentPicker) accentPicker.addEventListener('click', function (e) {
-      var sw = e.target.closest('.accent-swatch');
-      if (!sw) return;
-      $$('.accent-swatch').forEach(function (s) { s.setAttribute('aria-pressed', 'false'); });
-      sw.setAttribute('aria-pressed', 'true');
-    });
-
-    var shapePicker = byId('avatarShapePicker');
-    if (shapePicker) shapePicker.addEventListener('click', function (e) {
-      var opt = e.target.closest('.shape-option');
-      if (!opt) return;
-      $$('.shape-option').forEach(function (s) { s.setAttribute('aria-pressed', 'false'); });
-      opt.setAttribute('aria-pressed', 'true');
-      var preview = byId('editAvatarPreview');
-      if (preview) {
-        var map = { circle: '50%', rounded: '22px', square: '8px' };
-        preview.style.borderRadius = map[opt.dataset.shape] || '22px';
+      // Landing or app?
+      if (S.me) {
+        this.showApp();
+        this.switchTab('home', { silent: true });
+      } else {
+        this.showLanding();
+        this.bindLanding();
       }
-    });
 
-    var stylePicker = byId('cardStylePicker');
-    if (stylePicker) stylePicker.addEventListener('click', function (e) {
-      var opt = e.target.closest('.style-option');
-      if (!opt) return;
-      $$('.style-option').forEach(function (s) { s.setAttribute('aria-pressed', 'false'); });
-      opt.setAttribute('aria-pressed', 'true');
-    });
-  });
+      // Update hero stats on landing
+      this.updateHeroStats();
+    },
 
-  /* Escape closes fixed views */
-  document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') return;
-    var composer = byId('composerView');
-    var edit = byId('editProfileView');
-    if (composer && !composer.hidden) { Composer.close(); e.preventDefault(); }
-    else if (edit && !edit.hidden) { Profile.closeEdit(); e.preventDefault(); }
-  });
+    bindGlobal() {
+      // Global click handlers for data-action
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
 
-  /* Theme from storage */
-  try {
-    var savedTheme = localStorage.getItem('kh_theme');
-    if (savedTheme) {
-      document.documentElement.setAttribute('data-theme', savedTheme);
-      var ti = byId('themeIcon');
-      if (ti) ti.className = savedTheme === 'dark' ? 'ph ph-moon' : 'ph ph-sun';
-    }
-  } catch (_) {}
+        if (action === 'switch-mode') { e.preventDefault(); Auth.switchMode(btn.dataset.mode); return; }
+        if (action === 'close-auth') { e.preventDefault(); Auth.close(); return; }
+        if (action === 'close-composer') { e.preventDefault(); Composer.close(); return; }
+        if (action === 'close-settings') { e.preventDefault(); Settings.close(); return; }
+        if (action === 'close-edit-profile') { e.preventDefault(); Settings.close(); return; }
+        if (action === 'submit-composer') { e.preventDefault(); Composer.publish(); return; }
+        if (action === 'save-profile') { e.preventDefault(); Settings.save(); return; }
+        if (action === 'save-settings') { e.preventDefault(); Settings.save(); return; }
+        if (action === 'choose-type') { e.preventDefault(); Composer.chooseType(btn.dataset.type); return; }
+        if (action === 'chat-list') { e.preventDefault(); Chat.backToList(); return; }
+        if (action === 'chat-new') { e.preventDefault(); Toast.show('ابدأ محادثة من ملف أي مستخدم', 'info'); return; }
+        if (action === 'share-profile') {
+          const url = window.location.origin + '/u/' + (Profile.current && Profile.current.username);
+          U.copy(url).then(ok => Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error'));
+          return;
+        }
+        if (action === 'open-settings') { e.preventDefault(); Settings.open(); return; }
+        if (action === 'pick-avatar-file') { e.preventDefault(); document.getElementById('avatarFileInput')?.click(); return; }
+        if (action === 'pick-cover-file') { e.preventDefault(); document.getElementById('coverFileInput')?.click(); return; }
+        if (action === 'toggle-notifications') {
+          e.preventDefault();
+          Drawers.openNotifications();
+          return;
+        }
+      });
 
-  /* Expose */
-  window.U = U;
-  window.Store = { get: function (k, d) { try { return JSON.parse(localStorage.getItem('kh_' + k)) || d; } catch (_) { return d; } }, set: function (k, v) { try { localStorage.setItem('kh_' + k, JSON.stringify(v)); } catch (_) {} } };
-  window.Auth = Auth;
-  window.App = App;
-  window.Post = Post;
-  window.Composer = Composer;
-  window.Chat = Chat;
-  window.Drawers = Drawers;
-  window.Comments = Comments;
-  window.Profile = Profile;
-  window.Explore = Explore;
-  window.Install = Install;
-  window.Layer = Layer;
-  window.Render = Render;
-  window.Infinite = Infinite;
-  window.PTR = PTR;
-  window.ScrollMemory = ScrollMemory;
-  window.NewPostsPill = NewPostsPill;
+      // Tag clicks
+      document.addEventListener('click', (e) => {
+        const tag = e.target.closest('.tag[data-tag]');
+        if (tag) {
+          const t = tag.dataset.tag;
+          App.filterByTag(t);
+        }
+      });
 
-  function boot() {
-    try {
-      App.init();
-      console.log('[خَيال] ✓ ready');
-    } catch (err) {
-      console.error('[خَيال] boot failed:', err);
-    }
+      // Escape key closes overlays
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (!document.getElementById('composerView')?.hidden) { Composer.close(); return; }
+        if (!document.getElementById('settingsView')?.hidden) { Settings.close(); return; }
+        if (document.getElementById('authModal')?.getAttribute('data-open') === 'true') { Auth.close(); return; }
+        Drawers.closeAll();
+      });
+    },
+
+    bindNav() {
+      const themeBtn = document.querySelector('.nav .btn-icon[onclick*="toggleTheme"]')
+        || document.querySelector('button[aria-label="تبديل المظهر"]');
+      if (themeBtn) {
+        themeBtn.removeAttribute('onclick');
+        themeBtn.addEventListener('click', () => Theme.toggle());
+      }
+
+      const signIn = document.getElementById('signInBtn');
+      if (signIn) {
+        signIn.removeAttribute('onclick');
+        signIn.addEventListener('click', () => Auth.open('login'));
+      }
+
+      const avatarBtn = document.getElementById('avatarBtn');
+      if (avatarBtn) {
+        avatarBtn.removeAttribute('onclick');
+        avatarBtn.addEventListener('click', () => {
+          if (S.me) this.switchTab('profile');
+          else Auth.open('login');
+        });
+      }
+
+      // Nav scrolled state
+      let ticking = false;
+      window.addEventListener('scroll', () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          const nav = document.querySelector('.nav');
+          if (nav) nav.classList.toggle('is-scrolled', window.scrollY > 12);
+          ticking = false;
+        });
+      }, { passive: true });
+    },
+
+    bindDock() {
+      document.querySelectorAll('.dock-item[data-tab]').forEach(btn => {
+        const tab = btn.dataset.tab;
+        btn.addEventListener('click', () => {
+          if (tab === 'settings') Settings.open();
+          else this.switchTab(tab);
+        });
+      });
+
+      const create = document.querySelector('.dock-create');
+      if (create) {
+        create.removeAttribute('onclick');
+        create.addEventListener('click', () => Composer.open());
+      }
+    },
+
+    bindSearch() {
+      const input = document.getElementById('searchInput');
+      const results = document.getElementById('searchResults');
+      if (!input || !results) return;
+
+      const run = U.debounce(async () => {
+        const q = input.value.trim();
+        if (!q) {
+          results.setAttribute('data-open', 'false');
+          results.innerHTML = '';
+          return;
+        }
+        try {
+          const items = await API.get('/api/posts?q=' + encodeURIComponent(q) + '&limit=6');
+          if (!items || !items.length) {
+            results.innerHTML = `<div style="padding:var(--sp-4);text-align:center;color:var(--fg-3);font-size:var(--fs-2)">لا نتائج</div>`;
+          } else {
+            results.innerHTML = items.map(p => `
+              <div class="search-result" data-post-id="${p.id}">
+                <img src="${U.escapeHtml(p.image || '')}" alt="" loading="lazy">
+                <div class="search-result-info">
+                  <strong>${U.escapeHtml(p.title || '')}</strong>
+                  <span>${U.escapeHtml((p.prompt || '').slice(0, 80))}</span>
+                </div>
+              </div>`).join('');
+            results.querySelectorAll('.search-result').forEach(r => {
+              r.addEventListener('click', () => {
+                const pid = r.dataset.postId;
+                results.setAttribute('data-open', 'false');
+                input.value = '';
+                const existing = document.querySelector(`[data-post-id="${pid}"]`);
+                if (existing) existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              });
+            });
+          }
+          results.setAttribute('data-open', 'true');
+        } catch (err) { /* silent */ }
+      }, CFG.SEARCH_DEBOUNCE);
+
+      input.addEventListener('input', run);
+      input.addEventListener('focus', () => { if (input.value.trim()) results.setAttribute('data-open', 'true'); });
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.search')) results.setAttribute('data-open', 'false');
+      });
+    },
+
+    bindInfiniteScroll() {
+      const onScroll = () => {
+        if (window.innerHeight + window.scrollY < document.body.offsetHeight - 800) return;
+        const fs = feedState(S.tab);
+        if (!fs.hasMore || fs.busy || !fs.loaded) return;
+        Feed.loadMore(S.tab);
+      };
+      window.addEventListener('scroll', U.debounce(onScroll, 200), { passive: true });
+    },
+
+    bindKeyboard() {
+      document.addEventListener('keydown', (e) => {
+        // Cmd/Ctrl + K → search focus
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          const input = document.getElementById('searchInput');
+          if (input) input.focus();
+        }
+        // Cmd/Ctrl + N → new post
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+          e.preventDefault();
+          if (S.me) Composer.open();
+        }
+      });
+    },
+
+    bindLanding() {
+      document.querySelectorAll('[data-action="preview-feed"], .hero-cta button[onclick*="previewFeed"]').forEach(b => {
+        b.removeAttribute('onclick');
+        b.addEventListener('click', () => this.previewFeed());
+      });
+      document.querySelectorAll('button[onclick*="Auth.open"]').forEach(b => {
+        b.removeAttribute('onclick');
+        b.addEventListener('click', () => Auth.open('register'));
+      });
+    },
+
+    showLanding() {
+      const landing = document.getElementById('view-landing');
+      const appView = document.getElementById('view-app');
+      if (landing) { landing.hidden = false; landing.classList.add('is-active'); }
+      if (appView) appView.hidden = true;
+      const dock = document.getElementById('dock');
+      if (dock) dock.hidden = true;
+      document.querySelectorAll('.nav-links').forEach(n => n.style.display = '');
+    },
+
+    showApp() {
+      const landing = document.getElementById('view-landing');
+      const appView = document.getElementById('view-app');
+      if (landing) { landing.hidden = true; landing.classList.remove('is-active'); }
+      if (appView) { appView.hidden = false; appView.classList.add('is-active'); }
+      const dock = document.getElementById('dock');
+      if (dock) dock.hidden = !S.me;
+      document.querySelectorAll('.nav-links').forEach(n => n.style.display = 'none');
+    },
+
+    previewFeed() {
+      if (!S.me) { Auth.open('register'); return; }
+      this.showApp();
+      this.switchTab('home');
+    },
+
+    activateTab(name) {
+      document.querySelectorAll('.tab-panel').forEach(p => {
+        p.classList.toggle('is-active', p.dataset.tab === name);
+      });
+      document.querySelectorAll('.dock-item[data-tab]').forEach(b => {
+        const on = b.dataset.tab === name;
+        b.setAttribute('aria-current', on ? 'page' : 'false');
+      });
+    },
+
+    switchTab(name, opts) {
+      if (!name) return;
+      opts = opts || {};
+      if (S.tab !== name) S.tabHistory.push(S.tab);
+      S.tab = name;
+      this.activateTab(name);
+
+      if (window.Sounds && !opts.silent) Sounds.play('tab');
+
+      // Load feed on first visit
+      if (name === 'home' || name === 'explore') {
+        Feed.load(name);
+      } else if (name === 'chat') {
+        Chat.loadList();
+      } else if (name === 'profile') {
+        if (S.viewingUser) Profile.load(S.viewingUser.id);
+        else Profile.load();
+      } else if (name === 'liked' || name === 'saved') {
+        // Filters use /api/posts with current user context
+        Feed.load(name);
+      }
+
+      // Scroll top
+      if (!opts.noScroll) window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+
+    setSort(sort) {
+      S.sort = sort;
+      document.querySelectorAll('.sort-tab').forEach(b => {
+        b.setAttribute('aria-selected', b.dataset.sort === sort ? 'true' : 'false');
+      });
+      Feed.reset('home');
+      Feed.reset('explore');
+      Feed.load(S.tab === 'explore' ? 'explore' : 'home', { force: true });
+    },
+
+    filterByTag(tag) {
+      if (!tag) return;
+      S.filterTag = tag;
+      S.sort = 'recent';
+      this.switchTab('explore');
+      Feed.reset('explore');
+      Feed.load('explore', { force: true });
+    },
+
+    openProfile(userId) {
+      if (!userId) return;
+      Profile.load(userId);
+    },
+
+    async refreshAll(force) {
+      Feed.reset(S.tab);
+      await Feed.load(S.tab, { force: true });
+      if (S.tab === 'chat') await Chat.loadList();
+      if (S.tab === 'profile' && S.viewingUser) await Profile.load(S.viewingUser.id);
+      if (force) Toast.show('تم التحديث', 'success', 1600);
+    },
+
+    async updateHeroStats() {
+      try {
+        const health = await API.get('/api/health');
+        const postEl = document.getElementById('heroStatPosts');
+        const userEl = document.getElementById('heroStatUsers');
+        if (postEl) postEl.textContent = U.formatNumber(health.posts || 0);
+        if (userEl) userEl.textContent = U.formatNumber(health.users || 0);
+      } catch (e) { /* silent */ }
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     SOUND HOOKS
+     ═══════════════════════════════════════════════════════════════ */
+  function installSoundHooks() {
+    if (!window.Sounds) return;
+    if (window.__soundsHooked) return;
+    window.__soundsHooked = true;
+    // Already integrated via direct calls above
   }
 
+  /* ═══════════════════════════════════════════════════════════════
+     UNLOCK AUDIO ON FIRST GESTURE
+     ═══════════════════════════════════════════════════════════════ */
+  function unlockAudioOnce() {
+    if (window.Sounds) Sounds.unlock();
+    ['click', 'touchstart', 'keydown'].forEach(evt => {
+      document.removeEventListener(evt, unlockAudioOnce);
+    });
+  }
+  ['click', 'touchstart', 'keydown'].forEach(evt => {
+    document.addEventListener(evt, unlockAudioOnce, { once: true, passive: true });
+  });
+
+  /* ═══════════════════════════════════════════════════════════════
+     EXPORT + BOOT
+     ═══════════════════════════════════════════════════════════════ */
+  window.App = App;
+  window.Auth = Auth;
+  window.Post = Post;
+  window.Chat = Chat;
+  window.Comments = Comments;
+  window.Drawers = Drawers;
+  window.Composer = Composer;
+  window.Profile = Profile;
+  window.Explore = Explore;
+  window.Settings = Settings;
+  window.Toast = Toast;
+  window.Install = Install;
+  window.U = U;
+  window.Theme = Theme;
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
+    document.addEventListener('DOMContentLoaded', () => App.boot());
   } else {
-    boot();
+    App.boot();
   }
 })();
