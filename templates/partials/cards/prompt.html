@@ -1,0 +1,112 @@
+<article class="prompt-card" data-post-id="{{ post.id }}">
+
+  <div class="prompt-media">
+    <img
+      src="{{ post.image or 'https://placehold.co/800x600/0E0E14/22D3EE?text=خَيال' }}"
+      alt="{{ post.title }}"
+      loading="lazy"
+      data-state="loading"
+      onload="this.dataset.state='loaded'"
+      onerror="this.dataset.state='error'">
+
+    {% if post.model %}
+    <span class="prompt-model">
+      <i class="ph ph-sparkle" aria-hidden="true"></i>
+      {{ post.model }}
+    </span>
+    {% endif %}
+
+    <div class="prompt-floats">
+      <button
+        class="float-btn"
+        data-action="like"
+        aria-pressed="{{ 'true' if post.liked else 'false' }}"
+        aria-label="إعجاب"
+        onclick="Post.like(this, {{ post.id }})"
+        type="button">
+        <i class="ph ph-heart" aria-hidden="true"></i>
+      </button>
+
+      <button
+        class="float-btn"
+        data-action="save"
+        aria-pressed="{{ 'true' if post.saved else 'false' }}"
+        aria-label="حفظ"
+        onclick="Post.save(this, {{ post.id }})"
+        type="button">
+        <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="prompt-body">
+
+    <div class="prompt-author" onclick="App.openProfile({{ post.author_data.id }})">
+      <img
+        class="avatar avatar-sm"
+        src="{{ post.author_data.avatar }}"
+        alt=""
+        loading="lazy">
+      <div class="prompt-author-info">
+        <span class="prompt-author-name">
+          {{ post.author_data.name }}
+          {% if post.author_data.verified %}
+          <i class="ph ph-seal-check" aria-label="موثّق"></i>
+          {% endif %}
+        </span>
+        <span class="prompt-author-meta">{{ post.author_data.handle }}</span>
+      </div>
+    </div>
+
+    <h3 class="prompt-title">{{ post.title }}</h3>
+
+    <div class="prompt-excerpt" onclick="Post.copy('{{ post.id }}', this)">
+      {{ post.prompt }}
+      <button
+        type="button"
+        class="prompt-excerpt-copy"
+        aria-label="نسخ البرومبت"
+        onclick="event.stopPropagation();Post.copy('{{ post.id }}', this.parentElement)">
+        <i class="ph ph-copy" aria-hidden="true"></i>
+      </button>
+    </div>
+
+    {% if post.tags %}
+    <div class="prompt-tags">
+      {% for tag in post.tags %}
+      <button class="tag" type="button" onclick="App.filterByTag('{{ tag }}')">{{ tag }}</button>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </div>
+
+  <div class="prompt-actions">
+    <button
+      class="action"
+      data-action="like"
+      aria-pressed="{{ 'true' if post.liked else 'false' }}"
+      onclick="Post.like(this, {{ post.id }})"
+      type="button">
+      <i class="ph ph-heart" aria-hidden="true"></i>
+      <span>{{ post.likes }}</span>
+    </button>
+
+    <button
+      class="action"
+      onclick="Drawers.openComments({{ post.id }})"
+      type="button">
+      <i class="ph ph-chat-circle" aria-hidden="true"></i>
+      <span>{{ post.comments }}</span>
+    </button>
+
+    <button
+      class="action action-primary"
+      onclick="Post.copy('{{ post.id }}', this)"
+      type="button">
+      <i class="ph ph-copy" aria-hidden="true"></i>
+      <span>نسخ</span>
+    </button>
+  </div>
+
+</article>
