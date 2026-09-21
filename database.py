@@ -1,17 +1,13 @@
 """
-خَيال — طبقة قاعدة البيانات (محسّنة للتطوير من الهاتف والإنتاج)
-تدعم:
-- PostgreSQL (psycopg2) و MySQL (pymysql)
-- pg8000 كبديل لا يحتاج تجميع C
-- اكتشاف VPC تلقائياً
-- اختبار الاتصال قبل الاستخدام
-- SSL صحيح لـ Aiven
+خَيال — طبقة قاعدة البيانات v2
+إصلاح SSL مع Aiven، pool recycling آمن، دعم pg8000 كبديل
 """
 import os
 import re
 import sys
+import time
 from datetime import datetime
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import urlparse, urlunparse
 
 from flask_sqlalchemy import SQLAlchemy
 
@@ -22,12 +18,10 @@ db = SQLAlchemy()
 # كشف البيئة
 # ═══════════════════════════════════════════════════════════
 def is_running_on_render() -> bool:
-    """هل نعمل على Render؟"""
     return bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"))
 
 
 def is_running_locally() -> bool:
-    """هل نعمل محلياً (هاتف أو كمبيوتر)؟"""
     return not is_running_on_render()
 
 
@@ -35,21 +29,19 @@ def is_running_locally() -> bool:
 # تنقية وتصحيح الرابط
 # ═══════════════════════════════════════════════════════════
 def _sanitize_uri(uri: str) -> str:
-    """ينظّف الرابط من الأسطر الجديدة والمسافات."""
     if not uri:
         return ""
     return uri.replace("\n", "").replace("\r", "").replace("\t", "").strip()
 
 
 def _normalize_scheme(uri: str) -> str:
-    """يُصلح صيغة PostgreSQL/MySQL بأي شكل."""
     uri = re.sub(r"^postgre(?:sql)?://", "postgresql://", uri, flags=re.IGNORECASE)
+    uri = re.sub(r"^postgres://", "postgresql://", uri, flags=re.IGNORECASE)
     uri = re.sub(r"^mysql://", "mysql+pymysql://", uri, flags=re.IGNORECASE)
     return uri
 
 
 def _mask_password(uri: str) -> str:
-    """يخفي كلمة المرور للعرض في السجل."""
     try:
         parsed = urlparse(uri)
         if parsed.password:
@@ -60,38 +52,25 @@ def _mask_password(uri: str) -> str:
     return uri[:60] + "…"
 
 
-def _ensure_ssl(uri: str) -> str:
-    """يضيف SSL إن كان مفقوداً."""
+def _force_ssl_require(uri: str) -> str:
+    """يضمن sslmode=require (Aiven يرفض أي شيء آخر)."""
     if not uri.startswith("postgresql"):
         return uri
-    if "sslmode=" in uri:
-        return uri
+    uri = re.sub(r"[?&]sslmode=[^&]*", "", uri)
     sep = "&" if "?" in uri else "?"
     return f"{uri}{sep}sslmode=require"
 
 
 def _swap_host_to_public(uri: str) -> str:
-    """
-    يستبدل hostname الداخلي بـ public- على Aiven.
-    pg-xxx.aivencloud.com → public-pg-xxx.aivencloud.com
-    """
     try:
         parsed = urlparse(uri)
         host = parsed.hostname or ""
         if host.startswith("pg-") and host.endswith(".aivencloud.com"):
             new_host = "public-" + host
-            # احتفظ بالمنفذ إن وُجد
-            port_part = f":{parsed.port}" if parsed.port else ""
-            netloc = parsed.netloc
-            if parsed.password:
-                netloc = netloc.replace(f"@{host}", f"@{new_host}").replace(
-                    f"@{host}{port_part}", f"@{new_host}{port_part}"
-                )
-            else:
-                netloc = netloc.replace(host, new_host, 1)
+            netloc = parsed.netloc.replace(host, new_host, 1)
             return urlunparse(parsed._replace(netloc=netloc))
     except Exception as e:
-        print(f"⚠️ فشل التبديل إلى public: {e}", file=sys.stderr)
+        print(f"⚠️ public swap failed: {e}", file=sys.stderr)
     return uri
 
 
@@ -99,59 +78,39 @@ def _swap_host_to_public(uri: str) -> str:
 # بناء رابط الاتصال
 # ═══════════════════════════════════════════════════════════
 def build_database_uri() -> str:
-    """
-    يبني رابط SQLAlchemy مع معالجة ذكية لكل الحالات.
-    """
     direct = _sanitize_uri(os.getenv("DATABASE_URL"))
 
     if direct:
         direct = _normalize_scheme(direct)
-        direct = _ensure_ssl(direct)
-
-        # إذا كنا محلياً ووجدنا hostname داخلي، حوّله إلى public
+        direct = _force_ssl_require(direct)
         if is_running_locally():
-            parsed_host = urlparse(direct).hostname or ""
-            if parsed_host.startswith("pg-") and "aivencloud.com" in parsed_host:
-                print(f"📍 نعمل محلياً — تحويل {parsed_host} → public-")
+            host = urlparse(direct).hostname or ""
+            if host.startswith("pg-") and "aivencloud.com" in host:
+                print(f"📍 local mode: {host} → public-{host}")
                 direct = _swap_host_to_public(direct)
-
         print(f"[DB] mode={'render' if is_running_on_render() else 'local'}")
-        print(f"[DB] DATABASE_URL: {_mask_password(direct)}")
+        print(f"[DB] {_mask_password(direct)}")
         return direct
 
-    # ═══ بناء من متغيرات منفصلة ═══
-    host     = _sanitize_uri(os.getenv("DB_HOST"))
-    port     = _sanitize_uri(os.getenv("DB_PORT"))
-    user     = _sanitize_uri(os.getenv("DB_USER"))
+    # بناء من متغيرات منفصلة
+    host = _sanitize_uri(os.getenv("DB_HOST"))
+    port = _sanitize_uri(os.getenv("DB_PORT")) or "5432"
+    user = _sanitize_uri(os.getenv("DB_USER"))
     password = _sanitize_uri(os.getenv("DB_PASSWORD"))
-    name     = _sanitize_uri(os.getenv("DB_NAME")) or "defaultdb"
-    kind     = (_sanitize_uri(os.getenv("DB_TYPE")) or "postgres").lower()
-    use_ssl  = (_sanitize_uri(os.getenv("DB_SSL")) or "true").lower() == "true"
+    name = _sanitize_uri(os.getenv("DB_NAME")) or "defaultdb"
 
     if not all([host, user, password]):
         raise RuntimeError(
             "❌ متغيرات قاعدة البيانات ناقصة.\n"
-            "أضف في البيئة:\n"
-            "  DATABASE_URL=postgresql://...\n"
-            "أو:\n"
-            "  DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT"
+            "أضف DATABASE_URL=postgresql://..."
         )
 
-    # إذا محلياً و hostname داخلي، حوّله
     if is_running_locally() and host.startswith("pg-") and "aivencloud.com" in host:
-        print(f"📍 نعمل محلياً — تحويل host إلى public-")
         host = "public-" + host
 
-    if kind == "mysql":
-        port = port or "3306"
-        ssl_part = "&ssl_ca=ca.pem" if use_ssl else ""
-        uri = f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4{ssl_part}"
-    else:
-        port = port or "5432"
-        uri = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}?sslmode=require"
-
+    uri = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}?sslmode=require"
     print(f"[DB] mode={'render' if is_running_on_render() else 'local'}")
-    print(f"[DB] host={host} port={port} db={name} kind={kind}")
+    print(f"[DB] host={host} port={port} db={name}")
     return uri
 
 
@@ -159,9 +118,6 @@ def build_database_uri() -> str:
 # اختبار الاتصال
 # ═══════════════════════════════════════════════════════════
 def test_connection(app) -> dict:
-    """
-    يختبر الاتصال بقاعدة البيانات ويعيد تقريراً مفصّلاً.
-    """
     from sqlalchemy import text
     report = {
         "mode": "render" if is_running_on_render() else "local",
@@ -173,7 +129,6 @@ def test_connection(app) -> dict:
         "server_version": None,
         "latency_ms": None,
     }
-
     try:
         parsed = urlparse(app.config["SQLALCHEMY_DATABASE_URI"])
         report["host"] = parsed.hostname
@@ -181,7 +136,6 @@ def test_connection(app) -> dict:
     except Exception:
         pass
 
-    import time
     try:
         start = time.time()
         with app.app_context():
@@ -204,25 +158,25 @@ def test_connection(app) -> dict:
 class User(db.Model):
     __tablename__ = "users"
 
-    id            = db.Column(db.Integer, primary_key=True)
-    email         = db.Column(db.String(255), unique=True, index=True, nullable=False)
-    username      = db.Column(db.String(64), unique=True, index=True, nullable=False)
-    name          = db.Column(db.String(120), nullable=False)
-    handle        = db.Column(db.String(64), unique=True, index=True, nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, index=True, nullable=False)
+    username = db.Column(db.String(64), unique=True, index=True, nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    handle = db.Column(db.String(64), unique=True, index=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    avatar        = db.Column(db.String(512), nullable=True)
-    bio           = db.Column(db.Text, nullable=True, default="")
-    verified      = db.Column(db.Boolean, default=False)
-    followers     = db.Column(db.Integer, default=0)
-    following     = db.Column(db.Integer, default=0)
-    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    avatar = db.Column(db.String(512), nullable=True)
+    bio = db.Column(db.Text, nullable=True, default="")
+    verified = db.Column(db.Boolean, default=False)
+    followers = db.Column(db.Integer, default=0)
+    following = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    posts    = db.relationship("Post", backref="author", lazy="dynamic",
-                               cascade="all, delete-orphan")
+    posts = db.relationship("Post", backref="author", lazy="dynamic",
+                            cascade="all, delete-orphan")
     comments = db.relationship("Comment", backref="author", lazy="dynamic",
                                cascade="all, delete-orphan")
-    likes    = db.relationship("Like", backref="user", lazy="dynamic",
-                               cascade="all, delete-orphan")
+    likes = db.relationship("Like", backref="user", lazy="dynamic",
+                            cascade="all, delete-orphan")
 
     def to_dict(self):
         return {
@@ -241,21 +195,21 @@ class User(db.Model):
 class Post(db.Model):
     __tablename__ = "posts"
 
-    id         = db.Column(db.Integer, primary_key=True)
-    author_id  = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
-                           nullable=False, index=True)
-    title      = db.Column(db.String(255), nullable=False)
-    prompt     = db.Column(db.Text, nullable=False)
-    image      = db.Column(db.String(1024), nullable=True)
-    model      = db.Column(db.String(64), nullable=True)
-    tags       = db.Column(db.String(512), nullable=True)
-    likes      = db.Column(db.Integer, default=0)
-    copies     = db.Column(db.Integer, default=0)
-    saves      = db.Column(db.Integer, default=0)
+    id = db.Column(db.Integer, primary_key=True)
+    author_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    title = db.Column(db.String(255), nullable=False)
+    prompt = db.Column(db.Text, nullable=False)
+    image = db.Column(db.String(1024), nullable=True)
+    model = db.Column(db.String(64), nullable=True)
+    tags = db.Column(db.String(512), nullable=True)
+    likes = db.Column(db.Integer, default=0)
+    copies = db.Column(db.Integer, default=0)
+    saves = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
-    comments  = db.relationship("Comment", backref="post", lazy="dynamic",
-                                cascade="all, delete-orphan")
+    comments = db.relationship("Comment", backref="post", lazy="dynamic",
+                               cascade="all, delete-orphan")
     likes_rel = db.relationship("Like", backref="post", lazy="dynamic",
                                 cascade="all, delete-orphan")
 
@@ -283,13 +237,13 @@ class Post(db.Model):
 class Comment(db.Model):
     __tablename__ = "comments"
 
-    id         = db.Column(db.Integer, primary_key=True)
-    post_id    = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"),
-                           nullable=False, index=True)
-    author_id  = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
-                           nullable=False)
-    text       = db.Column(db.Text, nullable=False)
-    likes      = db.Column(db.Integer, default=0)
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    author_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                          nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    likes = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -306,7 +260,7 @@ class Like(db.Model):
     __tablename__ = "likes"
     __table_args__ = (db.UniqueConstraint("user_id", "post_id", name="uq_like_user_post"),)
 
-    id      = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
 
@@ -315,7 +269,7 @@ class Save(db.Model):
     __tablename__ = "saves"
     __table_args__ = (db.UniqueConstraint("user_id", "post_id", name="uq_save_user_post"),)
 
-    id      = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     post_id = db.Column(db.Integer, db.ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
 
@@ -324,19 +278,19 @@ class Follow(db.Model):
     __tablename__ = "follows"
     __table_args__ = (db.UniqueConstraint("follower_id", "following_id", name="uq_follow"),)
 
-    id           = db.Column(db.Integer, primary_key=True)
-    follower_id  = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    follower_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     following_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
 
 class Chat(db.Model):
     __tablename__ = "chats"
 
-    id         = db.Column(db.Integer, primary_key=True)
-    user_a_id  = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
-                           nullable=False, index=True)
-    user_b_id  = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
-                           nullable=False, index=True)
+    id = db.Column(db.Integer, primary_key=True)
+    user_a_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    user_b_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     messages = db.relationship("Message", backref="chat", lazy="dynamic",
@@ -346,11 +300,11 @@ class Chat(db.Model):
 class Message(db.Model):
     __tablename__ = "messages"
 
-    id         = db.Column(db.Integer, primary_key=True)
-    chat_id    = db.Column(db.Integer, db.ForeignKey("chats.id", ondelete="CASCADE"),
-                           nullable=False, index=True)
-    sender_id  = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
-                           nullable=False)
-    text       = db.Column(db.Text, nullable=False)
-    read       = db.Column(db.Boolean, default=False)
+    id = db.Column(db.Integer, primary_key=True)
+    chat_id = db.Column(db.Integer, db.ForeignKey("chats.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                          nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
