@@ -3,11 +3,7 @@
   <div class="profile-card">
     <div class="profile-cover">
       <div class="profile-cover-pattern" aria-hidden="true"></div>
-      <button
-        class="profile-cover-edit"
-        onclick="Auth.openEditProfile()"
-        aria-label="تعديل الغلاف"
-        type="button">
+      <button class="profile-cover-edit" onclick="Auth.openEditProfile()" aria-label="تعديل الغلاف" type="button">
         <i class="ph ph-camera" aria-hidden="true"></i>
       </button>
     </div>
@@ -15,21 +11,17 @@
     <div class="profile-body">
       <div class="profile-avatar-wrap">
         <img class="profile-avatar" id="profileAvatar" src="" alt="">
-        <button
-          class="profile-avatar-edit"
-          onclick="Auth.openEditProfile()"
-          aria-label="تعديل الصورة"
-          type="button">
+        <button class="profile-avatar-edit" onclick="Auth.openEditProfile()" aria-label="تعديل الصورة" type="button">
           <i class="ph ph-camera" aria-hidden="true"></i>
         </button>
       </div>
 
       <div class="profile-info">
         <h1 class="profile-name">
-          <span id="profileName"></span>
+          <span id="profileName">—</span>
           <i class="ph ph-seal-check" aria-label="حساب موثّق"></i>
         </h1>
-        <div class="profile-handle" id="profileHandle"></div>
+        <div class="profile-handle" id="profileHandle">@—</div>
         <p class="profile-bio" id="profileBio"></p>
 
         <div class="profile-stats">
