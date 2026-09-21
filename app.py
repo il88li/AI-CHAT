@@ -1,6 +1,6 @@
 """
 خَيال — منصة البرومبتات العربية
-Flask + PostgreSQL + تسجيل دخول محلي + مسارات صيانة
+Flask + PostgreSQL + تسجيل دخول محلي + استقرار إنتاجي
 محسّن للتطوير من الهاتف والإنتاج على Render
 """
 import os
@@ -42,9 +42,7 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# إعدادات مختلفة حسب البيئة
 if os.getenv("RENDER"):
-    # على Render: pool أكبر + keepalives
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_pre_ping": True,
         "pool_recycle": 250,
@@ -60,7 +58,6 @@ if os.getenv("RENDER"):
         },
     }
 else:
-    # محلياً (هاتف): pool أصغر + مهلة أطول
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_pre_ping": True,
         "pool_recycle": 200,
@@ -127,6 +124,43 @@ def _is_local_mode():
 
 
 # ═══════════════════════════════════════════════════════════
+# Middleware — استقرار ومراقبة
+# ═══════════════════════════════════════════════════════════
+@app.before_request
+def _before_request():
+    if request.path.startswith("/api/"):
+        g.request_start = time.time()
+
+
+@app.after_request
+def _after_request(response):
+    # Cache للملفات الثابتة
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
+    elif request.path.startswith("/api/"):
+        if "Cache-Control" not in response.headers:
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+
+    # سجّل الطلبات البطيئة
+    try:
+        start = getattr(g, "request_start", None)
+        if start:
+            elapsed = (time.time() - start) * 1000
+            if elapsed > 1000:
+                print(f"⚠️ طلب بطيء: {request.method} {request.path} — {elapsed:.0f}ms",
+                      file=sys.stderr)
+    except Exception:
+        pass
+
+    # رؤوس الأمان
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    return response
+
+
+# ═══════════════════════════════════════════════════════════
 # الصفحات
 # ═══════════════════════════════════════════════════════════
 @app.route("/")
@@ -143,7 +177,7 @@ def app_view():
 def offline():
     return render_template("error.html", code=503,
                             title="لا يوجد اتصال",
-                            message="يبدو أنك غير متصل بالإنترنت. تحقق من الاتصال ثم أعد المحاولة.")
+                            message="يبدو أنك غير متصل بالإنترنت.")
 
 
 @app.route("/manifest.json")
@@ -174,28 +208,23 @@ def api_register():
 
     if not email or not username or not name or not password:
         return jsonify({"error": "جميع الحقول مطلوبة"}), 400
-
     if not _validate_email(email):
         return jsonify({"error": "البريد الإلكتروني غير صحيح"}), 400
-
     if not _validate_username(username):
-        return jsonify({"error": "اسم المستخدم يجب أن يكون 3-32 حرفاً (a-z, 0-9, _, -)"}), 400
-
+        return jsonify({"error": "اسم المستخدم غير صحيح (3-32 حرفاً إنجليزي)"}), 400
     if len(name) < 2:
-        return jsonify({"error": "الاسم يجب أن يكون حرفين على الأقل"}), 400
-
+        return jsonify({"error": "الاسم قصير جداً"}), 400
     if not _validate_password(password):
         return jsonify({"error": "كلمة المرور يجب أن تكون 6 أحرف على الأقل"}), 400
 
     if User.query.filter_by(email=email).first():
-        return jsonify({"error": "البريد الإلكتروني مستخدم بالفعل"}), 409
-
+        return jsonify({"error": "البريد الإلكتروني مستخدم"}), 409
     if User.query.filter_by(username=username.lower()).first():
-        return jsonify({"error": "اسم المستخدم مستخدم بالفعل"}), 409
+        return jsonify({"error": "اسم المستخدم مستخدم"}), 409
 
     handle = "@" + username.lower()
     if User.query.filter_by(handle=handle).first():
-        return jsonify({"error": "اسم المستخدم مستخدم بالفعل"}), 409
+        return jsonify({"error": "اسم المستخدم مستخدم"}), 409
 
     try:
         user = User(
@@ -212,15 +241,15 @@ def api_register():
         )
         db.session.add(user)
         db.session.commit()
-        print(f"✅ مستخدم جديد: {user.username} ({user.email})")
+        print(f"✅ مستخدم جديد: {user.username}")
 
         session.permanent = True
         session["user_id"] = user.id
         return jsonify(user.to_dict()), 201
     except Exception as e:
         db.session.rollback()
-        print(f"❌ خطأ في التسجيل: {e}", file=sys.stderr)
-        return jsonify({"error": f"خطأ في الخادم: {str(e)}"}), 500
+        print(f"❌ خطأ تسجيل: {e}", file=sys.stderr)
+        return jsonify({"error": "خطأ في الخادم"}), 500
 
 
 @app.post("/api/auth/login")
@@ -245,8 +274,8 @@ def api_login():
         session["user_id"] = user.id
         return jsonify(user.to_dict())
     except Exception as e:
-        print(f"❌ خطأ في الدخول: {e}", file=sys.stderr)
-        return jsonify({"error": f"خطأ في الخادم: {str(e)}"}), 500
+        print(f"❌ خطأ دخول: {e}", file=sys.stderr)
+        return jsonify({"error": "خطأ في الخادم"}), 500
 
 
 @app.post("/api/auth/logout")
@@ -281,11 +310,10 @@ def api_check_email():
 
 
 # ═══════════════════════════════════════════════════════════
-# مسارات الصيانة والتشخيص
+# مسارات الصيانة
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/db-test")
 def api_db_test():
-    """تقرير مفصّل عن حالة الاتصال بقاعدة البيانات."""
     report = test_connection(app)
     status = 200 if report["connected"] else 503
     return jsonify(report), status
@@ -293,7 +321,6 @@ def api_db_test():
 
 @app.get("/admin/db-status")
 def admin_db_status():
-    """يعرض حالة الجداول والأعمدة وعدد السجلات."""
     try:
         insp = inspect(db.engine)
         tables = insp.get_table_names()
@@ -317,7 +344,6 @@ def admin_db_status():
 
 @app.get("/admin/db-reset")
 def admin_db_reset():
-    """يحذف كل الجداول وينشئها من جديد. محمي بمفتاح."""
     key = request.args.get("key", "")
     expected = os.getenv("ADMIN_RESET_KEY", "")
     if not expected or key != expected:
@@ -327,7 +353,7 @@ def admin_db_reset():
         db.create_all()
         return jsonify({
             "status": "ok",
-            "message": "تم إعادة إنشاء الجداول بنجاح",
+            "message": "تم إعادة إنشاء الجداول",
             "tables": inspect(db.engine).get_table_names(),
         })
     except Exception as e:
@@ -418,7 +444,7 @@ def api_create_post():
     title  = (data.get("title") or "").strip()
     prompt = (data.get("prompt") or "").strip()
     if not title or not prompt:
-        return jsonify({"error": "العنوان والبرومبت مطلوبان"}), 400
+        return jsonify({"error": "العنوان والنص مطلوبان"}), 400
 
     post = Post(
         author_id=u.id,
@@ -753,7 +779,7 @@ def err_404(e):
         return jsonify({"error": "غير موجود"}), 404
     return render_template("error.html", code=404,
                             title="الصفحة غير موجودة",
-                            message="يبدو أن الرابط غير صحيح أو تم نقل الصفحة."), 404
+                            message="يبدو أن الرابط غير صحيح."), 404
 
 
 @app.errorhandler(500)
@@ -762,7 +788,7 @@ def err_500(e):
         return jsonify({"error": "خطأ في الخادم"}), 500
     return render_template("error.html", code=500,
                             title="حدث خطأ",
-                            message="نعتذر، حدث خطأ غير متوقع. حاول مرة أخرى."), 500
+                            message="نعتذر، حدث خطأ غير متوقع."), 500
 
 
 @app.errorhandler(Exception)
@@ -782,7 +808,6 @@ def err_all(e):
 # تهيئة قاعدة البيانات
 # ═══════════════════════════════════════════════════════════
 def init_db():
-    """تهيئة قاعدة البيانات مع تقرير مفصّل."""
     with app.app_context():
         try:
             print("\n" + "═" * 60)
@@ -796,19 +821,10 @@ def init_db():
                 print(f"   الرسالة: {str(report.get('error', ''))[:200]}")
                 print(f"   المضيف: {report.get('host')}:{report.get('port')}")
                 print(f"   الوضع: {report['mode']}")
-
                 if _is_local_mode():
-                    print("\n💡 نصيحة للتطوير من الهاتف:")
-                    print("   • تأكد من تفعيل Public Access في Aiven")
-                    print("   • استخدم hostname يبدأ بـ public-")
-                    print("   • تحقق من اتصال الإنترنت")
-                    print("   • جرّب: /api/db-test")
+                    print("\n💡 للهاتف: فعّل Public Access واستخدم public-")
                 else:
-                    print("\n💡 نصيحة على Render:")
-                    print("   • تحقق من متغيرات البيئة")
-                    print("   • تأكد من IP Filter في Aiven")
-                    print("   • جرّب: /api/db-test")
-
+                    print("\n💡 لـ Render: تحقق من IP Filter في Aiven")
                 print("═" * 60 + "\n")
                 return
 
@@ -818,25 +834,22 @@ def init_db():
             if report.get("server_version"):
                 print(f"📦 {report['server_version'][:60]}…")
 
-            # إنشاء الجداول
             db.create_all()
             print("✅ الجداول جاهزة.")
 
-            # عدّ المستخدمين والمنشورات
             try:
                 users_count = User.query.count()
                 posts_count = Post.query.count()
                 print(f"📊 المستخدمون: {users_count} | البرومبتات: {posts_count}")
             except Exception as qerr:
-                print(f"⚠️  لم نتمكن من قراءة الإحصاءات: {qerr}")
+                print(f"⚠️  تعذّر قراءة الإحصاءات: {str(qerr)[:100]}")
 
             print("═" * 60 + "\n")
 
         except Exception as e:
-            print(f"⚠️  فشل تهيئة قاعدة البيانات: {e}", file=sys.stderr)
+            print(f"⚠️  فشل التهيئة: {e}", file=sys.stderr)
 
 
-# استدعِ التهيئة عند الإقلاع
 init_db()
 
 
@@ -848,8 +861,8 @@ if __name__ == "__main__":
     debug = os.getenv("FLASK_ENV", "development") == "development"
 
     if _is_local_mode():
-        print(f"\n🚀 تشغيل خَيال محلياً على: http://localhost:{port}")
-        print(f"📊 اختبار الاتصال: http://localhost:{port}/api/db-test")
-        print(f"📋 حالة الجداول: http://localhost:{port}/admin/db-status\n")
+        print(f"\n🚀 خَيال على: http://localhost:{port}")
+        print(f"📊 اختبار: http://localhost:{port}/api/db-test")
+        print(f"📋 الجداول: http://localhost:{port}/admin/db-status\n")
 
     app.run(host="0.0.0.0", port=port, debug=debug)
