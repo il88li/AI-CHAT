@@ -1,0 +1,48 @@
+<section class="tab-panel" id="tab-profile" data-tab="profile">
+  <div class="profile-head">
+    <div class="profile-cover"></div>
+    <div class="profile-body">
+      <div class="profile-avatar-wrap">
+        <img class="profile-avatar" src="" alt="" id="profileAvatar">
+        <button class="avatar-edit" onclick="Auth.openEditProfile()" aria-label="تعديل الصورة">
+          <i class="ph ph-camera"></i>
+        </button>
+      </div>
+      <div class="profile-info">
+        <div class="profile-name">
+          <span id="profileName"></span>
+          <i class="ph ph-seal-check verified"></i>
+        </div>
+        <div class="profile-handle" id="profileHandle"></div>
+        <p class="profile-bio" id="profileBio"></p>
+        <div class="profile-stats">
+          <div class="stat"><strong id="statPosts">٠</strong><span>برومبت</span></div>
+          <div class="stat"><strong id="statFollowers">٠</strong><span>متابِع</span></div>
+          <div class="stat"><strong id="statFollowing">٠</strong><span>يتابع</span></div>
+          <div class="stat"><strong id="statLikes">٠</strong><span>إعجاب</span></div>
+        </div>
+        <div class="profile-btns">
+          <button class="btn btn-primary btn-sm" onclick="Auth.openEditProfile()">
+            <i class="ph ph-pencil-simple"></i> تعديل الملف
+          </button>
+          <button class="btn btn-glass btn-sm" onclick="Auth.logout()">
+            <i class="ph ph-sign-out"></i> خروج
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs" id="profileTabs">
+    <button class="tab active" data-ptab="posts">
+      <i class="ph ph-image-square"></i> برومبتاتي
+    </button>
+    <button class="tab" data-ptab="liked">
+      <i class="ph ph-heart"></i> المُعجَبة
+    </button>
+    <button class="tab" data-ptab="settings">
+      <i class="ph ph-gear"></i> الإعدادات
+    </button>
+  </div>
+  <div id="profilePanel"></div>
+</section>
