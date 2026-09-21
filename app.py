@@ -1,17 +1,19 @@
 """
 خَيال — منصة البرومبتات العربية
-خادم Flask متصل بقاعدة Aiven (PostgreSQL أو MySQL).
+Flask + PostgreSQL + PWA جاهز للتغليف APK
 """
 import os
 import sys
-from flask import Flask, render_template, jsonify, request, session, abort
+from datetime import datetime, timedelta
+from flask import (Flask, render_template, jsonify, request, session,
+                   abort, send_from_directory, make_response)
+from flask_compress import Compress
 from dotenv import load_dotenv
 
 from database import (db, build_database_uri, User, Post, Comment,
                       Like, Save, Follow, Chat, Message)
 
 load_dotenv()
-
 
 # ═══════════════════════════════════════════════════════════
 # إعداد التطبيق
@@ -26,14 +28,25 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 280,
     "pool_size": 3,
     "max_overflow": 2,
-    "connect_args": {"connect_timeout": 10},
+    "connect_args": {"connect_timeout": 10, "keepalives": 1,
+                     "keepalives_idle": 30, "keepalives_interval": 10},
 }
+app.config["COMPRESS_MIMETYPES"] = [
+    "text/html", "text/css", "text/javascript",
+    "application/json", "application/javascript",
+    "image/svg+xml",
+]
+app.config["COMPRESS_LEVEL"] = 6
+app.config["COMPRESS_MIN_SIZE"] = 500
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=30)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
 db.init_app(app)
+Compress(app)
 
 
 # ═══════════════════════════════════════════════════════════
-# مصادقة
+# Helpers
 # ═══════════════════════════════════════════════════════════
 def current_user():
     uid = session.get("user_id")
@@ -47,19 +60,44 @@ def require_auth():
     return u
 
 
+def _user_payload(u):
+    return u.to_dict() if u else None
+
+
 # ═══════════════════════════════════════════════════════════
 # الصفحات
 # ═══════════════════════════════════════════════════════════
 @app.route("/")
 def index():
-    me = current_user()
-    return render_template("index.html", me=me.to_dict() if me else None)
+    return render_template("index.html", me=_user_payload(current_user()))
 
 
 @app.route("/app")
 def app_view():
-    me = current_user()
-    return render_template("index.html", me=me.to_dict() if me else None)
+    return render_template("index.html", me=_user_payload(current_user()))
+
+
+@app.route("/offline")
+def offline():
+    return render_template("error.html", code=503,
+                            title="لا يوجد اتصال",
+                            message="يبدو أنك غير متصل بالإنترنت. تحقق من الاتصال ثم أعد المحاولة.")
+
+
+# ملفات PWA
+@app.route("/manifest.json")
+def manifest():
+    return send_from_directory("static", "manifest.json",
+                                mimetype="application/manifest+json")
+
+
+@app.route("/sw.js")
+def service_worker():
+    r = make_response(send_from_directory("static", "sw.js",
+                                            mimetype="application/javascript"))
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    r.headers["Service-Worker-Allowed"] = "/"
+    return r
 
 
 # ═══════════════════════════════════════════════════════════
@@ -83,12 +121,14 @@ def auth_google():
             n += 1
         user = User(
             email=email, name=name, handle=handle,
-            avatar=data.get("avatar") or f"https://api.dicebear.com/7.x/initials/svg?seed={name}",
+            avatar=data.get("avatar") or
+                   f"https://api.dicebear.com/7.x/initials/svg?seed={name}",
             bio="", verified=False,
         )
         db.session.add(user)
         db.session.commit()
 
+    session.permanent = True
     session["user_id"] = user.id
     return jsonify(user.to_dict())
 
@@ -101,8 +141,7 @@ def auth_logout():
 
 @app.get("/api/me")
 def api_me():
-    u = current_user()
-    return jsonify(u.to_dict() if u else None)
+    return jsonify(_user_payload(current_user()))
 
 
 # ═══════════════════════════════════════════════════════════
@@ -118,7 +157,6 @@ def api_posts():
     limit  = min(int(request.args.get("limit", 50)), 100)
 
     query = Post.query
-
     if q:
         like = f"%{q}%"
         query = query.filter(db.or_(
@@ -145,13 +183,21 @@ def api_posts():
         d = p.to_dict()
         d["author_data"] = p.author.to_dict()
         if me:
-            d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
-            d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
+            d["liked"] = db.session.query(Like).filter_by(
+                user_id=me.id, post_id=p.id).first() is not None
+            d["saved"] = db.session.query(Save).filter_by(
+                user_id=me.id, post_id=p.id).first() is not None
         else:
             d["liked"] = False
             d["saved"] = False
         out.append(d)
-    return jsonify(out)
+
+    resp = jsonify(out)
+    if me:
+        resp.headers["Cache-Control"] = "private, max-age=15"
+    else:
+        resp.headers["Cache-Control"] = "public, max-age=30"
+    return resp
 
 
 @app.get("/api/posts/<int:pid>")
@@ -161,8 +207,10 @@ def api_post(pid):
     d["author_data"] = p.author.to_dict()
     me = current_user()
     if me:
-        d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
-        d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
+        d["liked"] = db.session.query(Like).filter_by(
+            user_id=me.id, post_id=p.id).first() is not None
+        d["saved"] = db.session.query(Save).filter_by(
+            user_id=me.id, post_id=p.id).first() is not None
     return jsonify(d)
 
 
@@ -251,10 +299,10 @@ def api_copy(pid):
 @app.get("/api/posts/<int:pid>/comments")
 def api_comments(pid):
     Post.query.get_or_404(pid)
-    comments = Comment.query.filter_by(post_id=pid).order_by(Comment.created_at.desc()).all()
-    return jsonify([
-        {**c.to_dict(), "author_data": c.author.to_dict()} for c in comments
-    ])
+    cs = Comment.query.filter_by(post_id=pid)\
+                      .order_by(Comment.created_at.desc()).all()
+    return jsonify([{**c.to_dict(), "author_data": c.author.to_dict()}
+                    for c in cs])
 
 
 @app.post("/api/posts/<int:pid>/comments")
@@ -268,6 +316,17 @@ def api_add_comment(pid):
     db.session.add(c)
     db.session.commit()
     return jsonify({**c.to_dict(), "author_data": u.to_dict()}), 201
+
+
+@app.delete("/api/comments/<int:cid>")
+def api_delete_comment(cid):
+    u = require_auth()
+    c = Comment.query.get_or_404(cid)
+    if c.author_id != u.id:
+        abort(403)
+    db.session.delete(c)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 # ═══════════════════════════════════════════════════════════
@@ -284,15 +343,18 @@ def api_user(uid):
 @app.get("/api/users/<int:uid>/posts")
 def api_user_posts(uid):
     User.query.get_or_404(uid)
-    posts = Post.query.filter_by(author_id=uid).order_by(Post.created_at.desc()).all()
+    posts = Post.query.filter_by(author_id=uid)\
+                      .order_by(Post.created_at.desc()).all()
     me = current_user()
     out = []
     for p in posts:
         d = p.to_dict()
         d["author_data"] = p.author.to_dict()
         if me:
-            d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
-            d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
+            d["liked"] = db.session.query(Like).filter_by(
+                user_id=me.id, post_id=p.id).first() is not None
+            d["saved"] = db.session.query(Save).filter_by(
+                user_id=me.id, post_id=p.id).first() is not None
         out.append(d)
     return jsonify(out)
 
@@ -303,7 +365,8 @@ def api_follow(uid):
     if me.id == uid:
         return jsonify({"error": "لا يمكن متابعة نفسك"}), 400
     target = User.query.get_or_404(uid)
-    existing = Follow.query.filter_by(follower_id=me.id, following_id=uid).first()
+    existing = Follow.query.filter_by(
+        follower_id=me.id, following_id=uid).first()
     if existing:
         db.session.delete(existing)
         me.following = max(0, me.following - 1)
@@ -342,13 +405,13 @@ def api_chats():
         Chat.user_a_id == me.id,
         Chat.user_b_id == me.id,
     )).all()
-
     out = []
     for c in chats:
         other_id = c.user_b_id if c.user_a_id == me.id else c.user_a_id
         other = User.query.get(other_id)
         last = c.messages.order_by(Message.created_at.desc()).first()
-        unread = c.messages.filter_by(read=False).filter(Message.sender_id != me.id).count()
+        unread = c.messages.filter_by(read=False)\
+                          .filter(Message.sender_id != me.id).count()
         out.append({
             "id": c.id,
             "with_user": other.to_dict() if other else None,
@@ -365,13 +428,11 @@ def api_messages(cid):
     chat = Chat.query.get_or_404(cid)
     if me.id not in (chat.user_a_id, chat.user_b_id):
         abort(403)
-
     msgs = chat.messages.order_by(Message.created_at.asc()).all()
     for m in msgs:
         if m.sender_id != me.id and not m.read:
             m.read = True
     db.session.commit()
-
     return jsonify([{
         "id": m.id,
         "text": m.text,
@@ -415,7 +476,7 @@ def api_open_chat(uid):
 
 
 # ═══════════════════════════════════════════════════════════
-# الصحة + معالجة الأخطاء
+# الصحة
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/health")
 def health():
@@ -425,18 +486,66 @@ def health():
             "db": "connected",
             "users": User.query.count(),
             "posts": Post.query.count(),
+            "time": datetime.utcnow().isoformat(),
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ═══════════════════════════════════════════════════════════
+# معالجات الأخطاء
+# ═══════════════════════════════════════════════════════════
+@app.errorhandler(401)
+def err_401(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "يجب تسجيل الدخول"}), 401
+    return render_template("error.html", code=401,
+                            title="تحتاج تسجيل الدخول",
+                            message="سجّل دخولك للوصول إلى هذه الصفحة."), 401
+
+
+@app.errorhandler(403)
+def err_403(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "غير مسموح"}), 403
+    return render_template("error.html", code=403,
+                            title="غير مسموح",
+                            message="لا تملك صلاحية الوصول إلى هذا المورد."), 403
+
+
+@app.errorhandler(404)
+def err_404(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "غير موجود"}), 404
+    return render_template("error.html", code=404,
+                            title="الصفحة غير موجودة",
+                            message="يبدو أن الرابط الذي تبحث عنه غير صحيح أو تم نقل الصفحة."), 404
+
+
 @app.errorhandler(500)
 def err_500(e):
-    return jsonify({"error": "خطأ في الخادم", "detail": str(e)}), 500
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "خطأ في الخادم"}), 500
+    return render_template("error.html", code=500,
+                            title="حدث خطأ",
+                            message="نعتذر، حدث خطأ غير متوقع. حاول مرة أخرى بعد قليل."), 500
+
+
+@app.errorhandler(Exception)
+def err_all(e):
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    print(f"❌ Unhandled: {e}", file=sys.stderr)
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "خطأ غير متوقع"}), 500
+    return render_template("error.html", code=500,
+                            title="حدث خطأ",
+                            message="نعتذر، حدث خطأ غير متوقع."), 500
 
 
 # ═══════════════════════════════════════════════════════════
-# تهيئة الجداول (لا تُسقط التطبيق إن فشلت)
+# تهيئة قاعدة البيانات
 # ═══════════════════════════════════════════════════════════
 def init_db():
     with app.app_context():
@@ -447,13 +556,9 @@ def init_db():
             print("⚠️  فشل تهيئة قاعدة البيانات:", e, file=sys.stderr)
 
 
-# نُشغّل التهيئة مرة واحدة فقط عند الإقلاع (وليس مع كل طلب)
 init_db()
 
 
-# ═══════════════════════════════════════════════════════════
-# التشغيل
-# ═══════════════════════════════════════════════════════════
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.getenv("FLASK_ENV", "development") == "development"
