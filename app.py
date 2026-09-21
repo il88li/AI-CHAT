@@ -2,12 +2,13 @@
 خَيال — منصة البرومبتات العربية
 Flask + PostgreSQL + تسجيل دخول محلي + استقرار إنتاجي
 محسّن للتطوير من الهاتف والإنتاج على Render
-v11.0 — Profile frames + expanded covers + preset pronouns
+v13.5 — Settings dashboard + preferences API + reset button
 """
 import os
 import sys
 import re
 import time
+import json
 import secrets
 from datetime import datetime, timedelta
 from functools import wraps
@@ -256,6 +257,7 @@ def api_register():
             accent_color="#22D3EE",
             avatar_shape="ring",
             card_style="glass",
+            preferences="{}",
         )
         db.session.add(user)
         db.session.commit()
@@ -393,6 +395,7 @@ def admin_db_migrate():
                 ("accent_color", "VARCHAR(7)  DEFAULT '#22D3EE'"),
                 ("avatar_shape", "VARCHAR(30) DEFAULT 'ring'"),
                 ("card_style",   "VARCHAR(12) DEFAULT 'glass'"),
+                ("preferences",  "TEXT DEFAULT '{}'"),
                 # location و status مُتروكان للأرشيف
             ]
             for name, dtype in cols:
@@ -423,6 +426,7 @@ def admin_db_migrate():
             conn.execute(text("UPDATE users SET accent_color = '#22D3EE' WHERE accent_color IS NULL"))
             conn.execute(text("UPDATE users SET avatar_shape = 'ring' WHERE avatar_shape IS NULL"))
             conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
+            conn.execute(text("UPDATE users SET preferences = '{}' WHERE preferences IS NULL"))
 
         return jsonify({"ok": True, "message": "تمت إضافة الأعمدة بنجاح"})
     except Exception as e:
@@ -813,7 +817,6 @@ def api_update_me():
         frame_val = (data["avatar_frame"] or "").strip()
     elif "avatar_shape" in data:
         frame_val = (data["avatar_shape"] or "").strip()
-
     if frame_val is not None and frame_val in ALLOWED_FRAMES:
         u.avatar_shape = frame_val
 
@@ -821,6 +824,33 @@ def api_update_me():
         cs = (data["card_style"] or "").strip()
         if cs in ALLOWED_CARD_STYLES:
             u.card_style = cs
+
+    # preferences — كائن JSON مع whitelist صارم (v13.5)
+    if "preferences" in data:
+        prefs = data["preferences"]
+        if not isinstance(prefs, dict):
+            return jsonify({"error": "preferences يجب أن يكون كائناً"}), 400
+
+        clean = {}
+
+        notif_in = prefs.get("notif")
+        if isinstance(notif_in, dict):
+            clean["notif"] = {}
+            for k in ("likes", "comments", "follows", "messages"):
+                if k in notif_in:
+                    clean["notif"][k] = bool(notif_in[k])
+
+        priv_in = prefs.get("priv")
+        if isinstance(priv_in, dict):
+            clean["priv"] = {}
+            for k in ("public_profile", "allow_messages", "show_website"):
+                if k in priv_in:
+                    clean["priv"][k] = bool(priv_in[k])
+
+        try:
+            u.preferences = json.dumps(clean, ensure_ascii=False)
+        except Exception:
+            return jsonify({"error": "preferences غير صالح"}), 400
 
     db.session.commit()
     return jsonify(u.to_dict())
@@ -1046,7 +1076,7 @@ def init_db():
             print("✅ الجداول جاهزة.")
 
             # ═══════════════════════════════════════════════════════
-            # Auto-migration v11 — أعمدة + هجرة قيم الإطارات
+            # Auto-migration v13.5 — أعمدة + هجرة قيم الإطارات + preferences
             # ═══════════════════════════════════════════════════════
             try:
                 with db.engine.begin() as conn:
@@ -1057,6 +1087,7 @@ def init_db():
                         ("accent_color", "VARCHAR(7)  DEFAULT '#22D3EE'"),
                         ("avatar_shape", "VARCHAR(30) DEFAULT 'ring'"),
                         ("card_style",   "VARCHAR(12) DEFAULT 'glass'"),
+                        ("preferences",  "TEXT DEFAULT '{}'"),
                         # location و status مُتروكان للأرشيف
                     ]
                     for name, dtype in cols:
@@ -1070,7 +1101,7 @@ def init_db():
                             "ALTER TABLE users ALTER COLUMN avatar_shape TYPE VARCHAR(30)"
                         ))
                     except Exception:
-                        pass  # MySQL/SQLite قد لا يدعم — يُتجاهل
+                        pass
 
                     # هجرة الإطارات القديمة
                     conn.execute(text("""
@@ -1089,8 +1120,9 @@ def init_db():
                     conn.execute(text("UPDATE users SET accent_color = '#22D3EE' WHERE accent_color IS NULL"))
                     conn.execute(text("UPDATE users SET avatar_shape = 'ring' WHERE avatar_shape IS NULL"))
                     conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
+                    conn.execute(text("UPDATE users SET preferences = '{}' WHERE preferences IS NULL"))
 
-                print("✅ Auto-migration v11: الإطارات والأغلفة جاهزة.")
+                print("✅ Auto-migration v13.5: الإطارات والأغلفة وpreferences جاهزة.")
             except Exception as m_err:
                 print(f"⚠️  Auto-migration: {str(m_err)[:150]}")
 
