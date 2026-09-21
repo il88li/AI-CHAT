@@ -866,6 +866,7 @@ init_db()
 # التشغيل
 # ═══════════════════════════════════════════════════════════
 if __name__ == "__main__":
+    # للتطوير المحلي فقط
     port = int(os.environ.get("PORT", 5000))
     debug = os.getenv("FLASK_ENV", "development") == "development"
 
