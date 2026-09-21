@@ -1,48 +1,47 @@
 <section class="tab-panel" id="tab-chat" data-tab="chat">
-  <div class="page-head">
-    <div class="page-head-info">
-      <h1>الرسائل</h1>
-      <p>تحدّث مع المبدعين.</p>
-    </div>
-  </div>
 
   <div class="chat-layout" id="chatLayout" data-view="list">
 
+    <!-- List pane -->
     <aside class="chat-list" aria-label="صندوق الوارد">
       <div class="chat-list-head">
-        <h3>صندوق الوارد</h3>
-        <button class="btn btn-icon btn-ghost btn-sm" onclick="Chat.newChat()" aria-label="محادثة جديدة" type="button">
-          <i class="ph ph-note-pencil" aria-hidden="true"></i>
+        <h3>الرسائل</h3>
+        <button class="btn btn-icon btn-ghost btn-sm" data-action="chat-new" aria-label="محادثة جديدة" type="button">
+          <i class="ph ph-note-pencil"></i>
         </button>
       </div>
 
       <div class="chat-list-search">
-        <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
-        <input type="search" id="chatSearch" placeholder="ابحث في المحادثات…" oninput="Chat.filterList(this.value)">
+        <i class="ph ph-magnifying-glass"></i>
+        <input type="search" id="chatSearch" placeholder="ابحث…" oninput="Chat.filterList(this.value)">
       </div>
 
       <div class="chat-scroll" id="chatList" role="list"></div>
     </aside>
 
+    <!-- Thread pane -->
     <div class="chat-thread">
       <div class="chat-thread-head" id="chatHead">
-        <button class="btn btn-icon btn-ghost btn-sm" id="chatBackBtn" onclick="Chat.showList()" aria-label="رجوع" type="button">
-          <i class="ph ph-arrow-right" aria-hidden="true"></i>
+        <button class="btn btn-icon btn-ghost btn-sm chat-back-btn" data-action="chat-list" aria-label="رجوع" type="button">
+          <i class="ph ph-arrow-right"></i>
         </button>
         <div class="chat-thread-info">
           <strong id="chatThreadName">اختر محادثة</strong>
         </div>
       </div>
 
-      <div class="chat-body" id="chatBody" aria-live="polite"></div>
+      <div class="chat-body" id="chatBody" aria-live="polite">
+        <div class="empty-block">
+          <i class="ph ph-chat-circle-dots"></i>
+          <h4>ابدأ محادثة</h4>
+          <p>اختر من القائمة أو ابدأ محادثة جديدة</p>
+        </div>
+      </div>
 
       <form class="chat-composer" onsubmit="Chat.send(event)">
-        <button type="button" class="btn btn-icon btn-ghost" onclick="Chat.attach()" aria-label="إرفاق" disabled>
-          <i class="ph ph-paperclip" aria-hidden="true"></i>
-        </button>
-        <textarea id="chatInput" placeholder="اكتب رسالة…" rows="1" oninput="U.autoGrow(this)" enterkeyhint="send" aria-label="نص الرسالة"></textarea>
-        <button type="submit" class="btn btn-primary btn-icon" aria-label="إرسال" type="submit">
-          <i class="ph ph-paper-plane-tilt" aria-hidden="true"></i>
+        <textarea id="chatInput" placeholder="اكتب رسالة…" rows="1" oninput="U.autoGrow(this)" aria-label="رسالة"></textarea>
+        <button type="submit" class="btn btn-primary btn-icon" aria-label="إرسال">
+          <i class="ph ph-paper-plane-tilt"></i>
         </button>
       </form>
     </div>
