@@ -1,117 +1,209 @@
-<div class="scrim" id="authModal" onclick="Auth.close(event)">
-  <div class="auth-mini" onclick="event.stopPropagation()">
+<div class="scrim" id="authModal" data-open="false" onclick="Auth.close(event)" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+  <div class="auth" onclick="event.stopPropagation()">
 
-    <!-- رأس -->
-    <div class="auth-mini-head">
-      <div class="auth-mini-logo">خ</div>
-      <button class="auth-mini-close" onclick="Auth.close()" aria-label="إغلاق">
-        <i class="ph ph-x"></i>
+    <div class="auth-head">
+      <div class="auth-logo" aria-hidden="true">خ</div>
+      <button class="auth-close" onclick="Auth.close()" aria-label="إغلاق" type="button">
+        <i class="ph ph-x" aria-hidden="true"></i>
       </button>
     </div>
 
-    <!-- عنوان -->
-    <h3 class="auth-mini-title" id="authMiniTitle">تسجيل الدخول</h3>
-    <p class="auth-mini-sub" id="authMiniSub">أهلاً بعودتك إلى خَيال</p>
+    <h2 class="auth-title" id="authTitle">تسجيل الدخول</h2>
+    <p class="auth-sub" id="authSub">أهلاً بعودتك إلى خَيال</p>
 
-    <!-- نموذج الدخول -->
-    <form class="auth-mini-form active" id="loginForm" onsubmit="Auth.login(event)">
-      <div class="mini-field">
-        <i class="ph ph-envelope"></i>
-        <input type="text"
-               id="loginIdentifier"
-               placeholder="البريد أو اسم المستخدم"
-               autocomplete="username"
-               autocapitalize="off"
-               spellcheck="false"
-               required>
+    <div class="auth-tabs" data-mode="login" role="tablist">
+      <button
+        class="auth-tab"
+        role="tab"
+        aria-selected="true"
+        data-mode="login"
+        onclick="Auth.switchMode('login')"
+        type="button">
+        دخول
+      </button>
+      <button
+        class="auth-tab"
+        role="tab"
+        aria-selected="false"
+        data-mode="register"
+        onclick="Auth.switchMode('register')"
+        type="button">
+        حساب جديد
+      </button>
+      <span class="auth-tab-indicator" aria-hidden="true"></span>
+    </div>
+
+    <!-- ─── تسجيل الدخول ─── -->
+    <form class="auth-form is-active" id="loginForm" onsubmit="Auth.login(event)" novalidate>
+      <div class="field">
+        <label for="loginIdentifier">البريد الإلكتروني أو اسم المستخدم</label>
+        <div class="input-wrap">
+          <i class="ph ph-user-circle input-icon" aria-hidden="true"></i>
+          <input
+            class="input"
+            id="loginIdentifier"
+            name="identifier"
+            type="text"
+            placeholder="example@email.com"
+            autocomplete="username"
+            autocapitalize="off"
+            spellcheck="false"
+            required>
+        </div>
       </div>
 
-      <div class="mini-field">
-        <i class="ph ph-lock"></i>
-        <input type="password"
-               id="loginPassword"
-               placeholder="كلمة المرور"
-               autocomplete="current-password"
-               required
-               minlength="6">
-        <button type="button" class="mini-eye" onclick="Auth.togglePassword(this)" aria-label="إظهار">
-          <i class="ph ph-eye"></i>
+      <div class="field">
+        <label for="loginPassword">كلمة المرور</label>
+        <div class="input-wrap">
+          <i class="ph ph-lock input-icon" aria-hidden="true"></i>
+          <input
+            class="input"
+            id="loginPassword"
+            name="password"
+            type="password"
+            placeholder="••••••••"
+            autocomplete="current-password"
+            required
+            minlength="6">
+          <span class="input-suffix">
+            <button
+              class="btn btn-icon btn-ghost btn-sm"
+              type="button"
+              onclick="Auth.togglePassword(this)"
+              aria-label="إظهار كلمة المرور">
+              <i class="ph ph-eye" aria-hidden="true"></i>
+            </button>
+          </span>
+        </div>
+      </div>
+
+      <div class="cluster-between">
+        <label class="checkbox">
+          <input type="checkbox" id="rememberMe" checked>
+          <span class="checkbox-box" aria-hidden="true"></span>
+          <span>تذكّرني</span>
+        </label>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="Auth.forgot(event)">
+          نسيت كلمة المرور؟
         </button>
       </div>
 
-      <button type="submit" class="mini-submit" id="loginSubmit">
+      <button type="submit" class="btn btn-primary auth-submit" id="loginSubmit">
+        <i class="ph ph-sign-in" aria-hidden="true"></i>
         <span>دخول</span>
       </button>
 
-      <div class="mini-switch">
-        <span>ليس لديك حساب؟</span>
-        <button type="button" onclick="Auth.switchMode('register')">سجّل الآن</button>
+      <div class="auth-switch">
+        ليس لديك حساب؟
+        <button type="button" onclick="Auth.switchMode('register')">أنشئ حساباً</button>
       </div>
     </form>
 
-    <!-- نموذج التسجيل -->
-    <form class="auth-mini-form" id="registerForm" onsubmit="Auth.register(event)">
-      <div class="mini-field">
-        <i class="ph ph-user"></i>
-        <input type="text"
-               id="regName"
-               placeholder="الاسم الكامل"
-               autocomplete="name"
-               required
-               minlength="2"
-               maxlength="80">
+    <!-- ─── التسجيل ─── -->
+    <form class="auth-form" id="registerForm" onsubmit="Auth.register(event)" novalidate>
+      <div class="field">
+        <label for="regName">الاسم الكامل</label>
+        <div class="input-wrap">
+          <i class="ph ph-user input-icon" aria-hidden="true"></i>
+          <input
+            class="input"
+            id="regName"
+            name="name"
+            type="text"
+            placeholder="مثال: ميّادة التونسي"
+            autocomplete="name"
+            required
+            minlength="2"
+            maxlength="80">
+        </div>
       </div>
 
-      <div class="mini-field">
-        <i class="ph ph-at"></i>
-        <input type="text"
-               id="regUsername"
-               placeholder="اسم المستخدم"
-               autocomplete="username"
-               autocapitalize="off"
-               spellcheck="false"
-               pattern="[a-zA-Z0-9_\-]{3,32}"
-               required
-               minlength="3"
-               maxlength="32">
+      <div class="field">
+        <label for="regUsername">اسم المستخدم</label>
+        <div class="input-wrap">
+          <i class="ph ph-at input-icon" aria-hidden="true"></i>
+          <input
+            class="input"
+            id="regUsername"
+            name="username"
+            type="text"
+            placeholder="mayada_t"
+            autocomplete="username"
+            autocapitalize="off"
+            spellcheck="false"
+            pattern="[a-zA-Z0-9_\-]{3,32}"
+            required
+            minlength="3"
+            maxlength="32"
+            aria-describedby="usernameHint">
+          <span class="input-status" id="usernameStatus" aria-hidden="true"></span>
+        </div>
+        <div class="field-hint" id="usernameHint">
+          3-32 حرفاً إنجليزياً. معرّفك العام: <span style="font-family:var(--font-mono);color:var(--c-brand)">@username</span>
+        </div>
       </div>
 
-      <div class="mini-field">
-        <i class="ph ph-envelope"></i>
-        <input type="email"
-               id="regEmail"
-               placeholder="البريد الإلكتروني"
-               autocomplete="email"
-               autocapitalize="off"
-               spellcheck="false"
-               required
-               maxlength="255">
+      <div class="field">
+        <label for="regEmail">البريد الإلكتروني</label>
+        <div class="input-wrap">
+          <i class="ph ph-envelope input-icon" aria-hidden="true"></i>
+          <input
+            class="input"
+            id="regEmail"
+            name="email"
+            type="email"
+            placeholder="you@example.com"
+            autocomplete="email"
+            autocapitalize="off"
+            spellcheck="false"
+            required
+            maxlength="255">
+          <span class="input-status" id="emailStatus" aria-hidden="true"></span>
+        </div>
       </div>
 
-      <div class="mini-field">
-        <i class="ph ph-lock"></i>
-        <input type="password"
-               id="regPassword"
-               placeholder="كلمة المرور (6+)"
-               autocomplete="new-password"
-               required
-               minlength="6"
-               oninput="Auth.checkStrength(this.value)">
-        <button type="button" class="mini-eye" onclick="Auth.togglePassword(this)" aria-label="إظهار">
-          <i class="ph ph-eye"></i>
-        </button>
+      <div class="field">
+        <label for="regPassword">كلمة المرور</label>
+        <div class="input-wrap">
+          <i class="ph ph-lock input-icon" aria-hidden="true"></i>
+          <input
+            class="input"
+            id="regPassword"
+            name="password"
+            type="password"
+            placeholder="6 أحرف على الأقل"
+            autocomplete="new-password"
+            required
+            minlength="6"
+            oninput="Auth.checkStrength(this.value)">
+          <span class="input-suffix">
+            <button
+              class="btn btn-icon btn-ghost btn-sm"
+              type="button"
+              onclick="Auth.togglePassword(this)"
+              aria-label="إظهار كلمة المرور">
+              <i class="ph ph-eye" aria-hidden="true"></i>
+            </button>
+          </span>
+        </div>
+        <div class="pw-strength" data-level="0" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+        </div>
       </div>
 
-      <div class="pw-strength" id="pwStrength" data-level="0">
-        <span></span><span></span><span></span><span></span>
-      </div>
+      <label class="checkbox">
+        <input type="checkbox" id="agreeTerms" required>
+        <span class="checkbox-box" aria-hidden="true"></span>
+        <span>أوافق على <a href="/privacy" style="color:var(--c-brand);font-weight:600">الشروط وسياسة الخصوصية</a></span>
+      </label>
 
-      <button type="submit" class="mini-submit" id="registerSubmit">
+      <button type="submit" class="btn btn-primary auth-submit" id="registerSubmit">
+        <i class="ph ph-user-plus" aria-hidden="true"></i>
         <span>إنشاء الحساب</span>
       </button>
 
-      <div class="mini-switch">
-        <span>لديك حساب؟</span>
+      <div class="auth-switch">
+        لديك حساب بالفعل؟
         <button type="button" onclick="Auth.switchMode('login')">سجّل دخولك</button>
       </div>
     </form>
