@@ -1,13 +1,20 @@
 <section class="tab-panel" id="tab-saved" data-tab="saved">
   <div class="page-head">
-    <div>
+    <div class="page-head-info">
       <h1>المحفوظة</h1>
       <p>محفوظة للرجوع إليها.</p>
     </div>
-    <span class="count-pill" id="savedCount">
-      <i class="ph ph-bookmark-simple-fill"></i>
-      <span>٠</span>
+    <span class="count-pill" id="savedCount" data-count="0" aria-live="polite" aria-atomic="true">
+      <i class="ph ph-bookmark-simple-fill" aria-hidden="true"></i>
+      <span data-count-label>0</span>
     </span>
   </div>
-  <div class="feed" id="savedFeed"></div>
+
+  <div class="feed" id="savedFeed" aria-busy="false">
+    <div class="empty-block" data-empty-state hidden>
+      <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
+      <h4>المكتبة فارغة</h4>
+      <p>احفظ البرومبتات المميزة للرجوع إليها لاحقاً.</p>
+    </div>
+  </div>
 </section>
