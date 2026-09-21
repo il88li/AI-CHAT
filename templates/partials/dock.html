@@ -1,50 +1,26 @@
-<nav class="dock" id="dock" role="navigation" aria-label="التنقل الرئيسي" hidden>
+<nav class="dock" id="dock" role="navigation" aria-label="التنقل السريع" hidden>
 
-  <button
-    class="dock-item"
-    data-tab="home"
-    onclick="App.switchTab('home')"
-    aria-label="الرئيسية"
-    type="button">
+  <button class="dock-item" data-tab="home" onclick="App.switchTab('home')" aria-label="الرئيسية" type="button">
     <i class="ph ph-house" aria-hidden="true"></i>
     <span class="dock-item-label">الرئيسية</span>
   </button>
 
-  <button
-    class="dock-item"
-    data-tab="explore"
-    onclick="App.switchTab('explore')"
-    aria-label="استكشف"
-    type="button">
+  <button class="dock-item" data-tab="explore" onclick="App.switchTab('explore')" aria-label="استكشف" type="button">
     <i class="ph ph-compass" aria-hidden="true"></i>
     <span class="dock-item-label">استكشف</span>
   </button>
 
-  <button
-    class="dock-create"
-    onclick="Composer.open()"
-    aria-label="منشور جديد"
-    type="button">
+  <button class="dock-create" onclick="Composer.open()" aria-label="منشور جديد" type="button">
     <span><i class="ph ph-plus" aria-hidden="true"></i></span>
   </button>
 
-  <button
-    class="dock-item"
-    data-tab="chat"
-    onclick="App.switchTab('chat')"
-    aria-label="الرسائل"
-    type="button">
+  <button class="dock-item" data-tab="chat" onclick="App.switchTab('chat')" aria-label="الرسائل" type="button">
     <i class="ph ph-chat-circle-dots" aria-hidden="true"></i>
     <span class="dock-item-label">الرسائل</span>
     <span class="badge badge-dot" id="dockChatBadge" hidden>0</span>
   </button>
 
-  <button
-    class="dock-item"
-    data-tab="profile"
-    onclick="App.switchTab('profile')"
-    aria-label="حسابي"
-    type="button">
+  <button class="dock-item" data-tab="profile" onclick="App.switchTab('profile')" aria-label="حسابي" type="button">
     <i class="ph ph-user" aria-hidden="true"></i>
     <span class="dock-item-label">حسابي</span>
   </button>
