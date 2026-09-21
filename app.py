@@ -1,13 +1,16 @@
 """
 خَيال — منصة البرومبتات العربية
-Flask + PostgreSQL + PWA جاهز للتغليف APK
+Flask + PostgreSQL + Google OAuth 2.0 + PWA
 """
 import os
 import sys
+import secrets
 from datetime import datetime, timedelta
+
 from flask import (Flask, render_template, jsonify, request, session,
-                   abort, send_from_directory, make_response)
+                   abort, redirect, url_for, make_response, send_from_directory)
 from flask_compress import Compress
+from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 
 from database import (db, build_database_uri, User, Post, Comment,
@@ -20,7 +23,15 @@ load_dotenv()
 # ═══════════════════════════════════════════════════════════
 app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
+
+# الجلسة والأمان
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
+app.config["SESSION_COOKIE_SECURE"]    = os.getenv("FLASK_ENV") == "production"
+app.config["SESSION_COOKIE_HTTPONLY"]  = True
+app.config["SESSION_COOKIE_SAMESITE"]  = "Lax"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+
+# قاعدة البيانات
 app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
@@ -31,18 +42,42 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "connect_args": {"connect_timeout": 10, "keepalives": 1,
                      "keepalives_idle": 30, "keepalives_interval": 10},
 }
+
+# ضغط المحتوى
 app.config["COMPRESS_MIMETYPES"] = [
     "text/html", "text/css", "text/javascript",
-    "application/json", "application/javascript",
-    "image/svg+xml",
+    "application/json", "application/javascript", "image/svg+xml",
 ]
 app.config["COMPRESS_LEVEL"] = 6
 app.config["COMPRESS_MIN_SIZE"] = 500
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=30)
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
 db.init_app(app)
 Compress(app)
+
+
+# ═══════════════════════════════════════════════════════════
+# Google OAuth
+# ═══════════════════════════════════════════════════════════
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID",
+                                  "1066865562137-k509114e44npk13n5n78gb32b3meldrk.apps.googleusercontent.com")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+
+if not GOOGLE_CLIENT_SECRET:
+    print("⚠️  GOOGLE_CLIENT_SECRET غير مضبوط. تسجيل دخول جوجل لن يعمل.",
+          file=sys.stderr)
+
+oauth = OAuth(app)
+google = oauth.register(
+    name="google",
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={
+        "scope": "openid email profile",
+        "prompt": "select_account",
+    },
+)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -60,7 +95,7 @@ def require_auth():
     return u
 
 
-def _user_payload(u):
+def _payload(u):
     return u.to_dict() if u else None
 
 
@@ -69,12 +104,12 @@ def _user_payload(u):
 # ═══════════════════════════════════════════════════════════
 @app.route("/")
 def index():
-    return render_template("index.html", me=_user_payload(current_user()))
+    return render_template("index.html", me=_payload(current_user()))
 
 
 @app.route("/app")
 def app_view():
-    return render_template("index.html", me=_user_payload(current_user()))
+    return render_template("index.html", me=_payload(current_user()))
 
 
 @app.route("/offline")
@@ -84,7 +119,6 @@ def offline():
                             message="يبدو أنك غير متصل بالإنترنت. تحقق من الاتصال ثم أعد المحاولة.")
 
 
-# ملفات PWA
 @app.route("/manifest.json")
 def manifest():
     return send_from_directory("static", "manifest.json",
@@ -101,17 +135,69 @@ def service_worker():
 
 
 # ═══════════════════════════════════════════════════════════
-# المصادقة
+# Google OAuth Routes
 # ═══════════════════════════════════════════════════════════
-@app.post("/api/auth/google")
-def auth_google():
-    data = request.get_json() or {}
-    email = (data.get("email") or "").strip().lower()
-    name  = (data.get("name") or "").strip()
-    if not email or not name:
-        return jsonify({"error": "البريد والاسم مطلوبان"}), 400
+@app.get("/auth/google")
+def auth_google_start():
+    """بدء تدفق OAuth — يعيد توجيه المستخدم إلى Google."""
+    if not GOOGLE_CLIENT_SECRET:
+        return jsonify({"error": "تسجيل دخول جوجل غير مهيأ على الخادم"}), 503
 
-    user = User.query.filter_by(email=email).first()
+    next_url = request.args.get("next", "/app")
+    if not next_url.startswith("/"):
+        next_url = "/app"
+    session["oauth_next"] = next_url
+
+    state = secrets.token_urlsafe(32)
+    session["oauth_state"] = state
+
+    redirect_uri = url_for("auth_google_callback", _external=True)
+    try:
+        return google.authorize_redirect(redirect_uri, state=state)
+    except Exception as e:
+        print(f"❌ OAuth start error: {e}", file=sys.stderr)
+        return jsonify({"error": "تعذّر بدء تسجيل الدخول"}), 500
+
+
+@app.get("/auth/google/callback")
+def auth_google_callback():
+    """يستقبل رمز Google، يتحقق منه، وينشئ/يجلب المستخدم."""
+    state = request.args.get("state", "")
+    expected = session.pop("oauth_state", None)
+    if not expected or state != expected:
+        return redirect("/?error=invalid_state")
+
+    try:
+        token = google.authorize_access_token()
+    except Exception as e:
+        print(f"❌ OAuth token error: {e}", file=sys.stderr)
+        return redirect("/?error=token_exchange")
+
+    user_info = token.get("userinfo")
+    if not user_info:
+        try:
+            resp = google.get("userinfo")
+            user_info = resp.json()
+        except Exception as e:
+            print(f"❌ Userinfo error: {e}", file=sys.stderr)
+            return redirect("/?error=no_userinfo")
+
+    email      = (user_info.get("email") or "").lower().strip()
+    name       = (user_info.get("name") or email.split("@")[0]).strip()
+    google_id  = user_info.get("sub")
+    avatar_url = user_info.get("picture")
+    verified   = user_info.get("email_verified", False)
+
+    if not email:
+        return redirect("/?error=no_email")
+
+    # بحث عن المستخدم
+    user = None
+    if google_id:
+        user = User.query.filter_by(google_id=google_id).first()
+    if not user:
+        user = User.query.filter_by(email=email).first()
+
     if not user:
         base_handle = "@" + email.split("@")[0]
         handle = base_handle
@@ -119,18 +205,36 @@ def auth_google():
         while User.query.filter_by(handle=handle).first():
             handle = f"{base_handle}{n}"
             n += 1
+
         user = User(
-            email=email, name=name, handle=handle,
-            avatar=data.get("avatar") or
-                   f"https://api.dicebear.com/7.x/initials/svg?seed={name}",
-            bio="", verified=False,
+            google_id=google_id,
+            email=email,
+            name=name,
+            handle=handle,
+            avatar=avatar_url,
+            bio="",
+            verified=bool(verified),
         )
         db.session.add(user)
+        db.session.commit()
+        print(f"✅ مستخدم جديد: {user.email} ({user.handle})")
+    else:
+        if google_id and not user.google_id:
+            user.google_id = google_id
+        if avatar_url:
+            user.avatar = avatar_url
+        if name and user.name != name:
+            user.name = name
         db.session.commit()
 
     session.permanent = True
     session["user_id"] = user.id
-    return jsonify(user.to_dict())
+    session["user_email"] = user.email
+
+    next_url = session.pop("oauth_next", "/app")
+    if not next_url.startswith("/"):
+        next_url = "/app"
+    return redirect(next_url)
 
 
 @app.post("/api/auth/logout")
@@ -141,7 +245,7 @@ def auth_logout():
 
 @app.get("/api/me")
 def api_me():
-    return jsonify(_user_payload(current_user()))
+    return jsonify(_payload(current_user()))
 
 
 # ═══════════════════════════════════════════════════════════
@@ -183,20 +287,15 @@ def api_posts():
         d = p.to_dict()
         d["author_data"] = p.author.to_dict()
         if me:
-            d["liked"] = db.session.query(Like).filter_by(
-                user_id=me.id, post_id=p.id).first() is not None
-            d["saved"] = db.session.query(Save).filter_by(
-                user_id=me.id, post_id=p.id).first() is not None
+            d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
+            d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
         else:
             d["liked"] = False
             d["saved"] = False
         out.append(d)
 
     resp = jsonify(out)
-    if me:
-        resp.headers["Cache-Control"] = "private, max-age=15"
-    else:
-        resp.headers["Cache-Control"] = "public, max-age=30"
+    resp.headers["Cache-Control"] = "private, max-age=15" if me else "public, max-age=30"
     return resp
 
 
@@ -207,10 +306,8 @@ def api_post(pid):
     d["author_data"] = p.author.to_dict()
     me = current_user()
     if me:
-        d["liked"] = db.session.query(Like).filter_by(
-            user_id=me.id, post_id=p.id).first() is not None
-        d["saved"] = db.session.query(Save).filter_by(
-            user_id=me.id, post_id=p.id).first() is not None
+        d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
+        d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
     return jsonify(d)
 
 
@@ -299,10 +396,8 @@ def api_copy(pid):
 @app.get("/api/posts/<int:pid>/comments")
 def api_comments(pid):
     Post.query.get_or_404(pid)
-    cs = Comment.query.filter_by(post_id=pid)\
-                      .order_by(Comment.created_at.desc()).all()
-    return jsonify([{**c.to_dict(), "author_data": c.author.to_dict()}
-                    for c in cs])
+    cs = Comment.query.filter_by(post_id=pid).order_by(Comment.created_at.desc()).all()
+    return jsonify([{**c.to_dict(), "author_data": c.author.to_dict()} for c in cs])
 
 
 @app.post("/api/posts/<int:pid>/comments")
@@ -343,18 +438,15 @@ def api_user(uid):
 @app.get("/api/users/<int:uid>/posts")
 def api_user_posts(uid):
     User.query.get_or_404(uid)
-    posts = Post.query.filter_by(author_id=uid)\
-                      .order_by(Post.created_at.desc()).all()
+    posts = Post.query.filter_by(author_id=uid).order_by(Post.created_at.desc()).all()
     me = current_user()
     out = []
     for p in posts:
         d = p.to_dict()
         d["author_data"] = p.author.to_dict()
         if me:
-            d["liked"] = db.session.query(Like).filter_by(
-                user_id=me.id, post_id=p.id).first() is not None
-            d["saved"] = db.session.query(Save).filter_by(
-                user_id=me.id, post_id=p.id).first() is not None
+            d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
+            d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
         out.append(d)
     return jsonify(out)
 
@@ -365,8 +457,7 @@ def api_follow(uid):
     if me.id == uid:
         return jsonify({"error": "لا يمكن متابعة نفسك"}), 400
     target = User.query.get_or_404(uid)
-    existing = Follow.query.filter_by(
-        follower_id=me.id, following_id=uid).first()
+    existing = Follow.query.filter_by(follower_id=me.id, following_id=uid).first()
     if existing:
         db.session.delete(existing)
         me.following = max(0, me.following - 1)
@@ -410,8 +501,7 @@ def api_chats():
         other_id = c.user_b_id if c.user_a_id == me.id else c.user_a_id
         other = User.query.get(other_id)
         last = c.messages.order_by(Message.created_at.desc()).first()
-        unread = c.messages.filter_by(read=False)\
-                          .filter(Message.sender_id != me.id).count()
+        unread = c.messages.filter_by(read=False).filter(Message.sender_id != me.id).count()
         out.append({
             "id": c.id,
             "with_user": other.to_dict() if other else None,
@@ -476,7 +566,7 @@ def api_open_chat(uid):
 
 
 # ═══════════════════════════════════════════════════════════
-# الصحة
+# الصحة + الأخطاء
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/health")
 def health():
@@ -484,6 +574,7 @@ def health():
         return jsonify({
             "status": "ok",
             "db": "connected",
+            "oauth": "configured" if GOOGLE_CLIENT_SECRET else "missing_secret",
             "users": User.query.count(),
             "posts": Post.query.count(),
             "time": datetime.utcnow().isoformat(),
@@ -492,9 +583,6 @@ def health():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# ═══════════════════════════════════════════════════════════
-# معالجات الأخطاء
-# ═══════════════════════════════════════════════════════════
 @app.errorhandler(401)
 def err_401(e):
     if request.path.startswith("/api/"):
@@ -510,7 +598,7 @@ def err_403(e):
         return jsonify({"error": "غير مسموح"}), 403
     return render_template("error.html", code=403,
                             title="غير مسموح",
-                            message="لا تملك صلاحية الوصول إلى هذا المورد."), 403
+                            message="لا تملك صلاحية الوصول."), 403
 
 
 @app.errorhandler(404)
@@ -519,7 +607,7 @@ def err_404(e):
         return jsonify({"error": "غير موجود"}), 404
     return render_template("error.html", code=404,
                             title="الصفحة غير موجودة",
-                            message="يبدو أن الرابط الذي تبحث عنه غير صحيح أو تم نقل الصفحة."), 404
+                            message="يبدو أن الرابط غير صحيح أو تم نقل الصفحة."), 404
 
 
 @app.errorhandler(500)
@@ -528,7 +616,7 @@ def err_500(e):
         return jsonify({"error": "خطأ في الخادم"}), 500
     return render_template("error.html", code=500,
                             title="حدث خطأ",
-                            message="نعتذر، حدث خطأ غير متوقع. حاول مرة أخرى بعد قليل."), 500
+                            message="نعتذر، حدث خطأ غير متوقع. حاول مرة أخرى."), 500
 
 
 @app.errorhandler(Exception)
