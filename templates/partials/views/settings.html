@@ -4,53 +4,79 @@
     <button class="btn btn-icon btn-ghost" data-action="close-settings" aria-label="إغلاق" type="button">
       <i class="ph ph-x" aria-hidden="true"></i>
     </button>
-    <h2>الإعدادات</h2>
-    <button class="btn btn-primary btn-sm" id="settingsSave" data-action="save-settings" type="button">
+    <h2>ملفي</h2>
+    <button class="btn btn-primary btn-sm" id="settingsSave" data-action="save-settings" type="button" hidden>
       <i class="ph ph-check" aria-hidden="true"></i>
       <span>حفظ</span>
     </button>
   </header>
 
-  <div class="settings-layout">
+  <div class="settings-page">
 
-    <!-- ═══ Sidebar / Tabs ═══ -->
-    <nav class="settings-nav" role="tablist" aria-label="أقسام الإعدادات">
-      <button class="settings-nav-item is-active" role="tab" aria-selected="true" data-section="appearance" type="button">
+    <!-- ═══ Profile Hero ═══ -->
+    <section class="settings-hero-profile" id="settingsHeroProfile" data-style="glass">
+      <div class="settings-hero-cover" id="settingsHeroCover" data-cover="aurora">
+        <div class="profile-cover-pattern" aria-hidden="true"></div>
+      </div>
+      <div class="settings-hero-content">
+        <img class="settings-hero-avatar" id="settingsHeroAvatar" src="" alt="" data-frame="ring">
+        <div class="settings-hero-meta">
+          <strong id="settingsHeroName">—</strong>
+          <span class="settings-hero-handle" id="settingsHeroHandle">@—</span>
+          <span class="settings-hero-pronouns" id="settingsHeroPronouns" hidden></span>
+        </div>
+        <div class="settings-hero-stats">
+          <button class="settings-stat" type="button" data-stat="posts" aria-label="البرومبتات">
+            <strong id="settingsStatPosts">0</strong>
+            <span>برومبت</span>
+          </button>
+          <div class="settings-stat">
+            <strong id="settingsStatFollowers">0</strong>
+            <span>متابِع</span>
+          </div>
+          <div class="settings-stat">
+            <strong id="settingsStatFollowing">0</strong>
+            <span>يتابع</span>
+          </div>
+          <div class="settings-stat">
+            <strong id="settingsStatLikes">0</strong>
+            <span>إعجاب</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Fixed Tabs ═══ -->
+    <nav class="settings-tabs" role="tablist" aria-label="أقسام الإعدادات">
+      <button class="settings-tab is-active" role="tab" aria-selected="true" data-section="posts" type="button">
+        <i class="ph ph-image-square" aria-hidden="true"></i>
+        <span>منشوراتك</span>
+      </button>
+      <button class="settings-tab" role="tab" aria-selected="false" data-section="appearance" type="button">
         <i class="ph ph-palette" aria-hidden="true"></i>
-        <span>المظهر</span>
+        <span>تخصيص البروفايل</span>
       </button>
-      <button class="settings-nav-item" role="tab" aria-selected="false" data-section="profile" type="button">
-        <i class="ph ph-user-circle" aria-hidden="true"></i>
-        <span>الملف</span>
-      </button>
-      <button class="settings-nav-item" role="tab" aria-selected="false" data-section="sounds" type="button">
-        <i class="ph ph-speaker-high" aria-hidden="true"></i>
-        <span>الأصوات</span>
-      </button>
-      <button class="settings-nav-item" role="tab" aria-selected="false" data-section="notifications" type="button">
-        <i class="ph ph-bell" aria-hidden="true"></i>
-        <span>الإشعارات</span>
-      </button>
-      <button class="settings-nav-item" role="tab" aria-selected="false" data-section="privacy" type="button">
-        <i class="ph ph-shield-check" aria-hidden="true"></i>
-        <span>الخصوصية</span>
-      </button>
-      <button class="settings-nav-item" role="tab" aria-selected="false" data-section="account" type="button">
+      <button class="settings-tab" role="tab" aria-selected="false" data-section="account" type="button">
         <i class="ph ph-gear-six" aria-hidden="true"></i>
-        <span>الحساب</span>
+        <span>اعدادات الحساب</span>
       </button>
     </nav>
 
     <!-- ═══ Content ═══ -->
     <div class="settings-content">
 
-      <!-- ══════════ Appearance ══════════ -->
-      <section class="settings-panel is-active" data-panel="appearance" role="tabpanel">
+      <!-- ═════════ POSTS ═════════ -->
+      <section class="settings-panel is-active" data-panel="posts" role="tabpanel">
+        <div class="feed" id="settingsUserPosts" aria-busy="true"></div>
+      </section>
 
-        <div class="settings-hero">
+      <!-- ═════════ APPEARANCE ═════════ -->
+      <section class="settings-panel" data-panel="appearance" role="tabpanel">
+
+        <div class="settings-hero settings-hero--quiet">
           <div class="settings-hero-text">
             <h3>خلّي ملفك يعكس شخصيتك</h3>
-            <p>غلاف، إطار، لون مميز، ونمط بطاقة — كل شيء يتحدّث فوراً في المعاينة.</p>
+            <p>غلاف، إطار، لون مميز، ونمط بطاقة — كل شيء يتحدّث فوراً في المعاينة أعلاه.</p>
           </div>
           <div class="settings-hero-badge">
             <i class="ph ph-sparkle" aria-hidden="true"></i>
@@ -58,43 +84,29 @@
           </div>
         </div>
 
-        <!-- Live preview -->
-        <div class="settings-preview" id="settingsPreviewCard" data-style="glass">
-          <div class="settings-preview-cover" id="settingsPreviewCover" data-cover="aurora">
-            <div class="profile-cover-pattern" aria-hidden="true"></div>
-          </div>
-          <div class="settings-preview-body">
-            <img class="settings-preview-avatar" id="settingsPreviewAvatar" src="" alt="" data-frame="ring">
-            <div class="settings-preview-info">
-              <strong id="settingsPreviewName">اسمك هنا</strong>
-              <span class="settings-preview-handle" id="settingsPreviewHandle">@username</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Cover presets -->
+        <!-- Cover -->
         <div class="settings-block">
           <div class="settings-block-head">
             <h4>نمط الغلاف</h4>
-            <span class="settings-block-hint" id="coverHint">12 نمطاً</span>
+            <span class="settings-block-hint">12 نمطاً</span>
           </div>
-          <div class="cover-presets cover-presets--wide" id="settingsCoverPresets" role="radiogroup" aria-label="نمط الغلاف">
-            <button type="button" class="cover-preset" data-cover="aurora"   aria-label="أورورا"        aria-pressed="false" style="--c1:#22D3EE;--c2:#8B5CF6"></button>
-            <button type="button" class="cover-preset" data-cover="sunset"   aria-label="غروب"          aria-pressed="false" style="--c1:#FBBF24;--c2:#FB7185"></button>
-            <button type="button" class="cover-preset" data-cover="forest"   aria-label="غابة"          aria-pressed="false" style="--c1:#34D399;--c2:#22D3EE"></button>
-            <button type="button" class="cover-preset" data-cover="royal"    aria-label="ملكي"          aria-pressed="false" style="--c1:#8B5CF6;--c2:#EC4899"></button>
-            <button type="button" class="cover-preset" data-cover="midnight" aria-label="منتصف الليل"   aria-pressed="false" style="--c1:#1E1E2A;--c2:#0A0A0F"></button>
-            <button type="button" class="cover-preset" data-cover="ocean"    aria-label="محيط"          aria-pressed="false" style="--c1:#0EA5E9;--c2:#22D3EE"></button>
-            <button type="button" class="cover-preset" data-cover="cyber"    aria-label="سايبر"         aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="candy"    aria-label="حلوى"          aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="mesh"     aria-label="شبكة ناعمة"    aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="noir"     aria-label="نوار"          aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="topo"     aria-label="طبوجرافيا"     aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="dots"     aria-label="نقاط"          aria-pressed="false"></button>
+          <div class="cover-presets--wide" id="settingsCoverPresets" role="radiogroup" aria-label="نمط الغلاف">
+            <button type="button" class="cover-preset" data-cover="aurora"   aria-label="أورورا"       aria-pressed="false" style="--c1:#22D3EE;--c2:#8B5CF6"></button>
+            <button type="button" class="cover-preset" data-cover="sunset"   aria-label="غروب"         aria-pressed="false" style="--c1:#FBBF24;--c2:#FB7185"></button>
+            <button type="button" class="cover-preset" data-cover="forest"   aria-label="غابة"         aria-pressed="false" style="--c1:#34D399;--c2:#22D3EE"></button>
+            <button type="button" class="cover-preset" data-cover="royal"    aria-label="ملكي"         aria-pressed="false" style="--c1:#8B5CF6;--c2:#EC4899"></button>
+            <button type="button" class="cover-preset" data-cover="midnight" aria-label="منتصف الليل"  aria-pressed="false" style="--c1:#1E1E2A;--c2:#0A0A0F"></button>
+            <button type="button" class="cover-preset" data-cover="ocean"    aria-label="محيط"         aria-pressed="false" style="--c1:#0EA5E9;--c2:#22D3EE"></button>
+            <button type="button" class="cover-preset" data-cover="cyber"    aria-label="سايبر"        aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="candy"    aria-label="حلوى"         aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="mesh"     aria-label="شبكة ناعمة"   aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="noir"     aria-label="نوار"         aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="topo"     aria-label="طبوجرافيا"    aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="dots"     aria-label="نقاط"         aria-pressed="false"></button>
           </div>
         </div>
 
-        <!-- Avatar frame -->
+        <!-- Frame -->
         <div class="settings-block">
           <div class="settings-block-head">
             <h4>إطار الصورة</h4>
@@ -156,9 +168,7 @@
 
         <!-- Card style -->
         <div class="settings-block">
-          <div class="settings-block-head">
-            <h4>نمط البطاقة</h4>
-          </div>
+          <div class="settings-block-head"><h4>نمط البطاقة</h4></div>
           <div class="style-picker" id="settingsCardStylePicker">
             <button type="button" class="style-option" data-style="glass" aria-pressed="true">
               <span class="style-preview style-glass"></span>
@@ -175,26 +185,12 @@
           </div>
         </div>
 
-      </section>
-
-      <!-- ══════════ Profile ══════════ -->
-      <section class="settings-panel" data-panel="profile" role="tabpanel">
-
-        <div class="settings-hero settings-hero--quiet">
-          <div class="settings-hero-text">
-            <h3>معلوماتك الأساسية</h3>
-            <p>الاسم، النبذة، المعرّف — اجعلها واضحة وقصيرة.</p>
-          </div>
-        </div>
-
+        <!-- Info -->
         <div class="settings-block">
           <div class="field">
             <label for="setName">الاسم الكامل</label>
             <input class="input" id="setName" type="text" required minlength="2" maxlength="80">
           </div>
-        </div>
-
-        <div class="settings-block">
           <div class="field">
             <label>الضمائر <span class="field-opt">(اختياري)</span></label>
             <div class="pronoun-picker" id="settingsPronounPicker" role="radiogroup" aria-label="الضمائر">
@@ -206,18 +202,12 @@
             </div>
             <input type="hidden" id="setPronouns" value="">
           </div>
-        </div>
-
-        <div class="settings-block">
           <div class="field">
             <label for="setBio">نبذة</label>
-            <textarea class="textarea" id="setBio" maxlength="300" rows="4"
-                      style="font-family:var(--font-sans);direction:rtl;text-align:right;min-height:100px;font-size:15px"></textarea>
+            <textarea class="textarea" id="setBio" maxlength="300" rows="3"
+                      style="font-family:var(--font-sans);direction:rtl;text-align:right;min-height:80px;font-size:15px"></textarea>
             <div class="field-hint"><span id="setBioCount">0</span> / 300</div>
           </div>
-        </div>
-
-        <div class="settings-block">
           <div class="field">
             <label for="setWebsite">الموقع الإلكتروني</label>
             <input class="input" id="setWebsite" type="url" maxlength="120" placeholder="https://…" inputmode="url">
@@ -226,37 +216,25 @@
 
       </section>
 
-      <!-- ══════════ Sounds ══════════ -->
-      <section class="settings-panel" data-panel="sounds" role="tabpanel">
+      <!-- ═════════ ACCOUNT ═════════ -->
+      <section class="settings-panel" data-panel="account" role="tabpanel">
 
-        <div class="settings-hero settings-hero--quiet">
-          <div class="settings-hero-text">
-            <h3>أصوات خفيفة للتفاعل</h3>
-            <p>نبرات قصيرة تُشعر بالحياة — بدون إزعاج. جرّبها الآن.</p>
-          </div>
-        </div>
-
+        <!-- Sounds -->
+        <div class="settings-group-title">الأصوات</div>
         <div class="settings-block">
           <div class="setting-row">
             <div class="setting-row-info">
               <strong>تفعيل الأصوات</strong>
-              <span>إشعار صوتي عند الإعجاب والنسخ والإرسال</span>
+              <span>نبرات قصيرة تُشعر بالحياة عند الإعجاب والنسخ والإرسال</span>
             </div>
             <button class="switch" id="soundsToggle" role="switch" aria-checked="true" aria-label="تفعيل الأصوات" type="button"></button>
           </div>
-        </div>
-
-        <div class="settings-block">
-          <div class="settings-block-head">
-            <h4>مستوى الصوت</h4>
-            <span class="settings-block-hint" id="volumeHint">60%</span>
-          </div>
-          <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="60" aria-label="مستوى الصوت">
-        </div>
-
-        <div class="settings-block">
-          <div class="settings-block-head">
-            <h4>معاينة النغمات</h4>
+          <div class="field">
+            <div class="settings-block-head">
+              <label for="volumeSlider">مستوى الصوت</label>
+              <span class="settings-block-hint" id="volumeHint">60%</span>
+            </div>
+            <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="60" aria-label="مستوى الصوت">
           </div>
           <div class="sound-grid">
             <button class="sound-card" data-sound="like" type="button">
@@ -292,18 +270,8 @@
           </div>
         </div>
 
-      </section>
-
-      <!-- ══════════ Notifications ══════════ -->
-      <section class="settings-panel" data-panel="notifications" role="tabpanel">
-
-        <div class="settings-hero settings-hero--quiet">
-          <div class="settings-hero-text">
-            <h3>الإشعارات</h3>
-            <p>تحكّم بما يصلك ومتى.</p>
-          </div>
-        </div>
-
+        <!-- Notifications -->
+        <div class="settings-group-title">الإشعارات</div>
         <div class="settings-block">
           <div class="setting-row">
             <div class="setting-row-info">
@@ -335,18 +303,8 @@
           </div>
         </div>
 
-      </section>
-
-      <!-- ══════════ Privacy ══════════ -->
-      <section class="settings-panel" data-panel="privacy" role="tabpanel">
-
-        <div class="settings-hero settings-hero--quiet">
-          <div class="settings-hero-text">
-            <h3>الخصوصية</h3>
-            <p>من يرى ماذا — ومن يمكنه التفاعل معك.</p>
-          </div>
-        </div>
-
+        <!-- Privacy -->
+        <div class="settings-group-title">الخصوصية</div>
         <div class="settings-block">
           <div class="setting-row">
             <div class="setting-row-info">
@@ -371,13 +329,39 @@
           </div>
         </div>
 
+        <!-- Password -->
+        <div class="settings-group-title">الأمان</div>
+        <div class="settings-block">
+          <div class="field">
+            <label for="setOldPassword">كلمة المرور الحالية</label>
+            <input class="input" id="setOldPassword" type="password" autocomplete="current-password">
+          </div>
+          <div class="field">
+            <label for="setNewPassword">كلمة المرور الجديدة</label>
+            <input class="input" id="setNewPassword" type="password" autocomplete="new-password" minlength="6">
+          </div>
+          <button class="btn btn-secondary" id="changePasswordBtn" type="button">
+            <i class="ph ph-lock-key" aria-hidden="true"></i>
+            <span>تحديث كلمة المرور</span>
+          </button>
+        </div>
+
+        <!-- Logout -->
+        <div class="settings-block settings-block--danger">
+          <div class="setting-row">
+            <div class="setting-row-info">
+              <strong>تسجيل الخروج</strong>
+              <span>الخروج من هذا الجهاز فقط</span>
+            </div>
+            <button class="btn btn-danger btn-sm" id="logoutBtn" type="button">
+              <i class="ph ph-sign-out" aria-hidden="true"></i>
+              <span>خروج</span>
+            </button>
+          </div>
+        </div>
+
       </section>
 
-      <!-- ══════════ Account ══════════ -->
-      <section class="settings-panel" data-panel="account" role="tabpanel">
-
-        <div class="settings-hero settings-hero--quiet">
-          <div class="settings-hero-text">
-            <h3>الحساب</h3>
-            <p>كلمة المرور وتسجيل الخروج.</p>
-          </
+    </div>
+  </div>
+</div>
