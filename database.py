@@ -1,14 +1,16 @@
 """
-خَيال — طبقة قاعدة البيانات v11.0
+خَيال — طبقة قاعدة البيانات v13.5
 - PostgreSQL + MySQL + SSL لـ Aiven
 - إطارات صور شخصية (8 أنواع) + أغلفة موسّعة (12 نمطاً)
 - pronouns محصور بقائمة محددة مسبقاً
+- preferences (JSON) للإشعارات والخصوصية
 - location و status محفوظان للأرشيف فقط (لا يُستخدمان في الواجهة)
 """
 import os
 import re
 import sys
 import time
+import json
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse
 
@@ -151,6 +153,44 @@ ALLOWED_CARD_STYLES = {"glass", "solid", "gradient"}
 
 
 # ═══════════════════════════════════════════════════════════
+# Preferences helpers (v13.5)
+# ═══════════════════════════════════════════════════════════
+def _default_preferences() -> dict:
+    return {
+        "notif": {
+            "likes":    True,
+            "comments": True,
+            "follows":  True,
+            "messages": True,
+        },
+        "priv": {
+            "public_profile":  True,
+            "allow_messages":  True,
+            "show_website":    True,
+        },
+    }
+
+
+def _parse_preferences(raw):
+    """Parse stored preferences JSON, merge with defaults, drop unknown keys."""
+    defaults = _default_preferences()
+    if not raw:
+        return defaults
+    try:
+        stored = json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(stored, dict):
+            return defaults
+        for group in ("notif", "priv"):
+            if group in stored and isinstance(stored[group], dict):
+                for k, v in stored[group].items():
+                    if k in defaults[group]:
+                        defaults[group][k] = bool(v)
+    except Exception:
+        pass
+    return defaults
+
+
+# ═══════════════════════════════════════════════════════════
 # النماذج
 # ═══════════════════════════════════════════════════════════
 
@@ -168,18 +208,21 @@ class User(db.Model):
     avatar = db.Column(db.String(512), nullable=True)
     bio = db.Column(db.Text, nullable=True, default="")
 
-    # Profile metadata (v11)
+    # Profile metadata (v13)
     website = db.Column(db.String(120), nullable=True)
     pronouns = db.Column(db.String(20), nullable=True)
-    # أرشيف فقط — لا تظهر في الواجهة بعد v11
+    # أرشيف فقط — لا تظهر في الواجهة بعد v13
     location = db.Column(db.String(60), nullable=True)
     status = db.Column(db.String(100), nullable=True)
 
-    # Visual customization (v11)
+    # Visual customization (v13)
     cover = db.Column(db.String(40), nullable=True, default="aurora")
     accent_color = db.Column(db.String(7), nullable=True, default="#22D3EE")
     avatar_shape = db.Column(db.String(30), nullable=True, default="ring")  # frame type
     card_style = db.Column(db.String(12), nullable=True, default="glass")
+
+    # Preferences (JSON) — notifications + privacy (v13.5)
+    preferences = db.Column(db.Text, nullable=True, default="{}")
 
     # Stats
     verified = db.Column(db.Boolean, default=False)
@@ -208,6 +251,7 @@ class User(db.Model):
             "accent_color": self.accent_color or "#22D3EE",
             "avatar_shape": self.avatar_shape or "ring",
             "card_style": self.card_style or "glass",
+            "preferences": _parse_preferences(getattr(self, "preferences", None)),
             "verified": self.verified,
             "followers": self.followers,
             "following": self.following,
