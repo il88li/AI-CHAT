@@ -997,6 +997,7 @@
       if (av) av.src = (S.me.avatar || '');
       if (nm) nm.textContent = S.me.name || '—';
       view.hidden = false;
+      document.body.classList.add('view-open');
       document.body.style.overflow = 'hidden';
       setTimeout(function () {
         var t = byId('cTitle');
@@ -1006,6 +1007,7 @@
     close: function () {
       var view = byId('composerView');
       if (view) view.hidden = true;
+      document.body.classList.remove('view-open');
       document.body.style.overflow = '';
       Composer.reset();
     },
@@ -1670,6 +1672,7 @@
       var view = byId('editProfileView');
       if (!view) return;
       view.hidden = false;
+      document.body.classList.add('view-open');
       document.body.style.overflow = 'hidden';
       setTimeout(function () { if (name) name.focus(); }, 180);
     },
@@ -1677,6 +1680,7 @@
     closeEdit: function () {
       var view = byId('editProfileView');
       if (view) view.hidden = true;
+      document.body.classList.remove('view-open');
       document.body.style.overflow = '';
     },
 
