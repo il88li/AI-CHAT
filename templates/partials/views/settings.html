@@ -17,14 +17,29 @@
     <section class="settings-hero-profile" id="settingsHeroProfile" data-style="glass">
       <div class="settings-hero-cover" id="settingsHeroCover" data-cover="aurora">
         <div class="profile-cover-pattern" aria-hidden="true"></div>
-      </div>
-      <div class="settings-hero-content">
-        <img class="settings-hero-avatar" id="settingsHeroAvatar" src="" alt="" data-frame="ring">
-        <div class="settings-hero-meta">
-          <strong id="settingsHeroName">—</strong>
-          <span class="settings-hero-handle" id="settingsHeroHandle">@—</span>
-          <span class="settings-hero-pronouns" id="settingsHeroPronouns" hidden></span>
+        <div class="settings-live-badge" id="settingsLiveBadge" hidden>
+          <span class="settings-live-dot" aria-hidden="true"></span>
+          <span>معاينة مباشرة</span>
         </div>
+      </div>
+
+      <div class="settings-hero-content">
+        <div class="settings-hero-avatar-wrap">
+          <img class="settings-hero-avatar" id="settingsHeroAvatar" src="" alt="" data-frame="ring">
+        </div>
+
+        <div class="settings-hero-meta">
+          <div class="settings-hero-name-row">
+            <strong id="settingsHeroName">—</strong>
+            <i class="ph ph-seal-check settings-hero-verified" id="settingsHeroVerified" aria-label="موثّق" hidden></i>
+          </div>
+          <div class="settings-hero-secondary">
+            <span class="settings-hero-handle" id="settingsHeroHandle">@—</span>
+            <span class="settings-hero-pronouns" id="settingsHeroPronouns" hidden></span>
+          </div>
+          <p class="settings-hero-bio" id="settingsHeroBio" hidden></p>
+        </div>
+
         <div class="settings-hero-stats">
           <button class="settings-stat" type="button" data-stat="posts" aria-label="البرومبتات">
             <strong id="settingsStatPosts">0</strong>
@@ -46,37 +61,39 @@
       </div>
     </section>
 
-    <!-- ═══ Fixed Tabs ═══ -->
-    <nav class="settings-tabs" role="tablist" aria-label="أقسام الإعدادات">
-      <button class="settings-tab is-active" role="tab" aria-selected="true" data-section="posts" type="button">
-        <i class="ph ph-image-square" aria-hidden="true"></i>
-        <span>منشوراتك</span>
-      </button>
-      <button class="settings-tab" role="tab" aria-selected="false" data-section="appearance" type="button">
-        <i class="ph ph-palette" aria-hidden="true"></i>
-        <span>تخصيص البروفايل</span>
-      </button>
-      <button class="settings-tab" role="tab" aria-selected="false" data-section="account" type="button">
-        <i class="ph ph-gear-six" aria-hidden="true"></i>
-        <span>اعدادات الحساب</span>
-      </button>
-    </nav>
+    <!-- ═══ Tabs (pill-in-pill) ═══ -->
+    <div class="settings-tabs-wrap">
+      <nav class="settings-tabs" role="tablist" aria-label="أقسام الإعدادات">
+        <button class="settings-tab is-active" role="tab" aria-selected="true" data-section="posts" type="button">
+          <i class="ph ph-image-square" aria-hidden="true"></i>
+          <span>منشوراتك</span>
+        </button>
+        <button class="settings-tab" role="tab" aria-selected="false" data-section="appearance" type="button">
+          <i class="ph ph-palette" aria-hidden="true"></i>
+          <span>تخصيص البروفايل</span>
+        </button>
+        <button class="settings-tab" role="tab" aria-selected="false" data-section="account" type="button">
+          <i class="ph ph-gear-six" aria-hidden="true"></i>
+          <span>اعدادات الحساب</span>
+        </button>
+      </nav>
+    </div>
 
     <!-- ═══ Content ═══ -->
     <div class="settings-content">
 
-      <!-- ═════════ POSTS ═════════ -->
+      <!-- POSTS -->
       <section class="settings-panel is-active" data-panel="posts" role="tabpanel">
         <div class="feed" id="settingsUserPosts" aria-busy="true"></div>
       </section>
 
-      <!-- ═════════ APPEARANCE ═════════ -->
+      <!-- APPEARANCE -->
       <section class="settings-panel" data-panel="appearance" role="tabpanel">
 
         <div class="settings-hero settings-hero--quiet">
           <div class="settings-hero-text">
             <h3>خلّي ملفك يعكس شخصيتك</h3>
-            <p>غلاف، إطار، لون مميز، ونمط بطاقة — كل شيء يتحدّث فوراً في المعاينة أعلاه.</p>
+            <p>كل تغيير يظهر في المعاينة بالأعلى فوراً — لا حاجة للحفظ للتجربة.</p>
           </div>
           <div class="settings-hero-badge">
             <i class="ph ph-sparkle" aria-hidden="true"></i>
@@ -84,7 +101,6 @@
           </div>
         </div>
 
-        <!-- Cover -->
         <div class="settings-block">
           <div class="settings-block-head">
             <h4>نمط الغلاف</h4>
@@ -106,7 +122,6 @@
           </div>
         </div>
 
-        <!-- Frame -->
         <div class="settings-block">
           <div class="settings-block-head">
             <h4>إطار الصورة</h4>
@@ -148,7 +163,6 @@
           </div>
         </div>
 
-        <!-- Accent -->
         <div class="settings-block">
           <div class="settings-block-head">
             <h4>اللون المميز</h4>
@@ -166,7 +180,6 @@
           </div>
         </div>
 
-        <!-- Card style -->
         <div class="settings-block">
           <div class="settings-block-head"><h4>نمط البطاقة</h4></div>
           <div class="style-picker" id="settingsCardStylePicker">
@@ -185,7 +198,6 @@
           </div>
         </div>
 
-        <!-- Info -->
         <div class="settings-block">
           <div class="field">
             <label for="setName">الاسم الكامل</label>
@@ -216,10 +228,9 @@
 
       </section>
 
-      <!-- ═════════ ACCOUNT ═════════ -->
+      <!-- ACCOUNT -->
       <section class="settings-panel" data-panel="account" role="tabpanel">
 
-        <!-- Sounds -->
         <div class="settings-group-title">الأصوات</div>
         <div class="settings-block">
           <div class="setting-row">
@@ -270,7 +281,6 @@
           </div>
         </div>
 
-        <!-- Notifications -->
         <div class="settings-group-title">الإشعارات</div>
         <div class="settings-block">
           <div class="setting-row">
@@ -303,7 +313,6 @@
           </div>
         </div>
 
-        <!-- Privacy -->
         <div class="settings-group-title">الخصوصية</div>
         <div class="settings-block">
           <div class="setting-row">
@@ -329,7 +338,6 @@
           </div>
         </div>
 
-        <!-- Password -->
         <div class="settings-group-title">الأمان</div>
         <div class="settings-block">
           <div class="field">
@@ -346,7 +354,6 @@
           </button>
         </div>
 
-        <!-- Logout -->
         <div class="settings-block settings-block--danger">
           <div class="setting-row">
             <div class="setting-row-info">
