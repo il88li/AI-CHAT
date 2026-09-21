@@ -1,7 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v12.0
-   Full client controller · RTL-first · Dark/Light · PWA-aware
-   + Settings page · Sound hooks · Improved responsiveness
+   خَيال — app.js v12.1
+   Fixes: Settings.open robustness · dock double-binding · settings.html import
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -15,6 +14,7 @@
     SEARCH_DEBOUNCE: 280,
     DRAFT_KEY: 'khayal.composer.draft',
     THEME_KEY: 'khayal.theme',
+    BUILD: '12.1',
   };
 
   const S = {
@@ -140,26 +140,6 @@
         return ok;
       } catch (e) { return false; }
     },
-
-    $(tag, attrs, ...children) {
-      const node = document.createElement(tag);
-      if (attrs) {
-        for (const k in attrs) {
-          if (k === 'class') node.className = attrs[k];
-          else if (k.startsWith('on') && typeof attrs[k] === 'function') {
-            node.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
-          } else if (k === 'html') node.innerHTML = attrs[k];
-          else if (attrs[k] !== null && attrs[k] !== undefined && attrs[k] !== false) {
-            node.setAttribute(k, attrs[k]);
-          }
-        }
-      }
-      children.flat().forEach(c => {
-        if (c == null || c === false) return;
-        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
-      });
-      return node;
-    },
   };
 
   /* ═══════════════════════════════════════════════════════════════
@@ -254,15 +234,17 @@
 
     show(msg, tone, ms) {
       const wrap = this.wrap();
-      if (!wrap) return;
+      if (!wrap) { console.log('[toast]', msg); return; }
       const icons = {
         success: 'ph-check-circle',
         error: 'ph-warning-circle',
         warning: 'ph-warning',
         info: 'ph-info',
       };
-      const t = U.el('div', { class: 'toast', 'data-tone': tone || 'info' },
-        `<i class="ph ${icons[tone] || icons.info}" aria-hidden="true"></i><span></span>`);
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.setAttribute('data-tone', tone || 'info');
+      t.innerHTML = `<i class="ph ${icons[tone] || icons.info}" aria-hidden="true"></i><span></span>`;
       t.querySelector('span').textContent = msg;
       wrap.appendChild(t);
 
@@ -305,9 +287,7 @@
       if (!this.deferred) return;
       this.deferred.prompt();
       const choice = await this.deferred.userChoice;
-      if (choice && choice.outcome === 'accepted') {
-        this.dismiss();
-      }
+      if (choice && choice.outcome === 'accepted') this.dismiss();
       this.deferred = null;
     },
 
@@ -356,6 +336,7 @@
         const first = m.querySelector('.auth-form.is-active input');
         if (first) first.focus({ preventScroll: true });
       }, 200);
+      if (window.Sounds) Sounds.play('open');
     },
 
     close(e) {
@@ -365,6 +346,7 @@
       m.setAttribute('data-open', 'false');
       document.documentElement.style.overflow = '';
       if (S.lastFocused) S.lastFocused.focus({ preventScroll: true });
+      if (window.Sounds) Sounds.play('close');
     },
 
     switchMode(mode) {
@@ -504,8 +486,6 @@
       }
       const dock = document.getElementById('dock');
       if (dock) dock.hidden = !user;
-      const header = document.querySelector('.nav');
-      if (header && user) header.classList.add('nav--authed');
     },
 
     logout() {
@@ -520,7 +500,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     POST (card render + actions)
+     POST
      ═══════════════════════════════════════════════════════════════ */
   const Post = {
     renderCard(p) {
@@ -531,10 +511,9 @@
       const tags = Array.isArray(p.tags) ? p.tags : [];
       const model = p.model || '';
 
-      const card = U.el('article', {
-        class: 'prompt-card',
-        'data-post-id': String(p.id),
-      });
+      const card = document.createElement('article');
+      card.className = 'prompt-card';
+      card.setAttribute('data-post-id', String(p.id));
 
       const tagsHtml = tags.length
         ? `<div class="prompt-tags">${tags.slice(0, 4).map(t =>
@@ -633,7 +612,6 @@
       const currently = btn.getAttribute('aria-pressed') === 'true';
       const next = !currently;
 
-      // Optimistic
       document.querySelectorAll(`[data-post-id="${id}"] [data-action="like"]`).forEach(b => {
         b.setAttribute('aria-pressed', String(next));
       });
@@ -709,7 +687,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     FEED (list rendering + pagination)
+     FEED
      ═══════════════════════════════════════════════════════════════ */
   const Feed = {
     container(name) {
@@ -769,7 +747,6 @@
         fs.loaded = false;
       }
 
-      // Show skeletons only on first load
       if (fs.items.length === 0) {
         container.innerHTML = this.skeletonsHtml();
         container.setAttribute('aria-busy', 'true');
@@ -784,9 +761,6 @@
         params.set('sort', S.sort);
         if (S.filterTag) params.set('tag', S.filterTag);
         if (S.filterModel) params.set('model', S.filterModel);
-      }
-      if (name === 'liked') {
-        // لاحقاً: إن أردت API specific
       }
       if (name === 'profile' && S.viewingUser) {
         params.set('author', String(S.viewingUser.id));
@@ -811,7 +785,6 @@
 
         const frag = document.createDocumentFragment();
         list.forEach(p => frag.appendChild(Post.renderCard(p)));
-        // Clear skeletons
         if (fs.items.length === 0) container.innerHTML = '';
         container.appendChild(frag);
         fs.items = fs.items.concat(list);
@@ -863,7 +836,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     COMMENTS (drawer)
+     COMMENTS
      ═══════════════════════════════════════════════════════════════ */
   const Comments = {
     currentPostId: null,
@@ -974,7 +947,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     DRAWERS (comments + notifications)
+     DRAWERS
      ═══════════════════════════════════════════════════════════════ */
   const Drawers = {
     openComments(postId) {
@@ -1024,7 +997,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     COMPOSER (new post)
+     COMPOSER
      ═══════════════════════════════════════════════════════════════ */
   const Composer = {
     type: 'text',
@@ -1032,15 +1005,17 @@
     open() {
       if (!S.me) { Auth.open('login'); return; }
       const view = document.getElementById('composerView');
-      if (!view) return;
+      if (!view) {
+        console.error('[خَيال] #composerView غير موجود');
+        Toast.show('صفحة النشر غير متوفرة', 'error');
+        return;
+      }
 
-      // Fill avatar
       const av = document.getElementById('composerFormAvatar');
       if (av) av.src = S.me.avatar || '';
       const name = document.getElementById('composerUserName');
       if (name) name.textContent = S.me.name || '—';
 
-      // Restore draft
       this.restoreDraft();
 
       view.hidden = false;
@@ -1148,7 +1123,6 @@
         const post = await API.post('/api/posts', {
           title, prompt, image: image || null, model: model || null, tags,
         });
-        // Prepend to home feed
         const homeEl = document.getElementById('homeFeed');
         if (homeEl && post) {
           const empty = homeEl.querySelector('.empty-block');
@@ -1169,11 +1143,9 @@
     },
 
     init() {
-      // Type pills
       document.querySelectorAll('.type-pill').forEach(btn => {
         btn.addEventListener('click', () => this.chooseType(btn.dataset.type));
       });
-      // Autosave draft every 2s
       ['cTitle', 'cPrompt', 'cImage', 'cTags'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', U.debounce(() => this.saveDraft(), 1500));
@@ -1303,7 +1275,6 @@
       input.value = '';
       U.autoGrow(input);
 
-      // Optimistic render
       const empty = body.querySelector('.empty-block');
       if (empty) empty.remove();
       body.insertAdjacentHTML('beforeend', this.msgHtml({ from: 'me', text, time: 'الآن' }));
@@ -1424,7 +1395,6 @@
       const bio = document.getElementById('profileBio');
       if (bio) bio.textContent = u.bio || '';
 
-      // Meta: website only
       const meta = document.getElementById('profileMeta');
       const website = document.getElementById('profileWebsite');
       const link = website ? website.querySelector('a') : null;
@@ -1449,14 +1419,12 @@
       if (meta && (website.hidden === false || joined.hidden === false)) meta.hidden = false;
       else if (meta) meta.hidden = true;
 
-      // Stats
       const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
       setStat('statFollowers', u.followers || 0);
       setStat('statFollowing', u.following || 0);
       setStat('statPosts', u.posts_count || 0);
       setStat('statLikes', u.total_likes || 0);
 
-      // Actions
       const actions = document.getElementById('profileActions');
       if (actions) {
         if (isMe) {
@@ -1482,15 +1450,17 @@
         }
       }
 
-      // Edit buttons on cover/avatar (only if me)
       const coverEdit = document.getElementById('profileCoverEditBtn');
       const avatarEdit = document.getElementById('profileAvatarEditBtn');
-      if (coverEdit) coverEdit.hidden = !isMe;
-      if (avatarEdit) avatarEdit.hidden = !isMe;
-      if (coverEdit && isMe) coverEdit.setAttribute('data-action', 'open-settings');
-      if (avatarEdit && isMe) avatarEdit.setAttribute('data-action', 'open-settings');
+      if (coverEdit) {
+        coverEdit.hidden = !isMe;
+        if (isMe) coverEdit.setAttribute('data-action', 'open-settings');
+      }
+      if (avatarEdit) {
+        avatarEdit.hidden = !isMe;
+        if (isMe) avatarEdit.setAttribute('data-action', 'open-settings');
+      }
 
-      // Tabs
       if (tabs) {
         tabs.hidden = false;
         const savedTab = document.getElementById('profileSavedTab');
@@ -1499,11 +1469,9 @@
         if (settingsTab) settingsTab.hidden = !isMe;
       }
 
-      // Load posts
       Feed.reset('profile');
       Feed.load('profile');
 
-      // Bind actions
       this.bindActions();
     },
 
@@ -1556,7 +1524,6 @@
 
     save(ev) {
       if (ev) ev.preventDefault();
-      // يستدعي حفظ الإعدادات
       if (window.Settings) Settings.save();
     },
   };
@@ -1567,7 +1534,6 @@
   const Explore = {
     openCollection(name) {
       App.switchTab('explore');
-      // Reset filter then set specific view
       S.filterTag = '';
       S.filterModel = '';
       switch (name) {
@@ -1580,7 +1546,6 @@
           App.setSort('recent');
           break;
         case 'editor':
-          // demo: mix
           S.sort = 'top';
           App.setSort('top');
           break;
@@ -1591,7 +1556,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     SETTINGS (v12)
+     SETTINGS (v12 — robust open)
      ═══════════════════════════════════════════════════════════════ */
   const Settings = {
     view: null,
@@ -1610,7 +1575,10 @@
 
     init() {
       this.view = document.getElementById('settingsView');
-      if (!this.view) return;
+      if (!this.view) {
+        console.error('[خَيال] #settingsView غير موجود. تأكد من استيراد partials/views/settings.html في base.html');
+        return;
+      }
       const self = this;
 
       this.view.querySelector('[data-action="close-settings"]')
@@ -1778,11 +1746,26 @@
     },
 
     open() {
-      if (!this.view) return;
+      // إعادة ربط view إذا لم يكن موجوداً — يحمي من سباق تحميل
+      if (!this.view) this.view = document.getElementById('settingsView');
+
+      if (!this.view) {
+        console.error('[خَيال] لم يُعثر على #settingsView. تحقق من استيراد partials/views/settings.html في base.html');
+        if (window.Toast) Toast.show('صفحة الإعدادات غير متوفرة', 'error');
+        return;
+      }
+
+      // Hydrate دائماً قبل الفتح
       this.hydrate();
+
       this.view.hidden = false;
       document.body.classList.add('view-open');
       if (window.Sounds) Sounds.play('open');
+
+      setTimeout(() => {
+        const first = this.view.querySelector('.settings-nav-item.is-active');
+        if (first) first.focus({ preventScroll: true });
+      }, 120);
     },
 
     close() {
@@ -1979,12 +1962,14 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     APP — main controller
+     APP
      ═══════════════════════════════════════════════════════════════ */
   const App = {
     boot() {
       if (S.booted) return;
       S.booted = true;
+
+      console.log('[خَيال] booting v' + CFG.BUILD);
 
       Theme.init();
       Net.init();
@@ -2000,10 +1985,8 @@
       this.bindInfiniteScroll();
       this.bindKeyboard();
 
-      // Update chrome with current user state
       Auth.updateChrome(S.me);
 
-      // Landing or app?
       if (S.me) {
         this.showApp();
         this.switchTab('home', { silent: true });
@@ -2012,12 +1995,13 @@
         this.bindLanding();
       }
 
-      // Update hero stats on landing
       this.updateHeroStats();
+
+      console.log('[خَيال] booted. Settings module:',
+                  window.Settings ? 'ready' : 'missing');
     },
 
     bindGlobal() {
-      // Global click handlers for data-action
       document.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
@@ -2040,8 +2024,8 @@
           return;
         }
         if (action === 'open-settings') { e.preventDefault(); Settings.open(); return; }
-        if (action === 'pick-avatar-file') { e.preventDefault(); document.getElementById('avatarFileInput')?.click(); return; }
-        if (action === 'pick-cover-file') { e.preventDefault(); document.getElementById('coverFileInput')?.click(); return; }
+        if (action === 'pick-avatar-file') { e.preventDefault(); const i = document.getElementById('avatarFileInput'); if (i) i.click(); return; }
+        if (action === 'pick-cover-file') { e.preventDefault(); const i = document.getElementById('coverFileInput'); if (i) i.click(); return; }
         if (action === 'toggle-notifications') {
           e.preventDefault();
           Drawers.openNotifications();
@@ -2049,7 +2033,6 @@
         }
       });
 
-      // Tag clicks
       document.addEventListener('click', (e) => {
         const tag = e.target.closest('.tag[data-tag]');
         if (tag) {
@@ -2058,19 +2041,21 @@
         }
       });
 
-      // Escape key closes overlays
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
-        if (!document.getElementById('composerView')?.hidden) { Composer.close(); return; }
-        if (!document.getElementById('settingsView')?.hidden) { Settings.close(); return; }
-        if (document.getElementById('authModal')?.getAttribute('data-open') === 'true') { Auth.close(); return; }
+        const composerView = document.getElementById('composerView');
+        const settingsView = document.getElementById('settingsView');
+        const authModal = document.getElementById('authModal');
+
+        if (composerView && !composerView.hidden) { Composer.close(); return; }
+        if (settingsView && !settingsView.hidden) { Settings.close(); return; }
+        if (authModal && authModal.getAttribute('data-open') === 'true') { Auth.close(); return; }
         Drawers.closeAll();
       });
     },
 
     bindNav() {
-      const themeBtn = document.querySelector('.nav .btn-icon[onclick*="toggleTheme"]')
-        || document.querySelector('button[aria-label="تبديل المظهر"]');
+      const themeBtn = document.querySelector('button[aria-label="تبديل المظهر"]');
       if (themeBtn) {
         themeBtn.removeAttribute('onclick');
         themeBtn.addEventListener('click', () => Theme.toggle());
@@ -2091,7 +2076,6 @@
         });
       }
 
-      // Nav scrolled state
       let ticking = false;
       window.addEventListener('scroll', () => {
         if (ticking) return;
@@ -2106,17 +2090,28 @@
 
     bindDock() {
       document.querySelectorAll('.dock-item[data-tab]').forEach(btn => {
+        btn.removeAttribute('onclick');
         const tab = btn.dataset.tab;
         btn.addEventListener('click', () => {
-          if (tab === 'settings') Settings.open();
-          else this.switchTab(tab);
+          if (tab === 'settings') {
+            if (window.Settings) {
+              Settings.open();
+            } else {
+              console.error('[خَيال] Settings module غير محمّل');
+              if (window.Toast) Toast.show('تعذّر فتح الإعدادات', 'error');
+            }
+          } else {
+            this.switchTab(tab);
+          }
         });
       });
 
       const create = document.querySelector('.dock-create');
       if (create) {
         create.removeAttribute('onclick');
-        create.addEventListener('click', () => Composer.open());
+        create.addEventListener('click', () => {
+          if (window.Composer) Composer.open();
+        });
       }
     },
 
@@ -2178,13 +2173,11 @@
 
     bindKeyboard() {
       document.addEventListener('keydown', (e) => {
-        // Cmd/Ctrl + K → search focus
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
           e.preventDefault();
           const input = document.getElementById('searchInput');
           if (input) input.focus();
         }
-        // Cmd/Ctrl + N → new post
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
           e.preventDefault();
           if (S.me) Composer.open();
@@ -2193,7 +2186,7 @@
     },
 
     bindLanding() {
-      document.querySelectorAll('[data-action="preview-feed"], .hero-cta button[onclick*="previewFeed"]').forEach(b => {
+      document.querySelectorAll('button[onclick*="previewFeed"]').forEach(b => {
         b.removeAttribute('onclick');
         b.addEventListener('click', () => this.previewFeed());
       });
@@ -2210,7 +2203,7 @@
       if (appView) appView.hidden = true;
       const dock = document.getElementById('dock');
       if (dock) dock.hidden = true;
-      document.querySelectorAll('.nav-links').forEach(n => n.style.display = '');
+      document.querySelectorAll('.nav-links').forEach(n => { n.style.display = ''; });
     },
 
     showApp() {
@@ -2220,7 +2213,7 @@
       if (appView) { appView.hidden = false; appView.classList.add('is-active'); }
       const dock = document.getElementById('dock');
       if (dock) dock.hidden = !S.me;
-      document.querySelectorAll('.nav-links').forEach(n => n.style.display = 'none');
+      document.querySelectorAll('.nav-links').forEach(n => { n.style.display = 'none'; });
     },
 
     previewFeed() {
@@ -2248,7 +2241,6 @@
 
       if (window.Sounds && !opts.silent) Sounds.play('tab');
 
-      // Load feed on first visit
       if (name === 'home' || name === 'explore') {
         Feed.load(name);
       } else if (name === 'chat') {
@@ -2257,11 +2249,9 @@
         if (S.viewingUser) Profile.load(S.viewingUser.id);
         else Profile.load();
       } else if (name === 'liked' || name === 'saved') {
-        // Filters use /api/posts with current user context
         Feed.load(name);
       }
 
-      // Scroll top
       if (!opts.noScroll) window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
@@ -2307,16 +2297,6 @@
       } catch (e) { /* silent */ }
     },
   };
-
-  /* ═══════════════════════════════════════════════════════════════
-     SOUND HOOKS
-     ═══════════════════════════════════════════════════════════════ */
-  function installSoundHooks() {
-    if (!window.Sounds) return;
-    if (window.__soundsHooked) return;
-    window.__soundsHooked = true;
-    // Already integrated via direct calls above
-  }
 
   /* ═══════════════════════════════════════════════════════════════
      UNLOCK AUDIO ON FIRST GESTURE
