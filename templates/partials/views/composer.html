@@ -1,0 +1,77 @@
+<div class="view-overlay" id="composerView" hidden>
+
+  <header class="view-overlay-head">
+    <button class="btn btn-icon btn-ghost" data-action="close-composer" aria-label="إغلاق" type="button">
+      <i class="ph ph-x" aria-hidden="true"></i>
+    </button>
+    <h2>منشور جديد</h2>
+    <button class="btn btn-primary btn-sm" id="composerSubmit" data-action="submit-composer" type="button">
+      <i class="ph ph-paper-plane-tilt" aria-hidden="true"></i>
+      <span>نشر</span>
+    </button>
+  </header>
+
+  <div class="view-overlay-body">
+
+    <form class="composer-form is-active" id="composerForm" onsubmit="Composer.publish(event)" novalidate>
+
+      <div class="composer-user">
+        <img class="avatar" id="composerFormAvatar" src="" alt="">
+        <div>
+          <strong id="composerUserName">—</strong>
+          <span class="composer-visibility"><i class="ph ph-globe"></i> عام</span>
+        </div>
+      </div>
+
+      <div class="type-switch" role="tablist" aria-label="نوع المنشور">
+        <button type="button" class="type-pill" data-action="choose-type" data-type="text" role="tab" aria-selected="true">
+          <i class="ph ph-text-aa"></i> نص
+        </button>
+        <button type="button" class="type-pill" data-action="choose-type" data-type="prompt" role="tab" aria-selected="false">
+          <i class="ph ph-image"></i> صورة + برومبت
+        </button>
+      </div>
+
+      <div class="field">
+        <label for="cTitle">العنوان</label>
+        <input class="input" id="cTitle" type="text" placeholder="عنوان المنشور…" maxlength="200" required>
+      </div>
+
+      <div class="field">
+        <label for="cPrompt">المحتوى</label>
+        <textarea class="textarea" id="cPrompt" placeholder="اكتب برومبتك هنا…" maxlength="2000" rows="8" required></textarea>
+      </div>
+
+      <div class="field" id="imageField" hidden>
+        <label for="cImage">رابط الصورة</label>
+        <input class="input" id="cImage" type="url" placeholder="https://…" inputmode="url" oninput="Composer.previewImage(this.value)">
+        <div class="composer-img-preview" id="imgPreview" hidden>
+          <img id="imgPreviewEl" alt="معاينة">
+          <button type="button" class="composer-img-clear" onclick="Composer.clearPreview()" aria-label="إزالة">
+            <i class="ph ph-x"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="composer-row">
+        <div class="field">
+          <label for="cModel">الموديل</label>
+          <select class="input" id="cModel">
+            <option>Midjourney v6</option>
+            <option>DALL·E 3</option>
+            <option>Stable Diffusion XL</option>
+            <option>Flux 1.1 Pro</option>
+            <option>Adobe Firefly</option>
+            <option>Leonardo AI</option>
+            <option>Ideogram</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="cTags">الوسوم</label>
+          <input class="input" id="cTags" type="text" placeholder="بورتريه، سينمائي" autocomplete="off">
+        </div>
+      </div>
+
+    </form>
+  </div>
+</div>
