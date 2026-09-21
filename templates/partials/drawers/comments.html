@@ -1,0 +1,24 @@
+<div class="drawer-scrim" id="commentsScrim" data-open="false" onclick="Drawers.closeComments()" aria-hidden="true"></div>
+
+<aside class="drawer" id="commentsDrawer" data-open="false"
+       role="dialog" aria-modal="true" aria-labelledby="commentsTitle">
+  <div class="drawer-head">
+    <h3 id="commentsTitle">
+      التعليقات
+      <span id="commentCount" style="color:var(--fg-3);font-weight:500"></span>
+    </h3>
+    <button class="btn btn-icon btn-ghost btn-sm" onclick="Drawers.closeComments()" aria-label="إغلاق" type="button">
+      <i class="ph ph-x" aria-hidden="true"></i>
+    </button>
+  </div>
+
+  <div class="drawer-body" id="commentsBody"></div>
+
+  <form class="comment-composer" id="commentForm" onsubmit="Comments.send(event)" style="display:none">
+    <textarea id="commentInput" placeholder="أضف تعليقاً…" rows="1"
+              oninput="U.autoGrow(this)" enterkeyhint="send" aria-label="نص التعليق"></textarea>
+    <button type="submit" class="btn btn-primary btn-icon" aria-label="إرسال" type="button">
+      <i class="ph ph-paper-plane-tilt" aria-hidden="true"></i>
+    </button>
+  </form>
+</aside>
