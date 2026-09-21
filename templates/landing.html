@@ -1,81 +1,151 @@
 {% extends "base.html" %}
 {% block title %}خَيال — شارِك البرومبت، لا الصورة فقط{% endblock %}
-{% block body_class %}landing-page{% endblock %}
 
 {% block body %}
-<main class="view active" id="view-landing">
+
+{% include 'partials/nav.html' %}
+
+<main class="view is-active" id="view-landing">
   <section class="hero">
     <div class="hero-inner">
       <div class="hero-chip">
-        <span class="pulse"></span>
+        <span class="pulse" aria-hidden="true"></span>
         النسخة التجريبية · انضم لمبدعي البرومبتات
       </div>
-      <h1>شارِك <span class="grad">البرومبت</span>،<br>لا <span class="stroke">الصورة</span> فقط.</h1>
-      <p class="hero-lede">خَيال منصة عربية لمبدعي الصور بالذكاء الاصطناعي. انشر البرومبت مع النتيجة، اكتشف مكتبة حيّة، انسخ ما ينجح، واحفظ الفضل لأصحابه.</p>
+
+      <h1>
+        شارِك <span class="grad">البرومبت</span>،<br>
+        لا <span class="stroke">الصورة</span> فقط.
+      </h1>
+
+      <p class="hero-lede">
+        خَيال منصة عربية لمبدعي الصور بالذكاء الاصطناعي. انشر البرومبت مع النتيجة، اكتشف مكتبة حيّة، انسخ ما ينجح، واحفظ الفضل لأصحابه.
+      </p>
+
       <div class="hero-cta">
-        <button class="btn btn-primary btn-lg" onclick="Auth.open()">
-          <i class="ph ph-google-logo"></i> ابدأ بحساب جوجل
+        <button class="btn btn-primary btn-lg" onclick="Auth.open('register')" type="button">
+          <i class="ph ph-user-plus" aria-hidden="true"></i>
+          أنشئ حسابك مجاناً
         </button>
-        <button class="btn btn-glass btn-lg" onclick="App.previewFeed()">
-          تصفَّح المنصة <i class="ph ph-arrow-left"></i>
+        <button class="btn btn-secondary btn-lg" onclick="App.previewFeed()" type="button">
+          تصفَّح المنصة
+          <i class="ph ph-arrow-left" aria-hidden="true"></i>
         </button>
       </div>
+
       <div class="hero-stats">
-        <div class="hero-stat"><strong id="heroStatPosts">٠</strong><span>برومبت</span></div>
-        <div class="hero-stat"><strong id="heroStatUsers">٠</strong><span>مبدع</span></div>
+        <div class="hero-stat"><strong id="heroStatPosts">0</strong><span>برومبت</span></div>
+        <div class="hero-stat"><strong id="heroStatUsers">0</strong><span>مبدع</span></div>
         <div class="hero-stat"><strong>∞</strong><span>إبداع</span></div>
       </div>
+
       <div class="hero-preview">
-        <div class="card" data-label="cinematic rooftop, neon"><img src="https://picsum.photos/seed/aurora1/900/1200" alt="" loading="lazy"></div>
-        <div class="card" data-label="kyoto alley, rain"><img src="https://picsum.photos/seed/aurora2/600/400" alt="" loading="lazy"></div>
-        <div class="card" data-label="cyberpunk market"><img src="https://picsum.photos/seed/aurora3/600/400" alt="" loading="lazy"></div>
+        <div class="card" data-label="cinematic rooftop, neon">
+          <img src="https://picsum.photos/seed/aurora1/900/1200" alt="" loading="lazy">
+        </div>
+        <div class="card" data-label="kyoto alley, rain">
+          <img src="https://picsum.photos/seed/aurora2/600/400" alt="" loading="lazy">
+        </div>
+        <div class="card" data-label="cyberpunk market">
+          <img src="https://picsum.photos/seed/aurora3/600/400" alt="" loading="lazy">
+        </div>
       </div>
     </div>
   </section>
 
   <section class="section" id="features">
     <div class="sec-head">
-      <div><div class="sec-eyebrow">ما تحصل عليه</div><h2>كل ما يحتاجه صانع البرومبت في مكان واحد.</h2></div>
+      <div class="sec-head-info">
+        <div class="sec-eyebrow">ما تحصل عليه</div>
+        <h2>كل ما يحتاجه صانع البرومبت في مكان واحد.</h2>
+      </div>
       <p>بُنيت مع مبدعين ينشرون كل يوم. برومبتات حقيقية، أسماء محفوظة، وإعادة استخدام موثّقة.</p>
     </div>
+
     <div class="bento">
-      <article class="bento-card b-a">
-        <div class="bento-icon"><i class="ph ph-sparkle"></i></div>
+      <article class="bento-card bento-a">
+        <div class="bento-icon"><i class="ph ph-sparkle" aria-hidden="true"></i></div>
         <h3>انشر البرومبت مع النتيجة</h3>
-        <p>كل منشور يقرن الصورة بالبرومبت والموديل والإعدادات بالضبط. نسخة واحدة بضغطة.</p>
+        <p>كل منشور يقرن الصورة بالبرومبت والموديل والإعدادات بالضبط.</p>
       </article>
-      <article class="bento-card b-b">
-        <div class="bento-icon"><i class="ph ph-users-three"></i></div>
+
+      <article class="bento-card bento-b">
+        <div class="bento-icon"><i class="ph ph-users-three" aria-hidden="true"></i></div>
         <h3>مجتمع حقيقي</h3>
-        <p>تابِع المبدعين، زُر صفحاتهم، وتواصل معهم مباشرة عبر الدردشة المدمجة.</p>
+        <p>تابِع المبدعين، زُر صفحاتهم، وتواصل معهم مباشرة.</p>
       </article>
-      <article class="bento-card b-c">
-        <div class="bento-icon"><i class="ph ph-heart"></i></div>
+
+      <article class="bento-card bento-c">
+        <div class="bento-icon"><i class="ph ph-heart" aria-hidden="true"></i></div>
         <h3>أعجِب واحفظ</h3>
-        <p>مكتبتان منفصلتان: المُعجَبة والمحفوظة للرجوع لاحقاً.</p>
+        <p>مكتبتان منفصلتان للرجوع لاحقاً.</p>
       </article>
-      <article class="bento-card b-d">
-        <div class="bento-icon"><i class="ph ph-chat-circle-dots"></i></div>
+
+      <article class="bento-card bento-d">
+        <div class="bento-icon"><i class="ph ph-chat-circle-dots" aria-hidden="true"></i></div>
         <h3>دردشة وتعليقات حية</h3>
-        <p>تحدّث مع المبدعين دون مغادرة المنصة، وشارِك في الحوار على كل برومبت.</p>
+        <p>تحدّث مع المبدعين دون مغادرة المنصة.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <div class="sec-head">
+      <div class="sec-head-info">
+        <div class="sec-eyebrow">كيف تعمل</div>
+        <h2>ثلاث خطوات. هذا كل شيء.</h2>
+      </div>
+    </div>
+
+    <div class="bento bento-3">
+      <article class="bento-card">
+        <div class="bento-icon"><i class="ph ph-user-plus" aria-hidden="true"></i></div>
+        <h3>١. أنشئ حسابك</h3>
+        <p>اسم مستخدم وكلمة مرور. بلا انتظار.</p>
+      </article>
+
+      <article class="bento-card">
+        <div class="bento-icon"><i class="ph ph-image-square" aria-hidden="true"></i></div>
+        <h3>٢. انشر برومبتك</h3>
+        <p>ارفع الصورة، الصق البرومبت، ضع وسم الموديل.</p>
+      </article>
+
+      <article class="bento-card">
+        <div class="bento-icon"><i class="ph ph-copy" aria-hidden="true"></i></div>
+        <h3>٣. انسخ وأعِد الاستخدام</h3>
+        <p>اكتشف، انسخ، عدّل، وانشر نسختك.</p>
       </article>
     </div>
   </section>
 
   <section class="section" id="community">
     <div class="sec-head">
-      <div><div class="sec-eyebrow">من المجتمع</div><h2>انظر ما ينشره الناس الآن.</h2></div>
-      <button class="btn btn-glass" onclick="App.previewFeed()">افتح التغذية كاملة <i class="ph ph-arrow-up-left"></i></button>
+      <div class="sec-head-info">
+        <div class="sec-eyebrow">من المجتمع</div>
+        <h2>انظر ما ينشره الناس الآن.</h2>
+      </div>
+      <button class="btn btn-secondary" onclick="App.previewFeed()" type="button">
+        افتح التغذية كاملة
+        <i class="ph ph-arrow-up-left" aria-hidden="true"></i>
+      </button>
     </div>
+
     <div class="feed" id="landingFeed"></div>
   </section>
 
   <footer class="footer">
     <div class="footer-inner">
-      <div class="nav-brand"><span class="brand-mark">خ</span><span>خَيال</span></div>
+      <div class="nav-brand">
+        <span class="brand-mark" aria-hidden="true">خ</span>
+        <span>خَيال</span>
+      </div>
       <div>© ٢٠٢٥ خَيال. صُنع لمبدعي البرومبتات.</div>
-      <div class="footer-links"><a href="#">الخصوصية</a><a href="#">الشروط</a></div>
+      <div class="footer-links">
+        <a href="/privacy">الخصوصية</a>
+        <a href="#">الشروط</a>
+      </div>
     </div>
   </footer>
 </main>
+
 {% endblock %}
