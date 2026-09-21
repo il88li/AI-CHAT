@@ -2,6 +2,7 @@
 خَيال — منصة البرومبتات العربية
 Flask + PostgreSQL + تسجيل دخول محلي + استقرار إنتاجي
 محسّن للتطوير من الهاتف والإنتاج على Render
+v10.0 — Auto-migration + Profile customization
 """
 import os
 import sys
@@ -250,6 +251,9 @@ def api_register():
             bio="",
             verified=False,
             cover="aurora",
+            accent_color="#22D3EE",
+            avatar_shape="rounded",
+            card_style="glass",
         )
         db.session.add(user)
         db.session.commit()
@@ -374,14 +378,30 @@ def admin_db_reset():
 
 @app.get("/admin/db-migrate")
 def admin_db_migrate():
+    """Migration يدوي (احتياطي — auto-migration يعمل عند كل بدء)."""
     key = request.args.get("key", "")
     if not key or key != os.getenv("ADMIN_RESET_KEY", ""):
         abort(403)
     try:
         with db.engine.begin() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS location VARCHAR(60)"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS website VARCHAR(120)"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS cover VARCHAR(40) DEFAULT 'aurora'"))
+            cols = [
+                ("location", "VARCHAR(60)"),
+                ("website", "VARCHAR(120)"),
+                ("pronouns", "VARCHAR(20)"),
+                ("status", "VARCHAR(100)"),
+                ("cover", "VARCHAR(40) DEFAULT 'aurora'"),
+                ("accent_color", "VARCHAR(7) DEFAULT '#22D3EE'"),
+                ("avatar_shape", "VARCHAR(10) DEFAULT 'rounded'"),
+                ("card_style", "VARCHAR(12) DEFAULT 'glass'"),
+            ]
+            for name, dtype in cols:
+                conn.execute(text(
+                    f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
+                ))
+            conn.execute(text("UPDATE users SET cover = 'aurora' WHERE cover IS NULL"))
+            conn.execute(text("UPDATE users SET accent_color = '#22D3EE' WHERE accent_color IS NULL"))
+            conn.execute(text("UPDATE users SET avatar_shape = 'rounded' WHERE avatar_shape IS NULL"))
+            conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
         return jsonify({"ok": True, "message": "تمت إضافة الأعمدة بنجاح"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -631,9 +651,14 @@ def api_user(uid):
     d = u.to_dict()
     d["posts_count"] = u.posts.count()
     d["created_at"] = u.created_at.isoformat() if u.created_at else None
-    d["location"] = getattr(u, "location", None)
-    d["website"] = getattr(u, "website", None)
-    d["cover"] = getattr(u, "cover", "aurora")
+    d["location"] = u.location
+    d["website"] = u.website
+    d["pronouns"] = u.pronouns
+    d["status"] = u.status
+    d["cover"] = u.cover or "aurora"
+    d["accent_color"] = u.accent_color or "#22D3EE"
+    d["avatar_shape"] = u.avatar_shape or "rounded"
+    d["card_style"] = u.card_style or "glass"
 
     totals = db.session.query(
         func.coalesce(func.sum(Post.likes), 0),
@@ -748,19 +773,37 @@ def api_update_me():
             web = "https://" + web
         u.website = web[:120] if web else None
 
+    if "pronouns" in data:
+        pr = (data["pronouns"] or "").strip()
+        u.pronouns = pr[:20] if pr else None
+
+    if "status" in data:
+        st = (data["status"] or "").strip()
+        u.status = st[:100] if st else None
+
     if "avatar" in data and data["avatar"]:
         u.avatar = data["avatar"].strip()[:500]
 
     if "cover" in data and data["cover"]:
         u.cover = data["cover"].strip()[:40]
 
-    db.session.commit()
+    if "accent_color" in data:
+        ac = (data["accent_color"] or "").strip()
+        if re.match(r"^#[0-9A-Fa-f]{6}$", ac):
+            u.accent_color = ac
 
-    out = u.to_dict()
-    out["location"] = getattr(u, "location", None)
-    out["website"] = getattr(u, "website", None)
-    out["cover"] = getattr(u, "cover", "aurora")
-    return jsonify(out)
+    if "avatar_shape" in data:
+        sh = (data["avatar_shape"] or "").strip()
+        if sh in ("circle", "rounded", "square"):
+            u.avatar_shape = sh
+
+    if "card_style" in data:
+        cs = (data["card_style"] or "").strip()
+        if cs in ("glass", "solid", "gradient"):
+            u.card_style = cs
+
+    db.session.commit()
+    return jsonify(u.to_dict())
 
 
 @app.post("/api/me/password")
@@ -981,6 +1024,33 @@ def init_db():
 
             db.create_all()
             print("✅ الجداول جاهزة.")
+
+            # ═══════════════════════════════════════════════════════
+            # Auto-migration v10 — يضمن وجود الأعمدة الجديدة
+            # ═══════════════════════════════════════════════════════
+            try:
+                with db.engine.begin() as conn:
+                    cols = [
+                        ("location", "VARCHAR(60)"),
+                        ("website", "VARCHAR(120)"),
+                        ("pronouns", "VARCHAR(20)"),
+                        ("status", "VARCHAR(100)"),
+                        ("cover", "VARCHAR(40) DEFAULT 'aurora'"),
+                        ("accent_color", "VARCHAR(7) DEFAULT '#22D3EE'"),
+                        ("avatar_shape", "VARCHAR(10) DEFAULT 'rounded'"),
+                        ("card_style", "VARCHAR(12) DEFAULT 'glass'"),
+                    ]
+                    for name, dtype in cols:
+                        conn.execute(text(
+                            f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
+                        ))
+                    conn.execute(text("UPDATE users SET cover = 'aurora' WHERE cover IS NULL"))
+                    conn.execute(text("UPDATE users SET accent_color = '#22D3EE' WHERE accent_color IS NULL"))
+                    conn.execute(text("UPDATE users SET avatar_shape = 'rounded' WHERE avatar_shape IS NULL"))
+                    conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
+                print("✅ Auto-migration: الأعمدة الجديدة جاهزة.")
+            except Exception as m_err:
+                print(f"⚠️  Auto-migration: {str(m_err)[:150]}")
 
             try:
                 users_count = User.query.count()
