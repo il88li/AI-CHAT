@@ -14,12 +14,11 @@
 <title>خَيال — شارِك البرومبت، لا الصورة فقط</title>
 
 <link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2322D3EE'/%3E%3Cstop offset='1' stop-color='%238B5CF6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Ctext x='50' y='72' font-size='62' text-anchor='middle' fill='%230A0A0F' font-family='sans-serif' font-weight='800'%3Eخ%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2322D3EE'/%3E%3Cstop offset='1' stop-color='%238B5CF6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Ctext x='50' y='72' font-size='62' text-anchor='middle' fill='%230A0A0F' font-family='sans-serif' font-weight='800'%3Eخ%3C/text%3E%3C/svg%3E">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
-<!-- ═══ خط الهجين — Hajeen-Regular مع خطوط بديلة ═══ -->
 <style>
 @font-face {
   font-family: 'Hajeen';
@@ -34,14 +33,12 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/@phosphor-icons/web@2.1.1" defer></script>
 
-<link rel="stylesheet" href="/static/style.css?v=3">
-<link rel="preload" href="/static/app.js?v=3" as="script">
+<link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
 
 <div class="aurora"><div class="aurora-mid"></div></div>
 
-<!-- ═══ شريط الاتصال ═══ -->
 <div class="net-bar" id="netBar" hidden>
   <i class="ph ph-wifi-slash"></i>
   <span>أنت غير متصل بالإنترنت</span>
@@ -69,7 +66,7 @@
       <i class="ph ph-moon" id="themeIcon"></i>
     </button>
     <button class="btn btn-glass btn-sm" id="signInBtn" onclick="Auth.open()">
-      <i class="ph ph-google-logo"></i><span> دخول</span>
+      <i class="ph ph-sign-in"></i><span> دخول</span>
     </button>
     <button class="icon-btn" id="avatarBtn" onclick="App.switchTab('profile')" style="display:none" aria-label="حسابك">
       <img class="author-avatar" id="avatarImg" src="" alt="">
@@ -88,8 +85,8 @@
       <h1>شارِك <span class="grad">البرومبت</span>،<br>لا <span class="stroke">الصورة</span> فقط.</h1>
       <p class="hero-lede">خَيال منصة عربية لمبدعي الصور بالذكاء الاصطناعي. انشر البرومبت مع النتيجة، اكتشف مكتبة حيّة، انسخ ما ينجح، واحفظ الفضل لأصحابه.</p>
       <div class="hero-cta">
-        <button class="btn btn-primary btn-lg" onclick="Auth.open()">
-          <i class="ph ph-google-logo"></i> ابدأ بحساب جوجل
+        <button class="btn btn-primary btn-lg" onclick="Auth.open('register')">
+          <i class="ph ph-user-plus"></i> أنشئ حسابك مجاناً
         </button>
         <button class="btn btn-glass btn-lg" onclick="App.previewFeed()">
           تصفَّح المنصة <i class="ph ph-arrow-left"></i>
@@ -143,9 +140,9 @@
     </div>
     <div class="bento" style="grid-template-columns:repeat(3,1fr)">
       <article class="bento-card">
-        <div class="bento-icon"><i class="ph ph-google-logo"></i></div>
-        <h3>١. ادخل بجوجل</h3>
-        <p>ضغطة واحدة. بلا كلمات مرور، بلا نماذج.</p>
+        <div class="bento-icon"><i class="ph ph-user-plus"></i></div>
+        <h3>١. أنشئ حسابك</h3>
+        <p>اسم مستخدم وكلمة مرور. بلا انتظار، بلا تعقيد.</p>
       </article>
       <article class="bento-card">
         <div class="bento-icon"><i class="ph ph-image-square"></i></div>
@@ -180,50 +177,106 @@
 <!-- ═══ APP ═══ -->
 <main class="view" id="view-app">
   <div class="app-main">
-    <section class="tab-panel active" id="tab-home">
-      <div class="page-head"><h1>الرئيسية</h1><p>أحدث البرومبتات من المنصة.</p></div>
+
+    <!-- TAB: HOME -->
+    <section class="tab-panel active" id="tab-home" data-tab="home">
+      <div class="page-head">
+        <div>
+          <h1>الرئيسية</h1>
+          <p>أحدث البرومبتات من المنصة.</p>
+        </div>
+        <button class="btn btn-glass btn-sm refresh-btn" id="refreshBtn" onclick="App.refreshAll(true)" aria-label="تحديث">
+          <i class="ph ph-arrow-clockwise"></i>
+        </button>
+      </div>
+
       <div class="sort-row">
         <div class="sort-tabs">
-          <button class="sort-tab active" data-sort="recent" onclick="App.setSort('recent')">الأحدث</button>
-          <button class="sort-tab" data-sort="top" onclick="App.setSort('top')">الأكثر رواجاً</button>
+          <button class="sort-tab active" data-sort="recent" onclick="App.setSort('recent')">
+            <i class="ph ph-clock"></i> الأحدث
+          </button>
+          <button class="sort-tab" data-sort="top" onclick="App.setSort('top')">
+            <i class="ph ph-fire"></i> الأكثر رواجاً
+          </button>
         </div>
         <button class="btn btn-primary btn-sm" onclick="Composer.open()">
           <i class="ph ph-plus"></i> برومبت جديد
         </button>
       </div>
+
       <div class="filters" id="filters"></div>
-      <div class="feed" id="homeFeed"></div>
+
+      <div class="ptr-wrap" id="ptrWrap">
+        <div class="ptr" id="ptr">
+          <i class="ph ph-arrow-clockwise"></i>
+        </div>
+        <div class="feed" id="homeFeed"></div>
+      </div>
     </section>
 
-    <section class="tab-panel" id="tab-explore">
-      <div class="page-head"><h1>استكشف</h1><p>الأكثر رواجاً عبر المنصة.</p></div>
+    <!-- TAB: EXPLORE -->
+    <section class="tab-panel" id="tab-explore" data-tab="explore">
+      <div class="page-head">
+        <div><h1>استكشف</h1><p>الأكثر رواجاً عبر المنصة.</p></div>
+      </div>
       <div class="filters" id="exploreFilters"></div>
       <div class="feed" id="exploreFeed"></div>
     </section>
 
-    <section class="tab-panel" id="tab-liked">
-      <div class="page-head"><h1>المُعجَبة</h1><p>كل ما وضعت عليه قلباً.</p></div>
+    <!-- TAB: LIKED -->
+    <section class="tab-panel" id="tab-liked" data-tab="liked">
+      <div class="page-head">
+        <div><h1>المُعجَبة</h1><p>كل ما وضعت عليه قلباً.</p></div>
+        <span class="count-pill" id="likedCount">
+          <i class="ph ph-heart-fill"></i>
+          <span>٠</span>
+        </span>
+      </div>
       <div class="feed" id="likedFeed"></div>
     </section>
 
-    <section class="tab-panel" id="tab-saved">
-      <div class="page-head"><h1>المحفوظة</h1><p>محفوظة للرجوع إليها.</p></div>
+    <!-- TAB: SAVED -->
+    <section class="tab-panel" id="tab-saved" data-tab="saved">
+      <div class="page-head">
+        <div><h1>المحفوظة</h1><p>محفوظة للرجوع إليها.</p></div>
+        <span class="count-pill" id="savedCount">
+          <i class="ph ph-bookmark-simple-fill"></i>
+          <span>٠</span>
+        </span>
+      </div>
       <div class="feed" id="savedFeed"></div>
     </section>
 
-    <section class="tab-panel" id="tab-chat">
-      <div class="page-head"><h1>الرسائل</h1><p>تحدّث مع المبدعين.</p></div>
+    <!-- TAB: CHAT -->
+    <section class="tab-panel" id="tab-chat" data-tab="chat">
+      <div class="page-head">
+        <div><h1>الرسائل</h1><p>تحدّث مع المبدعين.</p></div>
+      </div>
       <div class="chat-layout" id="chatLayout">
         <div class="chat-list">
-          <div class="chat-list-head"><h3>صندوق الوارد</h3></div>
+          <div class="chat-list-head">
+            <h3>صندوق الوارد</h3>
+            <button class="icon-btn" onclick="Chat.newChat()" aria-label="محادثة جديدة">
+              <i class="ph ph-note-pencil"></i>
+            </button>
+          </div>
+          <div class="chat-search">
+            <i class="ph ph-magnifying-glass"></i>
+            <input type="text" placeholder="ابحث في المحادثات…" oninput="Chat.filterList(this.value)">
+          </div>
           <div class="chat-scroll" id="chatList"></div>
         </div>
         <div class="chat-thread" id="chatThread">
           <div class="chat-head" id="chatHead"></div>
           <div class="chat-body" id="chatBody"></div>
           <form class="chat-composer" onsubmit="Chat.send(event)">
-            <textarea id="chatInput" placeholder="اكتب رسالة…" rows="1" oninput="Utils.autoGrow(this)" enterkeyhint="send"></textarea>
-            <button type="submit" class="btn btn-primary btn-icon" aria-label="إرسال" style="border-radius:14px;min-width:42px;min-height:42px">
+            <button type="button" class="icon-btn" onclick="Chat.attach()" aria-label="إرفاق">
+              <i class="ph ph-paperclip"></i>
+            </button>
+            <textarea id="chatInput" placeholder="اكتب رسالة…" rows="1"
+                      oninput="U.autoGrow(this)" enterkeyhint="send"></textarea>
+            <button type="submit" class="btn btn-primary btn-icon" aria-label="إرسال"
+                    style="border-radius:14px;min-width:42px;min-height:42px">
               <i class="ph ph-paper-plane-tilt"></i>
             </button>
           </form>
@@ -231,10 +284,22 @@
       </div>
     </section>
 
-    <section class="tab-panel" id="tab-profile">
+    <!-- TAB: PROFILE -->
+    <section class="tab-panel" id="tab-profile" data-tab="profile">
       <div class="profile-head">
+        <div class="profile-cover">
+          <div class="cover-pattern"></div>
+          <button class="cover-edit" onclick="Auth.openEditProfile()" aria-label="تعديل الغلاف">
+            <i class="ph ph-camera"></i>
+          </button>
+        </div>
         <div class="profile-body">
-          <img class="profile-avatar" src="" alt="" id="profileAvatar">
+          <div class="profile-avatar-wrap">
+            <img class="profile-avatar" src="" alt="" id="profileAvatar">
+            <button class="avatar-edit" onclick="Auth.openEditProfile()" aria-label="تعديل الصورة">
+              <i class="ph ph-camera"></i>
+            </button>
+          </div>
           <div class="profile-info">
             <div class="profile-name">
               <span id="profileName"></span>
@@ -249,8 +314,8 @@
               <div class="stat"><strong id="statLikes">٠</strong><span>إعجاب</span></div>
             </div>
             <div class="profile-btns">
-              <button class="btn btn-glass btn-sm" onclick="Auth.openEditProfile()">
-                <i class="ph ph-pencil-simple"></i> تعديل
+              <button class="btn btn-primary btn-sm" onclick="Auth.openEditProfile()">
+                <i class="ph ph-pencil-simple"></i> تعديل الملف
               </button>
               <button class="btn btn-glass btn-sm" onclick="Auth.logout()">
                 <i class="ph ph-sign-out"></i> خروج
@@ -259,13 +324,15 @@
           </div>
         </div>
       </div>
+
       <div class="tabs" id="profileTabs">
-        <button class="tab active" data-ptab="posts">برومبتاتي</button>
-        <button class="tab" data-ptab="liked">المُعجَبة</button>
-        <button class="tab" data-ptab="settings">الإعدادات</button>
+        <button class="tab active" data-ptab="posts"><i class="ph ph-image-square"></i> برومبتاتي</button>
+        <button class="tab" data-ptab="liked"><i class="ph ph-heart"></i> المُعجَبة</button>
+        <button class="tab" data-ptab="settings"><i class="ph ph-gear"></i> الإعدادات</button>
       </div>
       <div id="profilePanel"></div>
     </section>
+
   </div>
 </main>
 
@@ -295,22 +362,243 @@
   </button>
 </nav>
 
-<!-- ═══ MODALS ═══ -->
+<!-- ═══ AUTH MODAL ═══ -->
 <div class="scrim" id="authModal" onclick="Auth.close(event)">
-  <div class="modal" onclick="event.stopPropagation()" style="position:relative">
-    <button class="modal-close" onclick="Auth.close()" aria-label="إغلاق"><i class="ph ph-x"></i></button>
-    <h3>أهلاً بك في خَيال</h3>
-    <p>المنصة العربية لمبدعي البرومبتات. سجّل دخولك لتنشر، تُعجِب، وتراسل المبدعين.</p>
-    <button class="google-btn" onclick="Auth.signIn()">
-      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 18.9 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.1-11.3-7.6l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.2 5.2C41.9 35.3 44 30.1 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>
-      المتابعة عبر جوجل
+  <div class="auth-panel" onclick="event.stopPropagation()">
+
+    <button class="auth-close" onclick="Auth.close()" aria-label="إغلاق">
+      <i class="ph ph-x"></i>
     </button>
-    <div style="margin-top:var(--s5);font-size:var(--t-xs);color:var(--fg-3);text-align:center;line-height:1.7">
-      بالمتابعة توافق على <a href="#" style="text-decoration:underline;text-underline-offset:3px">الشروط</a> و<a href="#" style="text-decoration:underline;text-underline-offset:3px">سياسة الخصوصية</a>.
+
+    <!-- الجانب المرئي -->
+    <aside class="auth-visual">
+      <div class="auth-visual-bg"></div>
+      <div class="auth-visual-content">
+        <div class="auth-logo">خ</div>
+        <h2>خَيال</h2>
+        <p class="auth-tagline">منصة البرومبتات العربية</p>
+
+        <ul class="auth-features">
+          <li>
+            <i class="ph ph-sparkle"></i>
+            <div>
+              <strong>انشر البرومبت مع النتيجة</strong>
+              <span>نسخة واحدة بضغطة</span>
+            </div>
+          </li>
+          <li>
+            <i class="ph ph-users-three"></i>
+            <div>
+              <strong>مجتمع من المبدعين</strong>
+              <span>تابِع وتواصل</span>
+            </div>
+          </li>
+          <li>
+            <i class="ph ph-copy"></i>
+            <div>
+              <strong>انسخ وأعِد الاستخدام</strong>
+              <span>مكتبة حيّة</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- النموذج -->
+    <div class="auth-form-wrap">
+
+      <div class="auth-tabs" data-mode="login">
+        <button class="auth-tab active" data-mode="login" onclick="Auth.switchMode('login')">
+          تسجيل الدخول
+        </button>
+        <button class="auth-tab" data-mode="register" onclick="Auth.switchMode('register')">
+          حساب جديد
+        </button>
+        <span class="auth-tab-indicator"></span>
+      </div>
+
+      <!-- ─── تسجيل الدخول ─── -->
+      <form class="auth-form active" id="loginForm" data-mode="login"
+            onsubmit="Auth.login(event)" autocomplete="on">
+        <div class="auth-header">
+          <h3>أهلاً بعودتك</h3>
+          <p>سجّل دخولك للمتابعة إلى حسابك</p>
+        </div>
+
+        <div class="field">
+          <label for="loginIdentifier">البريد الإلكتروني أو اسم المستخدم</label>
+          <div class="input-wrap">
+            <i class="ph ph-user-circle"></i>
+            <input class="input auth-input"
+                   id="loginIdentifier"
+                   name="identifier"
+                   type="text"
+                   placeholder="example@email.com أو username"
+                   autocomplete="username"
+                   required
+                   autocapitalize="off"
+                   spellcheck="false">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="loginPassword">كلمة المرور</label>
+          <div class="input-wrap">
+            <i class="ph ph-lock"></i>
+            <input class="input auth-input"
+                   id="loginPassword"
+                   name="password"
+                   type="password"
+                   placeholder="••••••••"
+                   autocomplete="current-password"
+                   required
+                   minlength="6">
+            <button type="button" class="toggle-password" onclick="Auth.togglePassword(this)" aria-label="إظهار">
+              <i class="ph ph-eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="auth-row">
+          <label class="checkbox">
+            <input type="checkbox" id="rememberMe" checked>
+            <span class="checkbox-box"></span>
+            <span>تذكّرني</span>
+          </label>
+          <a href="#" class="auth-link" onclick="Auth.forgot(event)">نسيت كلمة المرور؟</a>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg auth-submit" id="loginSubmit">
+          <i class="ph ph-sign-in"></i>
+          <span>دخول</span>
+        </button>
+
+        <div class="auth-switch">
+          ليس لديك حساب؟
+          <button type="button" class="auth-switch-btn" onclick="Auth.switchMode('register')">
+            أنشئ حساباً
+          </button>
+        </div>
+      </form>
+
+      <!-- ─── التسجيل ─── -->
+      <form class="auth-form" id="registerForm" data-mode="register"
+            onsubmit="Auth.register(event)" autocomplete="on">
+        <div class="auth-header">
+          <h3>أنشئ حسابك</h3>
+          <p>دقيقة واحدة للانضمام إلى خَيال</p>
+        </div>
+
+        <div class="field">
+          <label for="regName">الاسم الكامل</label>
+          <div class="input-wrap">
+            <i class="ph ph-user"></i>
+            <input class="input auth-input"
+                   id="regName"
+                   name="name"
+                   type="text"
+                   placeholder="مثال: ميّادة التونسي"
+                   autocomplete="name"
+                   required
+                   minlength="2"
+                   maxlength="80">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="regUsername">اسم المستخدم</label>
+          <div class="input-wrap">
+            <i class="ph ph-at"></i>
+            <input class="input auth-input"
+                   id="regUsername"
+                   name="username"
+                   type="text"
+                   placeholder="mayada_t"
+                   autocomplete="username"
+                   required
+                   minlength="3"
+                   maxlength="32"
+                   autocapitalize="off"
+                   spellcheck="false"
+                   pattern="[a-zA-Z0-9_\-]{3,32}">
+            <span class="input-status" id="usernameStatus"></span>
+          </div>
+          <div class="field-hint">3-32 حرفاً، بدون مسافات. سيكون معرّفك العام: <span class="hint-preview">@username</span></div>
+        </div>
+
+        <div class="field">
+          <label for="regEmail">البريد الإلكتروني</label>
+          <div class="input-wrap">
+            <i class="ph ph-envelope"></i>
+            <input class="input auth-input"
+                   id="regEmail"
+                   name="email"
+                   type="email"
+                   placeholder="you@example.com"
+                   autocomplete="email"
+                   required
+                   autocapitalize="off"
+                   spellcheck="false">
+            <span class="input-status" id="emailStatus"></span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="regPassword">كلمة المرور</label>
+          <div class="input-wrap">
+            <i class="ph ph-lock"></i>
+            <input class="input auth-input"
+                   id="regPassword"
+                   name="password"
+                   type="password"
+                   placeholder="6 أحرف على الأقل"
+                   autocomplete="new-password"
+                   required
+                   minlength="6"
+                   oninput="Auth.checkStrength(this.value)">
+            <button type="button" class="toggle-password" onclick="Auth.togglePassword(this)" aria-label="إظهار">
+              <i class="ph ph-eye"></i>
+            </button>
+          </div>
+          <div class="strength-bar">
+            <div class="strength-seg" data-seg="1"></div>
+            <div class="strength-seg" data-seg="2"></div>
+            <div class="strength-seg" data-seg="3"></div>
+            <div class="strength-seg" data-seg="4"></div>
+          </div>
+          <div class="strength-label" id="strengthLabel"></div>
+        </div>
+
+        <label class="checkbox terms-check">
+          <input type="checkbox" id="agreeTerms" required>
+          <span class="checkbox-box"></span>
+          <span>
+            أوافق على
+            <a href="#" class="auth-link" onclick="event.stopPropagation();event.preventDefault()">الشروط</a>
+            و
+            <a href="#" class="auth-link" onclick="event.stopPropagation();event.preventDefault()">سياسة الخصوصية</a>
+          </span>
+        </label>
+
+        <button type="submit" class="btn btn-primary btn-lg auth-submit" id="registerSubmit">
+          <i class="ph ph-user-plus"></i>
+          <span>إنشاء الحساب</span>
+        </button>
+
+        <div class="auth-switch">
+          لديك حساب بالفعل؟
+          <button type="button" class="auth-switch-btn" onclick="Auth.switchMode('login')">
+            سجّل دخولك
+          </button>
+        </div>
+      </form>
+
     </div>
+
   </div>
 </div>
 
+<!-- ═══ COMPOSER MODAL ═══ -->
 <div class="scrim" id="composerModal" onclick="Composer.close(event)">
   <div class="modal" onclick="event.stopPropagation()" style="position:relative;max-width:560px">
     <button class="modal-close" onclick="Composer.close()" aria-label="إغلاق"><i class="ph ph-x"></i></button>
@@ -341,6 +629,7 @@
   </div>
 </div>
 
+<!-- ═══ EDIT PROFILE MODAL ═══ -->
 <div class="scrim" id="editProfileModal" onclick="Auth.closeEditProfile(event)">
   <div class="modal" onclick="event.stopPropagation()" style="position:relative">
     <button class="modal-close" onclick="Auth.closeEditProfile()" aria-label="إغلاق"><i class="ph ph-x"></i></button>
@@ -358,6 +647,7 @@
   </div>
 </div>
 
+<!-- ═══ COMMENTS DRAWER ═══ -->
 <aside class="drawer" id="commentsDrawer">
   <div class="drawer-head">
     <h3>التعليقات <span id="commentCount" style="color:var(--fg-3);font-weight:500"></span></h3>
@@ -365,19 +655,33 @@
   </div>
   <div class="drawer-body" id="commentsBody"></div>
   <form class="comment-composer" id="commentForm" onsubmit="Comments.send(event)" style="display:none">
-    <textarea id="commentInput" placeholder="أضف تعليقاً…" rows="1" oninput="Utils.autoGrow(this)" enterkeyhint="send"></textarea>
+    <textarea id="commentInput" placeholder="أضف تعليقاً…" rows="1" oninput="U.autoGrow(this)" enterkeyhint="send"></textarea>
     <button type="submit" class="btn btn-primary btn-icon" style="min-width:42px;min-height:42px;border-radius:14px">
       <i class="ph ph-paper-plane-tilt"></i>
     </button>
   </form>
 </aside>
 
+<!-- ═══ COMMAND PALETTE ═══ -->
+<div class="cmdk-scrim" id="cmdkScrim" onclick="CommandPalette.close(event)">
+  <div class="cmdk" onclick="event.stopPropagation()">
+    <div class="cmdk-input-wrap">
+      <i class="ph ph-magnifying-glass"></i>
+      <input type="text" id="cmdkInput" placeholder="اكتب أمراً أو ابحث…" autocomplete="off">
+      <kbd>ESC</kbd>
+    </div>
+    <div class="cmdk-results" id="cmdkResults"></div>
+  </div>
+</div>
+
+<!-- ═══ TOAST ═══ -->
 <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
 
+<!-- ═══ BOOT ═══ -->
 <script>
   window.__ME__ = {{ me | tojson }};
-  window.__BUILD__ = '3.0';
+  window.__BUILD__ = '5.0';
 </script>
-<script src="/static/app.js?v=3" defer></script>
+<script src="/static/app.js?v=5" defer></script>
 </body>
 </html>
