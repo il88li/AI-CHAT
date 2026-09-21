@@ -660,3 +660,698 @@ h1,h2,h3,h4{font-family:var(--font-display);font-weight:700;line-height:1.2;lett
   .nav,.dock,.toast-wrap,.scrim,.drawer{display:none!important}
   body{background:#fff;color:#000;padding:0}
 }
+
+/* ═══════════════════════════════════════════════════════════
+   v6.0 — COMPOSER (نمط فيسبوك) + AUTH MINI + استقرار
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── COMPOSER TRIGGER (في التايملاين) ─── */
+.composer-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 14px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.composer-trigger:hover {
+  background: rgba(255,255,255,.05);
+  border-color: rgba(255,255,255,.1);
+}
+.composer-trigger-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(34,211,238,.35);
+}
+.composer-trigger-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.composer-trigger-input {
+  flex: 1;
+  height: 38px;
+  background: rgba(255,255,255,.05);
+  border-radius: 19px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--fg-3);
+}
+
+/* ─── COMPOSER SHEET (Bottom Sheet) ─── */
+.composer-scrim {
+  align-items: flex-end !important;
+  padding: 0 !important;
+}
+.composer-sheet {
+  width: 100%;
+  max-width: 500px;
+  background: #14141C;
+  border-radius: 20px 20px 0 0;
+  border: 1px solid rgba(255,255,255,.08);
+  border-bottom: none;
+  padding: 8px 16px calc(24px + env(safe-area-inset-bottom,0px));
+  transform: translateY(100%);
+  transition: transform .32s cubic-bezier(.22,1,.36,1);
+  max-height: 92dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  will-change: transform;
+}
+[data-theme="light"] .composer-sheet { background: #FFFFFF; }
+.scrim.open .composer-sheet { transform: translateY(0); }
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: rgba(255,255,255,.15);
+  border-radius: 9999px;
+  margin: 6px auto 12px;
+}
+
+/* رأس الورقة */
+.composer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  margin-bottom: 14px;
+}
+.composer-head h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg-1);
+}
+.composer-close {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 50%;
+}
+
+/* ─── اختيار النوع ─── */
+.composer-types {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 10px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all .15s;
+  font-family: inherit;
+}
+.type-card:hover,
+.type-card:active {
+  background: rgba(34,211,238,.08);
+  border-color: rgba(34,211,238,.3);
+  transform: translateY(-1px);
+}
+.type-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  color: #fff;
+  flex-shrink: 0;
+}
+.type-icon.type-text { background: linear-gradient(135deg, #22D3EE, #06B6D4); }
+.type-icon.type-image { background: linear-gradient(135deg, #8B5CF6, #EC4899); }
+.type-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+/* ─── نموذج النشر ─── */
+.composer-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.composer-form.active {
+  display: flex !important;
+  animation: fadeOnly .2s ease;
+}
+
+.composer-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+.composer-user img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid rgba(34,211,238,.3);
+}
+.composer-user strong {
+  display: block;
+  font-size: 14px;
+  color: var(--fg-1);
+  font-weight: 700;
+}
+.composer-visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--fg-3);
+  padding: 2px 6px;
+  background: rgba(255,255,255,.05);
+  border-radius: 6px;
+  margin-top: 2px;
+}
+.composer-visibility i { font-size: 11px; }
+
+.composer-title,
+.composer-text,
+.composer-img-input,
+.composer-input,
+.composer-select {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  color: var(--fg-1);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: all .15s;
+  -webkit-appearance: none;
+  appearance: none;
+  resize: none;
+}
+[data-theme="light"] .composer-title,
+[data-theme="light"] .composer-text,
+[data-theme="light"] .composer-img-input,
+[data-theme="light"] .composer-input,
+[data-theme="light"] .composer-select {
+  background: #F7F7F9;
+  border-color: rgba(0,0,0,.08);
+  color: #0A0A0F;
+}
+.composer-title:focus,
+.composer-text:focus,
+.composer-img-input:focus,
+.composer-input:focus,
+.composer-select:focus {
+  border-color: rgba(34,211,238,.5);
+  background: rgba(34,211,238,.03);
+  box-shadow: 0 0 0 3px rgba(34,211,238,.1);
+}
+.composer-title {
+  font-size: 16px;
+  font-weight: 600;
+  min-height: 44px;
+}
+.composer-text {
+  min-height: 120px;
+  line-height: 1.6;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  direction: ltr;
+  text-align: left;
+}
+
+.composer-image-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.composer-img-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-2);
+  padding-right: 4px;
+}
+.composer-img-label i {
+  font-size: 14px;
+  color: #8B5CF6;
+}
+
+.composer-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.composer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.composer-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-2);
+  padding-right: 4px;
+}
+.composer-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717A' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 12px center;
+  padding-left: 36px;
+  cursor: pointer;
+}
+
+/* ─── صف الأيقونات ─── */
+.composer-icons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255,255,255,.06);
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  margin: 4px 0;
+}
+.icon-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  color: var(--fg-2);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.icon-action:hover,
+.icon-action:active {
+  background: rgba(255,255,255,.06);
+  color: var(--fg-1);
+}
+.icon-action i {
+  font-size: 18px;
+  color: #22D3EE;
+}
+
+/* ─── زر النشر ─── */
+.composer-submit {
+  width: 100%;
+  height: 46px;
+  background: linear-gradient(135deg, #22D3EE, #8B5CF6);
+  color: #0A0A0F;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform .12s, box-shadow .15s;
+  box-shadow: 0 8px 24px rgba(34,211,238,.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.composer-submit:active {
+  transform: scale(.98);
+}
+.composer-submit:disabled {
+  opacity: .6;
+  pointer-events: none;
+}
+.composer-submit.loading::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(10,10,15,.3);
+  border-top-color: #0A0A0F;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTH MINI — تسجيل دخول مصغّر
+   ═══════════════════════════════════════════════════════════ */
+
+.auth-mini {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  background: #14141C;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.6);
+  padding: 18px 18px 20px;
+  transform: translateY(12px) scale(.97);
+  transition: transform .28s cubic-bezier(.22,1,.36,1);
+  margin: auto;
+  overflow: hidden;
+}
+[data-theme="light"] .auth-mini {
+  background: #FFFFFF;
+  border-color: rgba(0,0,0,.06);
+}
+.scrim.open .auth-mini {
+  transform: translateY(0) scale(1);
+}
+
+.auth-mini-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.auth-mini-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #22D3EE, #8B5CF6);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 800;
+  font-family: var(--font-display);
+  color: #0A0A0F;
+  box-shadow: 0 4px 14px rgba(34,211,238,.3);
+}
+.auth-mini-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.05);
+  border: none;
+  color: var(--fg-3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all .15s;
+}
+.auth-mini-close:hover {
+  background: rgba(255,255,255,.1);
+  color: var(--fg-1);
+}
+.auth-mini-close i { font-size: 14px; }
+
+.auth-mini-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--fg-1);
+  letter-spacing: -.02em;
+  margin-bottom: 2px;
+}
+.auth-mini-sub {
+  font-size: 12.5px;
+  color: var(--fg-3);
+  margin-bottom: 18px;
+}
+
+.auth-mini-form {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+.auth-mini-form.active {
+  display: flex;
+  animation: fadeOnly .2s ease;
+}
+
+.mini-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.mini-field > i {
+  position: absolute;
+  right: 12px;
+  font-size: 16px;
+  color: var(--fg-3);
+  pointer-events: none;
+}
+.mini-field > input {
+  width: 100%;
+  height: 42px;
+  padding: 0 40px 0 40px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
+  color: var(--fg-1);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: all .15s;
+  -webkit-appearance: none;
+  text-align: right;
+}
+[data-theme="light"] .mini-field > input {
+  background: #F7F7F9;
+  border-color: rgba(0,0,0,.08);
+  color: #0A0A0F;
+}
+.mini-field > input::placeholder {
+  color: var(--fg-4);
+  font-size: 13.5px;
+}
+.mini-field > input:focus {
+  border-color: rgba(34,211,238,.5);
+  background: rgba(34,211,238,.04);
+  box-shadow: 0 0 0 3px rgba(34,211,238,.1);
+}
+.mini-eye {
+  position: absolute;
+  left: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--fg-3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.mini-eye:hover {
+  background: rgba(255,255,255,.06);
+  color: var(--fg-1);
+}
+.mini-eye i { font-size: 15px; }
+
+.mini-submit {
+  width: 100%;
+  height: 44px;
+  margin-top: 6px;
+  background: linear-gradient(135deg, #22D3EE, #8B5CF6);
+  color: #0A0A0F;
+  border: none;
+  border-radius: 11px;
+  font-size: 14.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform .12s, box-shadow .15s;
+  box-shadow: 0 6px 18px rgba(34,211,238,.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.mini-submit:active { transform: scale(.98); }
+.mini-submit:disabled {
+  opacity: .6;
+  pointer-events: none;
+}
+.mini-submit.loading::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(10,10,15,.3);
+  border-top-color: #0A0A0F;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+.mini-switch {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--fg-3);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.mini-switch button {
+  color: #22D3EE;
+  font-weight: 700;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+  padding: 0;
+  margin-inline-start: 4px;
+}
+.mini-switch button:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* شريط قوة كلمة المرور */
+.pw-strength {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  height: 3px;
+  margin: -4px 0 4px;
+}
+.pw-strength span {
+  border-radius: 9999px;
+  background: rgba(255,255,255,.08);
+  transition: background .2s;
+}
+.pw-strength[data-level="1"] span:nth-child(1) { background: #FB7185; }
+.pw-strength[data-level="2"] span:nth-child(-n+2) { background: #FBBF24; }
+.pw-strength[data-level="3"] span:nth-child(-n+3) { background: #22D3EE; }
+.pw-strength[data-level="4"] span { background: #34D399; }
+
+/* ═══════════════════════════════════════════════════════════
+   STABILITY & PERFORMANCE — تحسينات الرسومات
+   ═══════════════════════════════════════════════════════════ */
+
+/* احترام prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .aurora::before,
+  .aurora::after,
+  .aurora-mid {
+    animation: none;
+  }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* تجهيز الطبقات للـ GPU على العناصر المتحركة */
+.ptr,
+.dock,
+.composer-sheet,
+.auth-mini,
+.auth-card {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* منع القفز أثناء تحميل الصور */
+.prompt-img {
+  content-visibility: auto;
+  contain-intrinsic-size: 320px 240px;
+}
+
+/* منع الـ Repaint المتكرر */
+.prompt-card,
+.bento-card {
+  contain: layout style;
+}
+
+/* تحسين السكرول على الجوال */
+.chat-body,
+.chat-scroll,
+.drawer-body,
+.composer-sheet {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* نصوص قابلة للاختيار فقط حيث يلزم */
+.prompt-excerpt,
+.msg,
+.composer-text,
+.composer-title {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* منع الـ Highlight الأزرق المزعج */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* منع الـ Zoom التلقائي على iOS (يحدث إن كانت الخطوط <16px) */
+@media (max-width: 480px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE OPTIMIZATIONS
+   ═══════════════════════════════════════════════════════════ */
+
+@media (max-width: 640px) {
+  /* شبكة عرضية أفضل */
+  .composer-row {
+    grid-template-columns: 1fr;
+  }
+
+  /* إبقاء الفورم ثابتاً عند ظهور الكيبورد */
+  .composer-sheet,
+  .auth-mini {
+    max-height: 90dvh;
+    max-height: calc(100vh - env(keyboard-inset-height, 0px) - 20px);
+  }
+
+  /* منع الاهتزاز في التخطيط */
+  body {
+    overflow-anchor: none;
+  }
+}
+
+/* منع الاهتزاز عند ظهور الكيبورد على الجوال */
+@media (max-width: 640px) and (orientation: portrait) {
+  html {
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* لوحة المفاتيح على الجوال — إبقاء الورقة ثابتة */
+.composer-sheet textarea:focus,
+.composer-sheet input:focus {
+  scroll-margin-top: 100px;
+}
+
+/* ─── تقليل استهلاك البطارية ─── */
+@supports (content-visibility: auto) {
+  .prompt-card:not(:hover) img {
+    content-visibility: auto;
+  }
+}
