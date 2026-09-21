@@ -16,7 +16,8 @@ from flask import (Flask, render_template, jsonify, request, session,
                    g)
 from flask_compress import Compress
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, func
+from sqlalchemy.orm import joinedload
 from dotenv import load_dotenv
 
 from database import (db, build_database_uri, test_connection,
@@ -42,13 +43,10 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# ═══════════════════════════════════════════════════════════
-# Engine options — إصلاح SSL مع Aiven + pool آمن
-# ═══════════════════════════════════════════════════════════
 _engine_opts = {
-    "pool_pre_ping": True,      # يفحص الاتصال قبل الاستخدام
-    "pool_recycle": 120,        # ← أقصر من 250 (Aiven يغلق idle connections)
-    "pool_use_lifo": True,      # ← يعيد استخدام أحدث اتصال (يمنع SSL errors)
+    "pool_pre_ping": True,
+    "pool_recycle": 120,
+    "pool_use_lifo": True,
     "pool_timeout": 30,
     "connect_args": {
         "connect_timeout": 15,
@@ -59,9 +57,8 @@ _engine_opts = {
         "application_name": "khayal",
     },
 }
-
 if os.getenv("RENDER"):
-    _engine_opts["pool_size"] = 3      # 1 worker × 3 = 3 اتصالات فقط
+    _engine_opts["pool_size"] = 3
     _engine_opts["max_overflow"] = 2
 else:
     _engine_opts["pool_size"] = 2
@@ -69,7 +66,7 @@ else:
 
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = _engine_opts
 
-# ─── ضغط المحتوى ───
+# ─── ضغط ───
 app.config["COMPRESS_MIMETYPES"] = [
     "text/html", "text/css", "text/javascript",
     "application/json", "application/javascript", "image/svg+xml",
@@ -126,7 +123,7 @@ def _is_local_mode():
 
 
 # ═══════════════════════════════════════════════════════════
-# Middleware — استقرار ومراقبة
+# Middleware
 # ═══════════════════════════════════════════════════════════
 @app.before_request
 def _before_request():
@@ -136,14 +133,12 @@ def _before_request():
 
 @app.after_request
 def _after_request(response):
-    # Cache للملفات الثابتة
     if request.path.startswith("/static/"):
         response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
     elif request.path.startswith("/api/"):
         if "Cache-Control" not in response.headers:
             response.headers["Cache-Control"] = "no-cache, must-revalidate"
 
-    # سجّل الطلبات البطيئة
     try:
         start = getattr(g, "request_start", None)
         if start:
@@ -154,7 +149,6 @@ def _after_request(response):
     except Exception:
         pass
 
-    # رؤوس الأمان (جاهزة لـ Play / PWA)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -176,6 +170,12 @@ def index():
 
 @app.route("/app")
 def app_view():
+    return render_template("index.html", me=_payload(current_user()))
+
+
+@app.route("/u/<username>")
+def public_profile(username):
+    """صفحة الملف العام"""
     return render_template("index.html", me=_payload(current_user()))
 
 
@@ -249,6 +249,7 @@ def api_register():
             avatar=f"https://api.dicebear.com/7.x/initials/svg?seed={name}&backgroundColor=22D3EE,8B5CF6",
             bio="",
             verified=False,
+            cover="aurora",
         )
         db.session.add(user)
         db.session.commit()
@@ -321,7 +322,7 @@ def api_check_email():
 
 
 # ═══════════════════════════════════════════════════════════
-# مسارات الصيانة
+# صيانة
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/db-test")
 def api_db_test():
@@ -371,6 +372,21 @@ def admin_db_reset():
         return jsonify({"error": str(e)}), 500
 
 
+@app.get("/admin/db-migrate")
+def admin_db_migrate():
+    key = request.args.get("key", "")
+    if not key or key != os.getenv("ADMIN_RESET_KEY", ""):
+        abort(403)
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS location VARCHAR(60)"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS website VARCHAR(120)"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS cover VARCHAR(40) DEFAULT 'aurora'"))
+        return jsonify({"ok": True, "message": "تمت إضافة الأعمدة بنجاح"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ═══════════════════════════════════════════════════════════
 # البرومبتات
 # ═══════════════════════════════════════════════════════════
@@ -381,9 +397,11 @@ def api_posts():
     model = request.args.get("model", "").strip()
     author = request.args.get("author")
     sort = request.args.get("sort", "recent")
-    limit = min(int(request.args.get("limit", 50)), 100)
+    limit = min(int(request.args.get("limit", 20)), 50)
+    before_id = request.args.get("before_id")
 
     query = Post.query
+
     if q:
         like = f"%{q}%"
         query = query.filter(db.or_(
@@ -401,33 +419,51 @@ def api_posts():
         except ValueError:
             pass
 
+    if before_id:
+        try:
+            bid = int(before_id)
+            query = query.filter(Post.id < bid)
+        except (ValueError, TypeError):
+            pass
+
+    query = query.options(joinedload(Post.author))
+
     if sort == "top":
-        query = query.order_by(Post.likes.desc(), Post.created_at.desc())
+        query = query.order_by(Post.likes.desc(), Post.id.desc())
     else:
-        query = query.order_by(Post.created_at.desc())
+        query = query.order_by(Post.id.desc())
 
     posts = query.limit(limit).all()
     me = current_user()
+
+    post_ids = [p.id for p in posts]
+    liked_ids = set()
+    saved_ids = set()
+
+    if me and post_ids:
+        liked_rows = db.session.query(Like.post_id).filter(
+            Like.user_id == me.id, Like.post_id.in_(post_ids)
+        ).all()
+        liked_ids = {r[0] for r in liked_rows}
+
+        saved_rows = db.session.query(Save.post_id).filter(
+            Save.user_id == me.id, Save.post_id.in_(post_ids)
+        ).all()
+        saved_ids = {r[0] for r in saved_rows}
+
     out = []
     for p in posts:
         d = p.to_dict()
         d["author_data"] = p.author.to_dict()
-        if me:
-            d["liked"] = db.session.query(Like).filter_by(
-                user_id=me.id, post_id=p.id
-            ).first() is not None
-            d["saved"] = db.session.query(Save).filter_by(
-                user_id=me.id, post_id=p.id
-            ).first() is not None
-        else:
-            d["liked"] = False
-            d["saved"] = False
+        d["liked"] = p.id in liked_ids
+        d["saved"] = p.id in saved_ids
         out.append(d)
 
     resp = jsonify(out)
     resp.headers["Cache-Control"] = (
         "private, max-age=15" if me else "public, max-age=30"
     )
+    resp.headers["X-Has-More"] = "true" if len(posts) == limit else "false"
     return resp
 
 
@@ -591,8 +627,28 @@ def api_user(uid):
     u = db.session.get(User, uid)
     if not u:
         abort(404)
+
     d = u.to_dict()
     d["posts_count"] = u.posts.count()
+    d["created_at"] = u.created_at.isoformat() if u.created_at else None
+    d["location"] = getattr(u, "location", None)
+    d["website"] = getattr(u, "website", None)
+    d["cover"] = getattr(u, "cover", "aurora")
+
+    totals = db.session.query(
+        func.coalesce(func.sum(Post.likes), 0),
+        func.coalesce(func.sum(Post.copies), 0),
+    ).filter(Post.author_id == uid).first()
+    d["total_likes"] = int(totals[0]) if totals else 0
+    d["total_copies"] = int(totals[1]) if totals else 0
+
+    me = current_user()
+    d["is_following"] = False
+    if me and me.id != uid:
+        d["is_following"] = Follow.query.filter_by(
+            follower_id=me.id, following_id=uid
+        ).first() is not None
+
     return jsonify(d)
 
 
@@ -616,6 +672,24 @@ def api_user_posts(uid):
             ).first() is not None
         out.append(d)
     return jsonify(out)
+
+
+@app.get("/api/users/<int:uid>/followers")
+def api_user_followers(uid):
+    if not db.session.get(User, uid):
+        abort(404)
+    rows = Follow.query.filter_by(following_id=uid).limit(100).all()
+    users = [db.session.get(User, r.follower_id) for r in rows]
+    return jsonify([u.to_dict() for u in users if u])
+
+
+@app.get("/api/users/<int:uid>/following")
+def api_user_following(uid):
+    if not db.session.get(User, uid):
+        abort(404)
+    rows = Follow.query.filter_by(follower_id=uid).limit(100).all()
+    users = [db.session.get(User, r.following_id) for r in rows]
+    return jsonify([u.to_dict() for u in users if u])
 
 
 @app.post("/api/users/<int:uid>/follow")
@@ -649,14 +723,44 @@ def api_follow(uid):
 def api_update_me():
     u = g.user
     data = request.get_json() or {}
+
     if "name" in data:
-        u.name = (data["name"] or "").strip() or u.name
+        name = (data["name"] or "").strip()
+        if len(name) < 2:
+            return jsonify({"error": "الاسم قصير جداً"}), 400
+        if len(name) > 80:
+            return jsonify({"error": "الاسم طويل جداً"}), 400
+        u.name = name
+
     if "bio" in data:
-        u.bio = (data["bio"] or "").strip()
+        bio = (data["bio"] or "").strip()
+        if len(bio) > 300:
+            return jsonify({"error": "النبذة طويلة جداً"}), 400
+        u.bio = bio
+
+    if "location" in data:
+        loc = (data["location"] or "").strip()
+        u.location = loc[:60] if loc else None
+
+    if "website" in data:
+        web = (data["website"] or "").strip()
+        if web and not (web.startswith("http://") or web.startswith("https://")):
+            web = "https://" + web
+        u.website = web[:120] if web else None
+
     if "avatar" in data and data["avatar"]:
-        u.avatar = data["avatar"].strip()
+        u.avatar = data["avatar"].strip()[:500]
+
+    if "cover" in data and data["cover"]:
+        u.cover = data["cover"].strip()[:40]
+
     db.session.commit()
-    return jsonify(u.to_dict())
+
+    out = u.to_dict()
+    out["location"] = getattr(u, "location", None)
+    out["website"] = getattr(u, "website", None)
+    out["cover"] = getattr(u, "cover", "aurora")
+    return jsonify(out)
 
 
 @app.post("/api/me/password")
@@ -831,11 +935,9 @@ def err_all(e):
     if isinstance(e, HTTPException):
         return e
 
-    # ═══ إصلاح: لا تطبع أخطاء SSL كـ 500 فارغة ═══
     err_str = str(e)
     if "SSL error" in err_str or "decryption failed" in err_str:
-        print(f"⚠️ SSL connection error (will retry): {err_str[:120]}", file=sys.stderr)
-        # حاول مرة أخرى
+        print(f"⚠️ SSL connection error: {err_str[:120]}", file=sys.stderr)
         try:
             db.session.rollback()
             db.session.remove()
