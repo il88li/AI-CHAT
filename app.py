@@ -33,43 +33,41 @@ app.config["JSON_AS_ASCII"] = False
 
 # ─── الأمان والجلسة ───
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
-app.config["SESSION_COOKIE_SECURE"]    = os.getenv("FLASK_ENV") == "production"
-app.config["SESSION_COOKIE_HTTPONLY"]  = True
-app.config["SESSION_COOKIE_SAMESITE"]  = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("FLASK_ENV") == "production"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
 # ─── قاعدة البيانات ───
 app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+# ═══════════════════════════════════════════════════════════
+# Engine options — إصلاح SSL مع Aiven + pool آمن
+# ═══════════════════════════════════════════════════════════
+_engine_opts = {
+    "pool_pre_ping": True,      # يفحص الاتصال قبل الاستخدام
+    "pool_recycle": 120,        # ← أقصر من 250 (Aiven يغلق idle connections)
+    "pool_use_lifo": True,      # ← يعيد استخدام أحدث اتصال (يمنع SSL errors)
+    "pool_timeout": 30,
+    "connect_args": {
+        "connect_timeout": 15,
+        "keepalives": 1,
+        "keepalives_idle": 20,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+        "application_name": "khayal",
+    },
+}
+
 if os.getenv("RENDER"):
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_pre_ping": True,
-        "pool_recycle": 250,
-        "pool_size": 5,
-        "max_overflow": 3,
-        "pool_timeout": 30,
-        "connect_args": {
-            "connect_timeout": 10,
-            "keepalives": 1,
-            "keepalives_idle": 20,
-            "keepalives_interval": 10,
-            "keepalives_count": 5,
-        },
-    }
+    _engine_opts["pool_size"] = 3      # 1 worker × 3 = 3 اتصالات فقط
+    _engine_opts["max_overflow"] = 2
 else:
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_pre_ping": True,
-        "pool_recycle": 200,
-        "pool_size": 2,
-        "max_overflow": 1,
-        "pool_timeout": 20,
-        "connect_args": {
-            "connect_timeout": 15,
-            "keepalives": 1,
-            "keepalives_idle": 30,
-        },
-    }
+    _engine_opts["pool_size"] = 2
+    _engine_opts["max_overflow"] = 1
+
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = _engine_opts
 
 # ─── ضغط المحتوى ───
 app.config["COMPRESS_MIMETYPES"] = [
@@ -88,8 +86,12 @@ Compress(app)
 # Helpers
 # ═══════════════════════════════════════════════════════════
 def current_user():
+    if hasattr(g, "_cached_user"):
+        return g._cached_user
     uid = session.get("user_id")
-    return User.query.get(uid) if uid else None
+    user = db.session.get(User, uid) if uid else None
+    g._cached_user = user
+    return user
 
 
 def require_auth(fn):
@@ -180,8 +182,8 @@ def app_view():
 @app.route("/offline")
 def offline():
     return render_template("error.html", code=503,
-                            title="لا يوجد اتصال",
-                            message="يبدو أنك غير متصل بالإنترنت.")
+                           title="لا يوجد اتصال",
+                           message="يبدو أنك غير متصل بالإنترنت.")
 
 
 @app.route("/privacy")
@@ -192,13 +194,13 @@ def privacy():
 @app.route("/manifest.json")
 def manifest():
     return send_from_directory("static", "manifest.json",
-                                mimetype="application/manifest+json")
+                               mimetype="application/manifest+json")
 
 
 @app.route("/sw.js")
 def service_worker():
     r = make_response(send_from_directory("static", "sw.js",
-                                            mimetype="application/javascript"))
+                                          mimetype="application/javascript"))
     r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     r.headers["Service-Worker-Allowed"] = "/"
     return r
@@ -210,9 +212,9 @@ def service_worker():
 @app.post("/api/auth/register")
 def api_register():
     data = request.get_json() or {}
-    email    = (data.get("email") or "").strip().lower()
+    email = (data.get("email") or "").strip().lower()
     username = (data.get("username") or "").strip()
-    name     = (data.get("name") or "").strip()
+    name = (data.get("name") or "").strip()
     password = data.get("password") or ""
 
     if not email or not username or not name or not password:
@@ -265,8 +267,8 @@ def api_register():
 def api_login():
     data = request.get_json() or {}
     identifier = (data.get("identifier") or "").strip().lower()
-    password   = data.get("password") or ""
-    remember   = bool(data.get("remember", False))
+    password = data.get("password") or ""
+    remember = bool(data.get("remember", False))
 
     if not identifier or not password:
         return jsonify({"error": "أدخل بيانات الدخول"}), 400
@@ -374,12 +376,12 @@ def admin_db_reset():
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/posts")
 def api_posts():
-    q      = request.args.get("q", "").strip()
-    tag    = request.args.get("tag", "").strip()
-    model  = request.args.get("model", "").strip()
+    q = request.args.get("q", "").strip()
+    tag = request.args.get("tag", "").strip()
+    model = request.args.get("model", "").strip()
     author = request.args.get("author")
-    sort   = request.args.get("sort", "recent")
-    limit  = min(int(request.args.get("limit", 50)), 100)
+    sort = request.args.get("sort", "recent")
+    limit = min(int(request.args.get("limit", 50)), 100)
 
     query = Post.query
     if q:
@@ -431,7 +433,9 @@ def api_posts():
 
 @app.get("/api/posts/<int:pid>")
 def api_post(pid):
-    p = Post.query.get_or_404(pid)
+    p = db.session.get(Post, pid)
+    if not p:
+        abort(404)
     d = p.to_dict()
     d["author_data"] = p.author.to_dict()
     me = current_user()
@@ -450,7 +454,7 @@ def api_post(pid):
 def api_create_post():
     u = g.user
     data = request.get_json() or {}
-    title  = (data.get("title") or "").strip()
+    title = (data.get("title") or "").strip()
     prompt = (data.get("prompt") or "").strip()
     if not title or not prompt:
         return jsonify({"error": "العنوان والنص مطلوبان"}), 400
@@ -476,7 +480,9 @@ def api_create_post():
 @require_auth
 def api_delete_post(pid):
     u = g.user
-    post = Post.query.get_or_404(pid)
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
     if post.author_id != u.id:
         abort(403)
     db.session.delete(post)
@@ -488,7 +494,9 @@ def api_delete_post(pid):
 @require_auth
 def api_like(pid):
     u = g.user
-    post = Post.query.get_or_404(pid)
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
     existing = Like.query.filter_by(user_id=u.id, post_id=pid).first()
     if existing:
         db.session.delete(existing)
@@ -506,7 +514,9 @@ def api_like(pid):
 @require_auth
 def api_save(pid):
     u = g.user
-    post = Post.query.get_or_404(pid)
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
     existing = Save.query.filter_by(user_id=u.id, post_id=pid).first()
     if existing:
         db.session.delete(existing)
@@ -522,7 +532,9 @@ def api_save(pid):
 
 @app.post("/api/posts/<int:pid>/copy")
 def api_copy(pid):
-    post = Post.query.get_or_404(pid)
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
     post.copies += 1
     db.session.commit()
     return jsonify({"copies": post.copies})
@@ -533,7 +545,8 @@ def api_copy(pid):
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/posts/<int:pid>/comments")
 def api_comments(pid):
-    Post.query.get_or_404(pid)
+    if not db.session.get(Post, pid):
+        abort(404)
     cs = Comment.query.filter_by(post_id=pid)\
                       .order_by(Comment.created_at.desc()).all()
     return jsonify([
@@ -545,7 +558,8 @@ def api_comments(pid):
 @require_auth
 def api_add_comment(pid):
     u = g.user
-    Post.query.get_or_404(pid)
+    if not db.session.get(Post, pid):
+        abort(404)
     text = ((request.get_json() or {}).get("text") or "").strip()
     if not text:
         return jsonify({"error": "نص التعليق مطلوب"}), 400
@@ -559,7 +573,9 @@ def api_add_comment(pid):
 @require_auth
 def api_delete_comment(cid):
     u = g.user
-    c = Comment.query.get_or_404(cid)
+    c = db.session.get(Comment, cid)
+    if not c:
+        abort(404)
     if c.author_id != u.id:
         abort(403)
     db.session.delete(c)
@@ -572,7 +588,9 @@ def api_delete_comment(cid):
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/users/<int:uid>")
 def api_user(uid):
-    u = User.query.get_or_404(uid)
+    u = db.session.get(User, uid)
+    if not u:
+        abort(404)
     d = u.to_dict()
     d["posts_count"] = u.posts.count()
     return jsonify(d)
@@ -580,7 +598,8 @@ def api_user(uid):
 
 @app.get("/api/users/<int:uid>/posts")
 def api_user_posts(uid):
-    User.query.get_or_404(uid)
+    if not db.session.get(User, uid):
+        abort(404)
     posts = Post.query.filter_by(author_id=uid)\
                       .order_by(Post.created_at.desc()).all()
     me = current_user()
@@ -605,7 +624,9 @@ def api_follow(uid):
     me = g.user
     if me.id == uid:
         return jsonify({"error": "لا يمكن متابعة نفسك"}), 400
-    target = User.query.get_or_404(uid)
+    target = db.session.get(User, uid)
+    if not target:
+        abort(404)
     existing = Follow.query.filter_by(
         follower_id=me.id, following_id=uid
     ).first()
@@ -672,7 +693,7 @@ def api_chats():
     out = []
     for c in chats:
         other_id = c.user_b_id if c.user_a_id == me.id else c.user_a_id
-        other = User.query.get(other_id)
+        other = db.session.get(User, other_id)
         last = c.messages.order_by(Message.created_at.desc()).first()
         unread = c.messages.filter_by(read=False)\
                           .filter(Message.sender_id != me.id).count()
@@ -690,7 +711,9 @@ def api_chats():
 @require_auth
 def api_messages(cid):
     me = g.user
-    chat = Chat.query.get_or_404(cid)
+    chat = db.session.get(Chat, cid)
+    if not chat:
+        abort(404)
     if me.id not in (chat.user_a_id, chat.user_b_id):
         abort(403)
     msgs = chat.messages.order_by(Message.created_at.asc()).all()
@@ -710,7 +733,9 @@ def api_messages(cid):
 @require_auth
 def api_send_message(cid):
     me = g.user
-    chat = Chat.query.get_or_404(cid)
+    chat = db.session.get(Chat, cid)
+    if not chat:
+        abort(404)
     if me.id not in (chat.user_a_id, chat.user_b_id):
         abort(403)
     text = ((request.get_json() or {}).get("text") or "").strip()
@@ -769,8 +794,8 @@ def err_401(e):
     if request.path.startswith("/api/"):
         return jsonify({"error": "يجب تسجيل الدخول"}), 401
     return render_template("error.html", code=401,
-                            title="تحتاج تسجيل الدخول",
-                            message="سجّل دخولك للوصول إلى هذه الصفحة."), 401
+                           title="تحتاج تسجيل الدخول",
+                           message="سجّل دخولك للوصول إلى هذه الصفحة."), 401
 
 
 @app.errorhandler(403)
@@ -778,8 +803,8 @@ def err_403(e):
     if request.path.startswith("/api/"):
         return jsonify({"error": "غير مسموح"}), 403
     return render_template("error.html", code=403,
-                            title="غير مسموح",
-                            message="لا تملك صلاحية الوصول."), 403
+                           title="غير مسموح",
+                           message="لا تملك صلاحية الوصول."), 403
 
 
 @app.errorhandler(404)
@@ -787,8 +812,8 @@ def err_404(e):
     if request.path.startswith("/api/"):
         return jsonify({"error": "غير موجود"}), 404
     return render_template("error.html", code=404,
-                            title="الصفحة غير موجودة",
-                            message="يبدو أن الرابط غير صحيح."), 404
+                           title="الصفحة غير موجودة",
+                           message="يبدو أن الرابط غير صحيح."), 404
 
 
 @app.errorhandler(500)
@@ -796,8 +821,8 @@ def err_500(e):
     if request.path.startswith("/api/"):
         return jsonify({"error": "خطأ في الخادم"}), 500
     return render_template("error.html", code=500,
-                            title="حدث خطأ",
-                            message="نعتذر، حدث خطأ غير متوقع."), 500
+                           title="حدث خطأ",
+                           message="نعتذر، حدث خطأ غير متوقع."), 500
 
 
 @app.errorhandler(Exception)
@@ -805,12 +830,25 @@ def err_all(e):
     from werkzeug.exceptions import HTTPException
     if isinstance(e, HTTPException):
         return e
+
+    # ═══ إصلاح: لا تطبع أخطاء SSL كـ 500 فارغة ═══
+    err_str = str(e)
+    if "SSL error" in err_str or "decryption failed" in err_str:
+        print(f"⚠️ SSL connection error (will retry): {err_str[:120]}", file=sys.stderr)
+        # حاول مرة أخرى
+        try:
+            db.session.rollback()
+            db.session.remove()
+        except Exception:
+            pass
+        return jsonify({"error": "تعذّر الاتصال بقاعدة البيانات، حاول مرة أخرى"}), 503
+
     print(f"❌ Unhandled: {e}", file=sys.stderr)
     if request.path.startswith("/api/"):
         return jsonify({"error": f"خطأ غير متوقع: {str(e)}"}), 500
     return render_template("error.html", code=500,
-                            title="حدث خطأ",
-                            message="نعتذر، حدث خطأ غير متوقع."), 500
+                           title="حدث خطأ",
+                           message="نعتذر، حدث خطأ غير متوقع."), 500
 
 
 # ═══════════════════════════════════════════════════════════
@@ -830,10 +868,6 @@ def init_db():
                 print(f"   الرسالة: {str(report.get('error', ''))[:200]}")
                 print(f"   المضيف: {report.get('host')}:{report.get('port')}")
                 print(f"   الوضع: {report['mode']}")
-                if _is_local_mode():
-                    print("\n💡 للهاتف: فعّل Public Access واستخدم public-")
-                else:
-                    print("\n💡 لـ Render: تحقق من IP Filter في Aiven")
                 print("═" * 60 + "\n")
                 return
 
@@ -866,7 +900,6 @@ init_db()
 # التشغيل
 # ═══════════════════════════════════════════════════════════
 if __name__ == "__main__":
-    # للتطوير المحلي فقط
     port = int(os.environ.get("PORT", 5000))
     debug = os.getenv("FLASK_ENV", "development") == "development"
 
