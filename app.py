@@ -1,10 +1,12 @@
 """
 خَيال — منصة البرومبتات العربية
-Flask + PostgreSQL + تسجيل دخول تقليدي (اسم مستخدم + كلمة مرور)
+Flask + PostgreSQL + تسجيل دخول محلي + مسارات صيانة
+محسّن للتطوير من الهاتف والإنتاج على Render
 """
 import os
 import sys
 import re
+import time
 import secrets
 from datetime import datetime, timedelta
 from functools import wraps
@@ -14,12 +16,14 @@ from flask import (Flask, render_template, jsonify, request, session,
                    g)
 from flask_compress import Compress
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import inspect, text
 from dotenv import load_dotenv
 
-from database import (db, build_database_uri, User, Post, Comment,
-                      Like, Save, Follow, Chat, Message)
+from database import (db, build_database_uri, test_connection,
+                      User, Post, Comment, Like, Save, Follow, Chat, Message)
 
 load_dotenv()
+
 
 # ═══════════════════════════════════════════════════════════
 # إعداد التطبيق
@@ -27,23 +31,50 @@ load_dotenv()
 app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
 
+# ─── الأمان والجلسة ───
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 app.config["SESSION_COOKIE_SECURE"]    = os.getenv("FLASK_ENV") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"]  = True
 app.config["SESSION_COOKIE_SAMESITE"]  = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
+# ─── قاعدة البيانات ───
 app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_pre_ping": True,
-    "pool_recycle": 280,
-    "pool_size": 3,
-    "max_overflow": 2,
-    "connect_args": {"connect_timeout": 10, "keepalives": 1,
-                     "keepalives_idle": 30, "keepalives_interval": 10},
-}
 
+# إعدادات مختلفة حسب البيئة
+if os.getenv("RENDER"):
+    # على Render: pool أكبر + keepalives
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,
+        "pool_recycle": 250,
+        "pool_size": 5,
+        "max_overflow": 3,
+        "pool_timeout": 30,
+        "connect_args": {
+            "connect_timeout": 10,
+            "keepalives": 1,
+            "keepalives_idle": 20,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+        },
+    }
+else:
+    # محلياً (هاتف): pool أصغر + مهلة أطول
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,
+        "pool_recycle": 200,
+        "pool_size": 2,
+        "max_overflow": 1,
+        "pool_timeout": 20,
+        "connect_args": {
+            "connect_timeout": 15,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+        },
+    }
+
+# ─── ضغط المحتوى ───
 app.config["COMPRESS_MIMETYPES"] = [
     "text/html", "text/css", "text/javascript",
     "application/json", "application/javascript", "image/svg+xml",
@@ -80,7 +111,6 @@ def _payload(u):
 
 
 def _validate_username(s):
-    """يسمح بـ a-z, 0-9, _, - فقط."""
     return bool(re.match(r"^[a-zA-Z0-9_\-]{3,32}$", s or ""))
 
 
@@ -89,8 +119,11 @@ def _validate_email(s):
 
 
 def _validate_password(s):
-    """6 أحرف على الأقل."""
     return isinstance(s, str) and len(s) >= 6
+
+
+def _is_local_mode():
+    return not bool(os.getenv("RENDER"))
 
 
 # ═══════════════════════════════════════════════════════════
@@ -129,17 +162,16 @@ def service_worker():
 
 
 # ═══════════════════════════════════════════════════════════
-# المصادقة — تسجيل / دخول / خروج
+# المصادقة
 # ═══════════════════════════════════════════════════════════
 @app.post("/api/auth/register")
 def api_register():
     data = request.get_json() or {}
-    email     = (data.get("email") or "").strip().lower()
-    username  = (data.get("username") or "").strip()
-    name      = (data.get("name") or "").strip()
-    password  = data.get("password") or ""
+    email    = (data.get("email") or "").strip().lower()
+    username = (data.get("username") or "").strip()
+    name     = (data.get("name") or "").strip()
+    password = data.get("password") or ""
 
-    # ─── التحقق ───
     if not email or not username or not name or not password:
         return jsonify({"error": "جميع الحقول مطلوبة"}), 400
 
@@ -155,36 +187,40 @@ def api_register():
     if not _validate_password(password):
         return jsonify({"error": "كلمة المرور يجب أن تكون 6 أحرف على الأقل"}), 400
 
-    # ─── التحقق من عدم التكرار ───
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "البريد الإلكتروني مستخدم بالفعل"}), 409
 
     if User.query.filter_by(username=username.lower()).first():
         return jsonify({"error": "اسم المستخدم مستخدم بالفعل"}), 409
 
-    # ─── إنشاء المستخدم ───
     handle = "@" + username.lower()
     if User.query.filter_by(handle=handle).first():
         return jsonify({"error": "اسم المستخدم مستخدم بالفعل"}), 409
 
-    user = User(
-        email=email,
-        username=username.lower(),
-        name=name,
-        handle=handle,
-        password_hash=generate_password_hash(password, method="pbkdf2:sha256", salt_length=16),
-        avatar=f"https://api.dicebear.com/7.x/initials/svg?seed={name}&backgroundColor=22D3EE,8B5CF6",
-        bio="",
-        verified=False,
-    )
-    db.session.add(user)
-    db.session.commit()
-    print(f"✅ مستخدم جديد: {user.username} ({user.email})")
+    try:
+        user = User(
+            email=email,
+            username=username.lower(),
+            name=name,
+            handle=handle,
+            password_hash=generate_password_hash(
+                password, method="pbkdf2:sha256", salt_length=16
+            ),
+            avatar=f"https://api.dicebear.com/7.x/initials/svg?seed={name}&backgroundColor=22D3EE,8B5CF6",
+            bio="",
+            verified=False,
+        )
+        db.session.add(user)
+        db.session.commit()
+        print(f"✅ مستخدم جديد: {user.username} ({user.email})")
 
-    session.permanent = True
-    session["user_id"] = user.id
-
-    return jsonify(user.to_dict()), 201
+        session.permanent = True
+        session["user_id"] = user.id
+        return jsonify(user.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ خطأ في التسجيل: {e}", file=sys.stderr)
+        return jsonify({"error": f"خطأ في الخادم: {str(e)}"}), 500
 
 
 @app.post("/api/auth/login")
@@ -197,19 +233,20 @@ def api_login():
     if not identifier or not password:
         return jsonify({"error": "أدخل بيانات الدخول"}), 400
 
-    # ابحث بالبريد أو اسم المستخدم
-    user = User.query.filter(
-        db.or_(User.email == identifier, User.username == identifier)
-    ).first()
+    try:
+        user = User.query.filter(
+            db.or_(User.email == identifier, User.username == identifier)
+        ).first()
 
-    if not user or not check_password_hash(user.password_hash, password):
-        # رسالة موحّدة لمنع تعداد الحسابات
-        return jsonify({"error": "بيانات الدخول غير صحيحة"}), 401
+        if not user or not check_password_hash(user.password_hash, password):
+            return jsonify({"error": "بيانات الدخول غير صحيحة"}), 401
 
-    session.permanent = remember
-    session["user_id"] = user.id
-
-    return jsonify(user.to_dict())
+        session.permanent = remember
+        session["user_id"] = user.id
+        return jsonify(user.to_dict())
+    except Exception as e:
+        print(f"❌ خطأ في الدخول: {e}", file=sys.stderr)
+        return jsonify({"error": f"خطأ في الخادم: {str(e)}"}), 500
 
 
 @app.post("/api/auth/logout")
@@ -244,6 +281,60 @@ def api_check_email():
 
 
 # ═══════════════════════════════════════════════════════════
+# مسارات الصيانة والتشخيص
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/db-test")
+def api_db_test():
+    """تقرير مفصّل عن حالة الاتصال بقاعدة البيانات."""
+    report = test_connection(app)
+    status = 200 if report["connected"] else 503
+    return jsonify(report), status
+
+
+@app.get("/admin/db-status")
+def admin_db_status():
+    """يعرض حالة الجداول والأعمدة وعدد السجلات."""
+    try:
+        insp = inspect(db.engine)
+        tables = insp.get_table_names()
+        out = {
+            "mode": "render" if not _is_local_mode() else "local",
+            "tables": tables,
+            "columns": {},
+            "row_counts": {},
+        }
+        for t in tables:
+            out["columns"][t] = [c["name"] for c in insp.get_columns(t)]
+        for model in [User, Post, Comment, Like, Save, Follow, Chat, Message]:
+            try:
+                out["row_counts"][model.__tablename__] = model.query.count()
+            except Exception:
+                out["row_counts"][model.__tablename__] = "error"
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.get("/admin/db-reset")
+def admin_db_reset():
+    """يحذف كل الجداول وينشئها من جديد. محمي بمفتاح."""
+    key = request.args.get("key", "")
+    expected = os.getenv("ADMIN_RESET_KEY", "")
+    if not expected or key != expected:
+        abort(403)
+    try:
+        db.drop_all()
+        db.create_all()
+        return jsonify({
+            "status": "ok",
+            "message": "تم إعادة إنشاء الجداول بنجاح",
+            "tables": inspect(db.engine).get_table_names(),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════
 # البرومبتات
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/posts")
@@ -268,7 +359,10 @@ def api_posts():
     if model:
         query = query.filter(Post.model == model)
     if author:
-        query = query.filter(Post.author_id == int(author))
+        try:
+            query = query.filter(Post.author_id == int(author))
+        except ValueError:
+            pass
 
     if sort == "top":
         query = query.order_by(Post.likes.desc(), Post.created_at.desc())
@@ -282,15 +376,21 @@ def api_posts():
         d = p.to_dict()
         d["author_data"] = p.author.to_dict()
         if me:
-            d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
-            d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
+            d["liked"] = db.session.query(Like).filter_by(
+                user_id=me.id, post_id=p.id
+            ).first() is not None
+            d["saved"] = db.session.query(Save).filter_by(
+                user_id=me.id, post_id=p.id
+            ).first() is not None
         else:
             d["liked"] = False
             d["saved"] = False
         out.append(d)
 
     resp = jsonify(out)
-    resp.headers["Cache-Control"] = "private, max-age=15" if me else "public, max-age=30"
+    resp.headers["Cache-Control"] = (
+        "private, max-age=15" if me else "public, max-age=30"
+    )
     return resp
 
 
@@ -301,8 +401,12 @@ def api_post(pid):
     d["author_data"] = p.author.to_dict()
     me = current_user()
     if me:
-        d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
-        d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
+        d["liked"] = db.session.query(Like).filter_by(
+            user_id=me.id, post_id=p.id
+        ).first() is not None
+        d["saved"] = db.session.query(Save).filter_by(
+            user_id=me.id, post_id=p.id
+        ).first() is not None
     return jsonify(d)
 
 
@@ -395,8 +499,11 @@ def api_copy(pid):
 @app.get("/api/posts/<int:pid>/comments")
 def api_comments(pid):
     Post.query.get_or_404(pid)
-    cs = Comment.query.filter_by(post_id=pid).order_by(Comment.created_at.desc()).all()
-    return jsonify([{**c.to_dict(), "author_data": c.author.to_dict()} for c in cs])
+    cs = Comment.query.filter_by(post_id=pid)\
+                      .order_by(Comment.created_at.desc()).all()
+    return jsonify([
+        {**c.to_dict(), "author_data": c.author.to_dict()} for c in cs
+    ])
 
 
 @app.post("/api/posts/<int:pid>/comments")
@@ -439,15 +546,20 @@ def api_user(uid):
 @app.get("/api/users/<int:uid>/posts")
 def api_user_posts(uid):
     User.query.get_or_404(uid)
-    posts = Post.query.filter_by(author_id=uid).order_by(Post.created_at.desc()).all()
+    posts = Post.query.filter_by(author_id=uid)\
+                      .order_by(Post.created_at.desc()).all()
     me = current_user()
     out = []
     for p in posts:
         d = p.to_dict()
         d["author_data"] = p.author.to_dict()
         if me:
-            d["liked"] = db.session.query(Like).filter_by(user_id=me.id, post_id=p.id).first() is not None
-            d["saved"] = db.session.query(Save).filter_by(user_id=me.id, post_id=p.id).first() is not None
+            d["liked"] = db.session.query(Like).filter_by(
+                user_id=me.id, post_id=p.id
+            ).first() is not None
+            d["saved"] = db.session.query(Save).filter_by(
+                user_id=me.id, post_id=p.id
+            ).first() is not None
         out.append(d)
     return jsonify(out)
 
@@ -459,7 +571,9 @@ def api_follow(uid):
     if me.id == uid:
         return jsonify({"error": "لا يمكن متابعة نفسك"}), 400
     target = User.query.get_or_404(uid)
-    existing = Follow.query.filter_by(follower_id=me.id, following_id=uid).first()
+    existing = Follow.query.filter_by(
+        follower_id=me.id, following_id=uid
+    ).first()
     if existing:
         db.session.delete(existing)
         me.following = max(0, me.following - 1)
@@ -502,7 +616,9 @@ def api_change_password():
     if not _validate_password(new):
         return jsonify({"error": "كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل"}), 400
 
-    u.password_hash = generate_password_hash(new, method="pbkdf2:sha256", salt_length=16)
+    u.password_hash = generate_password_hash(
+        new, method="pbkdf2:sha256", salt_length=16
+    )
     db.session.commit()
     return jsonify({"ok": True})
 
@@ -523,7 +639,8 @@ def api_chats():
         other_id = c.user_b_id if c.user_a_id == me.id else c.user_a_id
         other = User.query.get(other_id)
         last = c.messages.order_by(Message.created_at.desc()).first()
-        unread = c.messages.filter_by(read=False).filter(Message.sender_id != me.id).count()
+        unread = c.messages.filter_by(read=False)\
+                          .filter(Message.sender_id != me.id).count()
         out.append({
             "id": c.id,
             "with_user": other.to_dict() if other else None,
@@ -591,7 +708,7 @@ def api_open_chat(uid):
 
 
 # ═══════════════════════════════════════════════════════════
-# الصحة + الأخطاء
+# الصحة
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/health")
 def health():
@@ -600,6 +717,7 @@ def health():
             "status": "ok",
             "db": "connected",
             "auth": "local",
+            "mode": "render" if not _is_local_mode() else "local",
             "users": User.query.count(),
             "posts": Post.query.count(),
             "time": datetime.utcnow().isoformat(),
@@ -608,6 +726,9 @@ def health():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ═══════════════════════════════════════════════════════════
+# معالجات الأخطاء
+# ═══════════════════════════════════════════════════════════
 @app.errorhandler(401)
 def err_401(e):
     if request.path.startswith("/api/"):
@@ -651,7 +772,7 @@ def err_all(e):
         return e
     print(f"❌ Unhandled: {e}", file=sys.stderr)
     if request.path.startswith("/api/"):
-        return jsonify({"error": "خطأ غير متوقع"}), 500
+        return jsonify({"error": f"خطأ غير متوقع: {str(e)}"}), 500
     return render_template("error.html", code=500,
                             title="حدث خطأ",
                             message="نعتذر، حدث خطأ غير متوقع."), 500
@@ -661,18 +782,74 @@ def err_all(e):
 # تهيئة قاعدة البيانات
 # ═══════════════════════════════════════════════════════════
 def init_db():
+    """تهيئة قاعدة البيانات مع تقرير مفصّل."""
     with app.app_context():
         try:
+            print("\n" + "═" * 60)
+            print("🔌 اختبار الاتصال بقاعدة البيانات…")
+
+            report = test_connection(app)
+
+            if not report["connected"]:
+                print("❌ فشل الاتصال!")
+                print(f"   النوع: {report.get('error_type', 'Unknown')}")
+                print(f"   الرسالة: {str(report.get('error', ''))[:200]}")
+                print(f"   المضيف: {report.get('host')}:{report.get('port')}")
+                print(f"   الوضع: {report['mode']}")
+
+                if _is_local_mode():
+                    print("\n💡 نصيحة للتطوير من الهاتف:")
+                    print("   • تأكد من تفعيل Public Access في Aiven")
+                    print("   • استخدم hostname يبدأ بـ public-")
+                    print("   • تحقق من اتصال الإنترنت")
+                    print("   • جرّب: /api/db-test")
+                else:
+                    print("\n💡 نصيحة على Render:")
+                    print("   • تحقق من متغيرات البيئة")
+                    print("   • تأكد من IP Filter في Aiven")
+                    print("   • جرّب: /api/db-test")
+
+                print("═" * 60 + "\n")
+                return
+
+            print(f"✅ متصل بـ: {report['host']}:{report['port']}")
+            print(f"⏱️  الاستجابة: {report['latency_ms']}ms")
+            print(f"🔧 الوضع: {report['mode']}")
+            if report.get("server_version"):
+                print(f"📦 {report['server_version'][:60]}…")
+
+            # إنشاء الجداول
             db.create_all()
             print("✅ الجداول جاهزة.")
+
+            # عدّ المستخدمين والمنشورات
+            try:
+                users_count = User.query.count()
+                posts_count = Post.query.count()
+                print(f"📊 المستخدمون: {users_count} | البرومبتات: {posts_count}")
+            except Exception as qerr:
+                print(f"⚠️  لم نتمكن من قراءة الإحصاءات: {qerr}")
+
+            print("═" * 60 + "\n")
+
         except Exception as e:
-            print("⚠️  فشل تهيئة قاعدة البيانات:", e, file=sys.stderr)
+            print(f"⚠️  فشل تهيئة قاعدة البيانات: {e}", file=sys.stderr)
 
 
+# استدعِ التهيئة عند الإقلاع
 init_db()
 
 
+# ═══════════════════════════════════════════════════════════
+# التشغيل
+# ═══════════════════════════════════════════════════════════
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.getenv("FLASK_ENV", "development") == "development"
+
+    if _is_local_mode():
+        print(f"\n🚀 تشغيل خَيال محلياً على: http://localhost:{port}")
+        print(f"📊 اختبار الاتصال: http://localhost:{port}/api/db-test")
+        print(f"📋 حالة الجداول: http://localhost:{port}/admin/db-status\n")
+
     app.run(host="0.0.0.0", port=port, debug=debug)
