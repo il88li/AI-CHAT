@@ -1,1610 +1,1892 @@
-/* ═══════════════════════════════════════════════════════════
-   خَيال — Aurora App 6.0
-   Composer فيسبوك + Auth مصغّر + استقرار + لا كيبورد تلقائي
-   ═══════════════════════════════════════════════════════════ */
-
+/* ═══════════════════════════════════════════════════════════════════════
+   خَيال — Application Layer v7.0
+   Vanilla JS · RTL-aware · PWA-ready · State-machine driven
+   ═══════════════════════════════════════════════════════════════════════ */
 (() => {
-'use strict';
+  'use strict';
 
-const K = {
-  me: window.__ME__ || null,
-  users: {},
-  models: ['Midjourney v6', 'DALL·E 3', 'Stable Diffusion XL', 'Flux 1.1 Pro', 'Adobe Firefly']
-};
+  /* ─────────────── 0. GLOBAL STATE ─────────────── */
+  const State = {
+    me: window.__ME__ || null,
+    tab: 'home',
+    sort: 'recent',
+    filter: null,
+    posts: { home: [], explore: [], liked: [], saved: [], profile: [] },
+    chats: [],
+    activeChat: null,
+    activePost: null,
+    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    online: navigator.onLine,
+    _pendingLikes: new Set(),
+    _pendingSaves: new Set(),
+  };
 
-
-/* ═══ UTILS ═══ */
-const U = {
-  $: (s, r = document) => r.querySelector(s),
-  $$: (s, r = document) => [...r.querySelectorAll(s)],
-
-  esc(s) {
-    return s == null ? '' : String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  },
-
-  debounce(fn, ms = 300) {
-    let t;
-    return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
-  },
-
-  throttle(fn, ms = 100) {
-    let l = 0;
-    return (...a) => {
-      const n = Date.now();
-      if (n - l >= ms) { l = n; fn(...a); }
-    };
-  },
-
-  fmtNum(n) { return (n || 0).toLocaleString('ar-EG'); },
-
-  fmtDate(s) {
-    if (!s) return '';
-    const d = new Date(s);
-    if (isNaN(d)) return s;
-    const diff = (Date.now() - d) / 1000;
-    if (diff < 60) return 'الآن';
-    if (diff < 3600) return `قبل ${Math.floor(diff / 60)} د`;
-    if (diff < 86400) return `قبل ${Math.floor(diff / 3600)} س`;
-    if (diff < 604800) return `قبل ${Math.floor(diff / 86400)} ي`;
-    return d.toLocaleDateString('ar-EG');
-  },
-
-  storage: {
-    get(k, f) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : f; } catch { return f; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
-    rm(k) { try { localStorage.removeItem(k); } catch {} }
-  },
-
-  toast(msg, icon = 'ph-check-circle', undoFn = null) {
-    const w = U.$('#toastWrap');
-    if (!w) return;
-    const el = document.createElement('div');
-    el.className = 'toast';
-    const undoHtml = undoFn ? `<button class="undo-btn" data-undo>تراجع</button>` : '';
-    el.innerHTML = `<i class="ph ${icon}"></i><span>${U.esc(msg)}</span>${undoHtml}`;
-    if (undoFn) {
-      el.querySelector('[data-undo]').addEventListener('click', () => {
-        undoFn(); el.remove();
-      });
-    }
-    w.appendChild(el);
-    setTimeout(() => {
-      el.style.transition = 'opacity .3s, transform .3s';
-      el.style.opacity = '0';
-      el.style.transform = 'translateY(8px)';
-      setTimeout(() => el.remove(), 320);
-    }, undoFn ? 4200 : 2400);
-  },
-
-  autoGrow(el) {
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-  },
-
-  copy(text, cb) {
-    const fallback = () => {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); cb(); }
-      catch { U.toast('فشل النسخ', 'ph-warning'); }
-      ta.remove();
-    };
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(cb).catch(fallback);
-    } else fallback();
-  },
-
-  speak(text) {
-    if (!('speechSynthesis' in window)) {
-      U.toast('غير مدعوم', 'ph-warning'); return;
-    }
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-US'; u.rate = 0.95;
-    speechSynthesis.speak(u);
-    U.toast('يُقرأ البرومبت…', 'ph-speaker-high');
-  },
-
-  haptic() { try { navigator.vibrate && navigator.vibrate(8); } catch {} },
-
-  blur() {
-    if (document.activeElement && document.activeElement.blur) {
-      document.activeElement.blur();
-    }
-  }
-};
-
-
-/* ═══ API ═══ */
-const API = {
-  timeout: 12000,
-
-  async req(method, path, body, retries = 1) {
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), this.timeout);
-    const opt = {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      signal: ctrl.signal
-    };
-    if (body) opt.body = JSON.stringify(body);
-
-    try {
-      const r = await fetch(path, opt);
-      clearTimeout(tid);
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw Object.assign(new Error(err.error || `HTTP ${r.status}`), { status: r.status });
-      }
-      if (r.status === 204) return null;
-      return await r.json();
-    } catch (e) {
-      clearTimeout(tid);
-      if (e.name === 'AbortError') throw new Error('انتهت المهلة');
-      if (retries > 0 && (e.message.includes('fetch') || e.status >= 500)) {
-        await new Promise(r => setTimeout(r, 500));
-        return this.req(method, path, body, retries - 1);
-      }
-      throw e;
-    }
-  },
-
-  get: (p) => API.req('GET', p),
-  post: (p, b) => API.req('POST', p, b),
-  patch: (p, b) => API.req('PATCH', p, b),
-  del: (p) => API.req('DELETE', p)
-};
-
-
-/* ═══ PTR ═══ */
-const PTR = {
-  startY: 0, pulling: false, threshold: 70, wrap: null, indicator: null,
-
-  init() {
-    this.wrap = U.$('#ptrWrap');
-    this.indicator = U.$('#ptr');
-    if (!this.wrap || !this.indicator) return;
-    if (!('ontouchstart' in window)) return;
-
-    this.wrap.addEventListener('touchstart', (e) => this.onStart(e), { passive: true });
-    this.wrap.addEventListener('touchmove', (e) => this.onMove(e), { passive: false });
-    this.wrap.addEventListener('touchend', () => this.onEnd(), { passive: true });
-    this.wrap.addEventListener('touchcancel', () => this.reset(), { passive: true });
-  },
-
-  onStart(e) {
-    if (window.scrollY > 0) return;
-    if (App.state.tab !== 'home') return;
-    this.startY = e.touches[0].clientY;
-    this.pulling = false;
-  },
-
-  onMove(e) {
-    if (!this.startY) return;
-    const dy = e.touches[0].clientY - this.startY;
-    if (dy <= 0) return;
-    if (window.scrollY > 5) return;
-
-    this.pulling = true;
-    e.preventDefault();
-    const distance = Math.min(dy * 0.5, 100);
-    this.indicator.style.marginTop = (-56 + distance) + 'px';
-    this.indicator.style.opacity = Math.min(distance / this.threshold, 1);
-
-    if (distance >= this.threshold) {
-      this.indicator.classList.add('pulling', 'ready');
-    } else {
-      this.indicator.classList.add('pulling');
-      this.indicator.classList.remove('ready');
-    }
-  },
-
-  onEnd() {
-    if (!this.pulling) { this.reset(); return; }
-    const distance = parseFloat(this.indicator.style.marginTop || -56) + 56;
-    if (distance >= this.threshold) this.trigger();
-    else this.reset();
-    this.startY = 0; this.pulling = false;
-  },
-
-  async trigger() {
-    this.indicator.classList.add('refreshing');
-    this.indicator.classList.remove('ready');
-    this.indicator.style.marginTop = '16px';
-    U.haptic();
-    try {
-      await App.refreshAll(true);
-      U.toast('تم التحديث', 'ph-check-circle');
-    } catch {
-      U.toast('تعذّر التحديث', 'ph-warning');
-    } finally {
-      setTimeout(() => this.reset(), 400);
-    }
-  },
-
-  reset() {
-    if (!this.indicator) return;
-    this.indicator.classList.remove('pulling', 'ready', 'refreshing');
-    this.indicator.style.marginTop = '-56px';
-    this.indicator.style.opacity = '0';
-  }
-};
-
-
-/* ═══ ROUTER ═══ */
-const Router = {
-  validTabs: ['home', 'explore', 'liked', 'saved', 'chat', 'profile'],
-
-  init() {
-    const hash = location.hash.slice(1);
-    if (hash && this.validTabs.includes(hash)) {
-      setTimeout(() => App.switchTab(hash, { skipHistory: true }), 120);
-    }
-    window.addEventListener('hashchange', () => {
-      const tab = location.hash.slice(1);
-      if (this.validTabs.includes(tab) && tab !== App.state.tab) {
-        App.switchTab(tab, { skipHistory: true });
-      }
+  /* ─────────────── 1. DOM UTILS ─────────────── */
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const byId = (id) => document.getElementById(id);
+  const create = (tag, props = {}, children = []) => {
+    const el = document.createElement(tag);
+    Object.entries(props).forEach(([k, v]) => {
+      if (k === 'class') el.className = v;
+      else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+      else if (k === 'dataset') Object.assign(el.dataset, v);
+      else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+      else if (k === 'text') el.textContent = v;
+      else if (k === 'html') el.innerHTML = v;
+      else el.setAttribute(k, v);
     });
-  },
-
-  push(tab) {
-    if (!this.validTabs.includes(tab)) return;
-    const current = location.hash.slice(1);
-    if (current === tab) return;
-    try { history.replaceState(null, '', '#' + tab); } catch {}
-  }
-};
-
-
-/* ═══ COUNTS ═══ */
-const Counts = {
-  update() {
-    const likedEl = U.$('#likedCount');
-    if (likedEl) {
-      const n = App.state.posts.filter(p => p.liked).length;
-      const span = likedEl.querySelector('span');
-      if (span) span.textContent = U.fmtNum(n);
-      likedEl.setAttribute('data-count', n);
-    }
-    const savedEl = U.$('#savedCount');
-    if (savedEl) {
-      const n = App.state.posts.filter(p => p.saved).length;
-      const span = savedEl.querySelector('span');
-      if (span) span.textContent = U.fmtNum(n);
-      savedEl.setAttribute('data-count', n);
-    }
-  }
-};
-
-
-/* ═══ IMAGE LOADER ═══ */
-const ImageLoader = {
-  observe() {
-    U.$$('.prompt-img img').forEach(img => {
-      if (img.dataset.loadObserved) return;
-      img.dataset.loadObserved = '1';
-
-      if (img.complete && img.naturalHeight !== 0) {
-        img.classList.add('loaded');
-      } else {
-        img.classList.add('loading');
-        img.addEventListener('load', () => {
-          img.classList.add('loaded');
-          img.classList.remove('loading');
-        }, { once: true });
-        img.addEventListener('error', () => img.classList.remove('loading'), { once: true });
-      }
+    (Array.isArray(children) ? children : [children]).forEach(c => {
+      if (c) el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
     });
-  }
-};
+    return el;
+  };
 
+  const on = (el, evt, fn, opts) => el && el.addEventListener(evt, fn, opts);
+  const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
 
-/* ═══ COMMAND PALETTE ═══ */
-const CommandPalette = {
-  _items: [],
-
-  open() {
-    U.$('#cmdkScrim')?.classList.add('open');
-    setTimeout(() => U.$('#cmdkInput')?.focus(), 100);
-    this.render('');
-  },
-
-  close(e) {
-    if (e && e.target !== e.currentTarget) return;
-    U.$('#cmdkScrim')?.classList.remove('open');
-    const i = U.$('#cmdkInput'); if (i) i.value = '';
-  },
-
-  render(query) {
-    const q = (query || '').toLowerCase().trim();
-    const items = [
-      { icon: 'ph-house', label: 'الرئيسية', action: () => App.switchTab('home'), keys: 'G H' },
-      { icon: 'ph-compass', label: 'استكشف', action: () => App.switchTab('explore'), keys: 'G E' },
-      { icon: 'ph-chat-circle-dots', label: 'الرسائل', action: () => App.switchTab('chat'), keys: 'G C' },
-      { icon: 'ph-user', label: 'حسابي', action: () => App.switchTab('profile'), keys: 'G P' },
-      { icon: 'ph-heart', label: 'المُعجَبة', action: () => App.switchTab('liked'), keys: 'G L' },
-      { icon: 'ph-bookmark-simple', label: 'المحفوظة', action: () => App.switchTab('saved'), keys: 'G S' },
-      { icon: 'ph-plus', label: 'منشور جديد', action: () => Composer.open(), keys: 'N' },
-      { icon: 'ph-moon', label: 'تبديل المظهر', action: () => App.toggleTheme() },
-      { icon: 'ph-magnifying-glass', label: 'بحث', action: () => U.$('#searchInput')?.focus(), keys: '/' },
-      { icon: 'ph-sign-out', label: 'تسجيل الخروج', action: () => Auth.logout() }
-    ];
-    const filtered = items.filter(c => !q || c.label.toLowerCase().includes(q));
-    this._items = filtered;
-
-    const results = U.$('#cmdkResults');
-    if (!results) return;
-    if (!filtered.length) {
-      results.innerHTML = '<div style="padding:20px;text-align:center;color:var(--fg-3)">لا نتائج</div>';
-      return;
-    }
-    results.innerHTML = filtered.map((c, i) => `
-      <div class="cmdk-item" onclick="CommandPalette.run(${i})">
-        <i class="ph ${c.icon}"></i>
-        <span>${U.esc(c.label)}</span>
-        ${c.keys ? `<kbd>${c.keys}</kbd>` : ''}
-      </div>
-    `).join('');
-  },
-
-  run(i) {
-    const item = this._items?.[i];
-    if (!item) return;
-    this.close();
-    setTimeout(() => item.action(), 80);
-  }
-};
-
-
-/* ═══ APP ═══ */
-const App = {
-  state: {
-    posts: [], chats: [], filter: 'all', model: 'all', sort: 'recent',
-    tab: 'home', activeChat: null, profileTab: 'posts',
-    search: '', theme: 'dark', loading: false
-  },
-
-  async init() {
-    this.state.theme = U.storage.get('khayal_theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', this.state.theme);
-    this.syncThemeIcon();
-
-    window.addEventListener('scroll', U.throttle(() => {
-      const n = U.$('#nav');
-      if (n) n.classList.toggle('scrolled', window.scrollY > 20);
-    }, 100), { passive: true });
-
-    window.addEventListener('online', () => {
-      U.$('#netBar')?.classList.remove('show');
-      this.refreshAll(true);
-    });
-    window.addEventListener('offline', () => U.$('#netBar')?.classList.add('show'));
-    if (!navigator.onLine) U.$('#netBar')?.classList.add('show');
-
-    this.bindSearch();
-    this.bindProfileTabs();
-    this.bindKeyboard();
-    this.bindGestures();
-    this.renderFilters('filters');
-    this.renderFilters('exploreFilters');
-    this.renderSortTabs();
-
-    PTR.init();
-    Router.init();
-
-    document.addEventListener('mousemove', U.throttle(e => {
-      U.$$('.bento-card').forEach(c => {
-        const r = c.getBoundingClientRect();
-        c.style.setProperty('--mx', (e.clientX - r.left) + 'px');
-        c.style.setProperty('--my', (e.clientY - r.top) + 'px');
-      });
-    }, 80), { passive: true });
-
-    if ('serviceWorker' in navigator) {
-      try { await navigator.serviceWorker.register('/sw.js', { scope: '/' }); } catch {}
-    }
-
-    await this.refreshAll();
-
-    if (K.me) { this.applyUser(); this.enterApp(); }
-
-    const params = new URLSearchParams(location.search);
-    if (params.get('action') === 'new' && K.me) Composer.open();
-  },
-
-  async refreshAll(silent = false) {
-    if (this.state.loading) return;
-    this.state.loading = true;
-    const refreshBtn = U.$('#refreshBtn');
-    if (refreshBtn && silent) refreshBtn.classList.add('loading');
-
-    try {
-      const [meResult, postsResult] = await Promise.allSettled([
-        API.get('/api/me'),
-        API.get('/api/posts?limit=100')
-      ]);
-
-      K.me = meResult.status === 'fulfilled' ? meResult.value : K.me;
-      const posts = postsResult.status === 'fulfilled' ? postsResult.value : [];
-      this.state.posts = posts || [];
-      this.state.posts.forEach(p => {
-        if (p.author_data) K.users[p.author_data.id] = p.author_data;
-      });
-
-      const hp = U.$('#heroStatPosts');
-      if (hp) hp.textContent = U.fmtNum(this.state.posts.length);
-      const hu = U.$('#heroStatUsers');
-      if (hu) hu.textContent = U.fmtNum(Object.keys(K.users).length);
-
-      if (K.me) {
-        try { this.state.chats = await API.get('/api/chats'); }
-        catch { this.state.chats = []; }
-      } else this.state.chats = [];
-
-      this.renderLandingPreview();
-      this.renderAllFeeds();
-      if (K.me) Chat.render();
-      Counts.update();
-      ImageLoader.observe();
-    } catch (e) {
-      console.error('refreshAll', e);
-      if (!silent) U.toast('تعذّر التحميل', 'ph-warning');
-      throw e;
-    } finally {
-      this.state.loading = false;
-      if (refreshBtn) refreshBtn.classList.remove('loading');
-    }
-  },
-
-  goHome() { this.showView('view-landing'); window.scrollTo({ top: 0, behavior: 'smooth' }); },
-  scrollTo(id) { U.$('#' + id)?.scrollIntoView({ behavior: 'smooth' }); },
-
-  showView(id) {
-    U.$$('.view').forEach(v => v.classList.remove('active'));
-    U.$('#' + id)?.classList.add('active');
-    const d = U.$('#dock');
-    if (d) d.style.display = id === 'view-app' ? 'flex' : 'none';
-  },
-
-  previewFeed() { if (!K.me) { Auth.open(); return; } this.enterApp(); },
-
-  enterApp() {
-    this.showView('view-app');
-    this.switchTab('home');
-    this.renderAllFeeds();
-    if (K.me) Chat.render();
-    this.updateProfileStats();
-  },
-
-  switchTab(tab, options = {}) {
-    if (!Router.validTabs.includes(tab)) tab = 'home';
-    this.state.tab = tab;
-    U.$$('.tab-panel').forEach(p => p.classList.remove('active'));
-    U.$('#tab-' + tab)?.classList.add('active');
-    U.$$('.dock-item[data-tab]').forEach(i => i.classList.toggle('active', i.dataset.tab === tab));
-
-    if (tab === 'chat') { Chat.render(); U.$('#chatLayout')?.classList.remove('show-list'); }
-    if (tab === 'profile') this.renderProfilePanel();
-    if (tab === 'home') this.renderHomeFeed();
-    if (tab === 'explore') this.renderExploreFeed();
-    if (tab === 'liked') this.renderLikedFeed();
-    if (tab === 'saved') this.renderSavedFeed();
-
-    if (!options.skipHistory) Router.push(tab);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    U.haptic();
-    requestAnimationFrame(() => ImageLoader.observe());
-  },
-
-  toggleTheme() {
-    this.state.theme = this.state.theme === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', this.state.theme);
-    U.storage.set('khayal_theme', this.state.theme);
-    this.syncThemeIcon();
-    U.haptic();
-  },
-
-  syncThemeIcon() {
-    const i = U.$('#themeIcon');
-    if (i) i.className = this.state.theme === 'dark' ? 'ph ph-moon' : 'ph ph-sun';
-  },
-
-  renderFilters(id) {
-    const el = U.$('#' + id);
-    if (!el) return;
-    const tags = ['all', 'بورتريه', 'مناظر', 'سايبربانك', 'ثلاثي الأبعاد', 'فيلم', 'معمار', 'تصوير', 'سينمائي'];
-    const labels = { all: 'الكل' };
-
-    let html = tags.map(t => {
-      const a = this.state.filter === t ? ' active' : '';
-      return `<button class="filter${a}" onclick="App.setFilter('${t}')">${labels[t] || '#' + t}</button>`;
-    }).join('');
-
-    html += `<span style="width:1px;background:var(--glass-border);margin:0 var(--s2);flex-shrink:0"></span>`;
-    html += K.models.map(m => {
-      const a = this.state.model === m ? ' active' : '';
-      return `<button class="filter${a}" onclick="App.setModel('${m}')"><i class="ph ph-cpu"></i> ${m}</button>`;
-    }).join('');
-
-    el.innerHTML = html;
-  },
-
-  setFilter(f) {
-    this.state.filter = f;
-    this.renderFilters('filters');
-    this.renderFilters('exploreFilters');
-    this.renderHomeFeed();
-    this.renderExploreFeed();
-  },
-
-  setModel(m) {
-    this.state.model = this.state.model === m ? 'all' : m;
-    this.renderFilters('filters');
-    this.renderFilters('exploreFilters');
-    this.renderHomeFeed();
-    this.renderExploreFeed();
-  },
-
-  renderSortTabs() {
-    U.$$('.sort-tab').forEach(b => b.classList.toggle('active', b.dataset.sort === this.state.sort));
-  },
-
-  setSort(s) { this.state.sort = s; this.renderSortTabs(); this.renderHomeFeed(); },
-
-  filterPosts() {
-    let posts = this.state.posts.slice();
-    const { filter, model, search, sort } = this.state;
-    if (filter !== 'all' && filter !== 'following') {
-      posts = posts.filter(p => (p.tags || []).includes(filter));
-    }
-    if (model !== 'all') posts = posts.filter(p => p.model === model);
-    if (search) {
-      const q = search.toLowerCase();
-      posts = posts.filter(p =>
-        p.title.toLowerCase().includes(q) ||
-        p.prompt.toLowerCase().includes(q) ||
-        (p.tags || []).some(t => t.includes(q))
-      );
-    }
-    if (sort === 'top') posts.sort((a, b) => b.likes - a.likes);
-    return posts;
-  },
-
-  renderHomeFeed() { Feed.render('homeFeed', this.filterPosts()); },
-  renderExploreFeed() { Feed.render('exploreFeed', this.state.posts.slice().sort((a, b) => b.likes - a.likes)); },
-  renderLikedFeed() {
-    Feed.render('likedFeed', this.state.posts.filter(p => p.liked),
-      'لا إعجابات بعد', 'اضغط القلب في أي منشور ليظهر هنا.');
-    Counts.update();
-  },
-  renderSavedFeed() {
-    Feed.render('savedFeed', this.state.posts.filter(p => p.saved),
-      'لا شيء محفوظ بعد', 'احفظ المنشورات لتعود إليها.');
-    Counts.update();
-  },
-  renderLandingPreview() { Feed.render('landingFeed', this.state.posts.slice(0, 6), null, null, true); },
-
-  renderAllFeeds() {
-    this.renderHomeFeed();
-    if (this.state.tab === 'explore') this.renderExploreFeed();
-    if (this.state.tab === 'liked') this.renderLikedFeed();
-    if (this.state.tab === 'saved') this.renderSavedFeed();
-    this.updateProfileStats();
-    this.updateBadges();
-    Counts.update();
-    requestAnimationFrame(() => ImageLoader.observe());
-  },
-
-  updateProfileStats() {
-    if (!K.me) return;
-    const mine = this.state.posts.filter(p => p.author === K.me.id);
-    const set = (id, v) => { const e = U.$('#' + id); if (e) e.textContent = U.fmtNum(v); };
-    set('statPosts', mine.length);
-    set('statLikes', mine.reduce((a, p) => a + p.likes, 0));
-    set('statFollowers', K.me.followers || 0);
-    set('statFollowing', K.me.following || 0);
-  },
-
-  updateBadges() {
-    const unread = this.state.chats.reduce((a, c) => a + (c.unread || 0), 0);
-    const b = U.$('#dockChatBadge');
-    if (b) { b.textContent = U.fmtNum(unread); b.style.display = unread ? 'grid' : 'none'; }
-  },
-
-  bindSearch() {
-    const input = U.$('#searchInput');
-    const results = U.$('#searchResults');
-    if (!input || !results) return;
-
-    const doSearch = U.debounce(async (q) => {
-      if (!q) { results.classList.remove('open'); this.renderHomeFeed(); return; }
+  /* ─────────────── 2. STORAGE ─────────────── */
+  const Store = {
+    get(key, fallback = null) {
       try {
-        const matches = await API.get(`/api/posts?q=${encodeURIComponent(q)}&limit=6`);
-        if (!matches.length) {
-          results.innerHTML = '<div style="padding:20px;text-align:center;color:var(--fg-3);font-size:13px">لا نتائج</div>';
+        const v = localStorage.getItem(`kh_${key}`);
+        return v ? JSON.parse(v) : fallback;
+      } catch { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem(`kh_${key}`, JSON.stringify(value)); } catch {}
+    },
+    remove(key) {
+      try { localStorage.removeItem(`kh_${key}`); } catch {}
+    },
+  };
+
+  /* ─────────────── 3. NETWORK ─────────────── */
+  const API = {
+    async request(url, options = {}) {
+      const opts = {
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...options,
+      };
+      if (opts.body && typeof opts.body === 'object') {
+        opts.body = JSON.stringify(opts.body);
+      }
+      try {
+        const res = await fetch(url, opts);
+        const text = await res.text();
+        const data = text ? (() => { try { return JSON.parse(text); } catch { return { raw: text }; } })() : null;
+        if (!res.ok) {
+          const err = new Error(data?.error || `HTTP ${res.status}`);
+          err.status = res.status;
+          err.data = data;
+          throw err;
+        }
+        return data;
+      } catch (e) {
+        if (e.name === 'TypeError') {
+          U.toast('تعذّر الاتصال بالخادم', 'ph-wifi-slash', 'error');
+        }
+        throw e;
+      }
+    },
+    get: (url) => API.request(url, { method: 'GET' }),
+    post: (url, body) => API.request(url, { method: 'POST', body }),
+    patch: (url, body) => API.request(url, { method: 'PATCH', body }),
+    del: (url) => API.request(url, { method: 'DELETE' }),
+  };
+
+  /* ─────────────── 4. UTILITIES (U) ─────────────── */
+  const U = {
+    toast(msg, icon = 'ph-check-circle', tone = 'default', duration = 2600) {
+      const wrap = byId('toastWrap');
+      if (!wrap) return;
+      const el = create('div', { class: 'toast', dataset: { tone } }, [
+        create('i', { class: `ph ${icon}`, 'aria-hidden': 'true' }),
+        create('span', { text: msg }),
+      ]);
+      wrap.appendChild(el);
+      const remove = () => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(10px)';
+        el.style.transition = 'opacity .2s, transform .2s';
+        setTimeout(() => el.remove(), 220);
+      };
+      setTimeout(remove, duration);
+      return el;
+    },
+
+    formatNumber(n) {
+      if (n == null) return '0';
+      if (n < 1000) return String(n);
+      if (n < 1000000) return (n / 1000).toFixed(n < 10000 ? 1 : 0).replace(/\.0$/, '') + 'K';
+      return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    },
+
+    formatTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const now = new Date();
+      const diff = (now - d) / 1000;
+      if (diff < 60) return 'الآن';
+      if (diff < 3600) return `قبل ${Math.floor(diff / 60)} د`;
+      if (diff < 86400) return `قبل ${Math.floor(diff / 3600)} س`;
+      if (diff < 604800) return `قبل ${Math.floor(diff / 86400)} ي`;
+      return d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' });
+    },
+
+    autoGrow(textarea) {
+      if (!textarea) return;
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 160) + 'px';
+    },
+
+    debounce(fn, wait = 250) {
+      let timer;
+      return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), wait);
+      };
+    },
+
+    async copy(text) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+        const ta = create('textarea', { style: { position: 'fixed', opacity: '0' } });
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return ok;
+      } catch { return false; }
+    },
+
+    vibrate(ms = 10) {
+      if (!State.reducedMotion && navigator.vibrate) {
+        try { navigator.vibrate(ms); } catch {}
+      }
+    },
+
+    focusTrap(container, initialFocus = null) {
+      const focusables = $$(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        container
+      ).filter(el => el.offsetParent !== null);
+
+      const first = initialFocus || focusables[0];
+      const last = focusables[focusables.length - 1];
+      const prevActive = document.activeElement;
+
+      const handler = (e) => {
+        if (e.key !== 'Tab') return;
+        if (focusables.length === 0) { e.preventDefault(); return; }
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault(); first.focus();
+        }
+      };
+
+      container.addEventListener('keydown', handler);
+      if (first) first.focus();
+
+      return () => {
+        container.removeEventListener('keydown', handler);
+        if (prevActive && prevActive.focus) {
+          try { prevActive.focus(); } catch {}
+        }
+      };
+    },
+
+    lockScroll(lock) {
+      document.body.style.overflow = lock ? 'hidden' : '';
+      document.documentElement.style.overflow = lock ? 'hidden' : '';
+    },
+  };
+
+  /* ─────────────── 5. MODAL / SHEET / DRAWER ─────────────── */
+  const Layer = {
+    _stack: [],
+
+    open(id, options = {}) {
+      const el = typeof id === 'string' ? byId(id) : id;
+      if (!el) return;
+      el.dataset.open = 'true';
+      el.removeAttribute('hidden');
+      U.lockScroll(true);
+
+      const releaseFocus = options.trapFocus !== false
+        ? U.focusTrap(el.querySelector('[role="dialog"]') || el)
+        : () => {};
+
+      const handleKey = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          Layer.close(el);
+        }
+      };
+      el.addEventListener('keydown', handleKey);
+
+      Layer._stack.push({ el, releaseFocus, handleKey });
+    },
+
+    close(id) {
+      const el = typeof id === 'string' ? byId(id) : id;
+      if (!el) return;
+      el.dataset.open = 'false';
+      const idx = Layer._stack.findIndex(x => x.el === el);
+      if (idx >= 0) {
+        const { releaseFocus, handleKey } = Layer._stack[idx];
+        el.removeEventListener('keydown', handleKey);
+        releaseFocus && releaseFocus();
+        Layer._stack.splice(idx, 1);
+      }
+      if (Layer._stack.length === 0) U.lockScroll(false);
+    },
+
+    closeAll() {
+      [...Layer._stack].forEach(x => Layer.close(x.el));
+    },
+  };
+
+  /* ─────────────── 6. AUTH ─────────────── */
+  const Auth = {
+    _lastFocus: null,
+
+    open(mode = 'login') {
+      if (State.me) {
+        U.toast('أنت مسجّل دخول بالفعل', 'ph-info');
+        return;
+      }
+      Auth._lastFocus = document.activeElement;
+      Auth.switchMode(mode);
+      Layer.open('authModal');
+      setTimeout(() => {
+        const el = mode === 'register' ? byId('regName') : byId('loginIdentifier');
+        el && el.focus();
+      }, 180);
+    },
+
+    close(e) {
+      if (e && e.target !== e.currentTarget) return;
+      Layer.close('authModal');
+      Auth._resetForms();
+    },
+
+    switchMode(mode) {
+      const tabs = $('.auth-tabs');
+      const title = byId('authTitle');
+      const sub = byId('authSub');
+      if (tabs) tabs.dataset.mode = mode;
+
+      $$('.auth-tab').forEach(t => {
+        const isActive = t.dataset.mode === mode;
+        t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      $$('.auth-form').forEach(f => {
+        f.classList.toggle('is-active', f.id === `${mode}Form`);
+      });
+
+      if (title) title.textContent = mode === 'login' ? 'تسجيل الدخول' : 'أنشئ حسابك';
+      if (sub) sub.textContent = mode === 'login'
+        ? 'أهلاً بعودتك إلى خَيال'
+        : 'دقيقة واحدة للانضمام إلى خَيال';
+
+      Auth._resetErrors();
+    },
+
+    _resetForms() {
+      const forms = ['loginForm', 'registerForm'];
+      forms.forEach(id => {
+        const f = byId(id);
+        if (f) f.reset();
+      });
+      Auth._resetErrors();
+      const strength = $('.pw-strength');
+      if (strength) strength.dataset.level = '0';
+      const uStatus = byId('usernameStatus');
+      const eStatus = byId('emailStatus');
+      if (uStatus) uStatus.removeAttribute('data-state');
+      if (eStatus) eStatus.removeAttribute('data-state');
+    },
+
+    _resetErrors() {
+      $$('.input[aria-invalid="true"]').forEach(el => el.removeAttribute('aria-invalid'));
+      $$('.input-status').forEach(el => {
+        el.removeAttribute('data-state');
+        el.textContent = '';
+      });
+    },
+
+    togglePassword(btn) {
+      const wrap = btn.closest('.input-wrap');
+      const input = wrap && wrap.querySelector('input');
+      if (!input) return;
+      const isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      const icon = btn.querySelector('i');
+      if (icon) icon.className = isPassword ? 'ph ph-eye-slash' : 'ph ph-eye';
+      btn.setAttribute('aria-label', isPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور');
+    },
+
+    checkStrength(pw) {
+      const el = $('.pw-strength');
+      if (!el) return;
+      let score = 0;
+      if (pw.length >= 6) score++;
+      if (pw.length >= 10) score++;
+      if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+      if (/\d/.test(pw)) score++;
+      if (/[^A-Za-z0-9]/.test(pw)) score++;
+      el.dataset.level = String(Math.min(4, score));
+    },
+
+    async checkUsername(input) {
+      const val = input.value.trim();
+      const status = byId('usernameStatus');
+      if (!status) return;
+      if (!/^[a-zA-Z0-9_\-]{3,32}$/.test(val)) {
+        status.removeAttribute('data-state');
+        status.textContent = '';
+        return;
+      }
+      status.dataset.state = 'loading';
+      try {
+        const res = await API.post('/api/auth/check-username', { username: val });
+        if (res.available) {
+          status.dataset.state = 'ok';
+          status.className = 'input-status ph ph-check-circle';
         } else {
-          results.innerHTML = matches.map(p => `
-            <div class="search-result" onclick="App.openPostFromSearch(${p.id})">
-              <img src="${p.image || ''}" alt="" loading="lazy">
+          status.dataset.state = 'err';
+          status.className = 'input-status ph ph-x-circle';
+          input.setAttribute('aria-invalid', 'true');
+        }
+      } catch {
+        status.removeAttribute('data-state');
+      }
+    },
+
+    async checkEmail(input) {
+      const val = input.value.trim().toLowerCase();
+      const status = byId('emailStatus');
+      if (!status) return;
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val)) {
+        status.removeAttribute('data-state');
+        return;
+      }
+      try {
+        const res = await API.post('/api/auth/check-email', { email: val });
+        if (res.available) {
+          status.dataset.state = 'ok';
+          status.className = 'input-status ph ph-check-circle';
+        } else {
+          status.dataset.state = 'err';
+          status.className = 'input-status ph ph-x-circle';
+          input.setAttribute('aria-invalid', 'true');
+        }
+      } catch {}
+    },
+
+    async login(e) {
+      e.preventDefault();
+      const btn = byId('loginSubmit');
+      const id = byId('loginIdentifier').value.trim();
+      const pw = byId('loginPassword').value;
+      const remember = byId('rememberMe')?.checked ?? false;
+
+      if (!id || !pw) return;
+
+      btn.setAttribute('aria-busy', 'true');
+      try {
+        const user = await API.post('/api/auth/login', {
+          identifier: id, password: pw, remember,
+        });
+        State.me = user;
+        Auth.close();
+        App.onAuthChange();
+        U.toast(`أهلاً ${user.name}!`, 'ph-sparkle', 'success');
+        U.vibrate(20);
+      } catch (err) {
+        if (err.status === 401) {
+          byId('loginPassword')?.setAttribute('aria-invalid', 'true');
+          U.toast('بيانات الدخول غير صحيحة', 'ph-warning-circle', 'error');
+        } else {
+          U.toast(err.message || 'تعذّر تسجيل الدخول', 'ph-warning-circle', 'error');
+        }
+      } finally {
+        btn.removeAttribute('aria-busy');
+      }
+    },
+
+    async register(e) {
+      e.preventDefault();
+      const btn = byId('registerSubmit');
+      const name = byId('regName').value.trim();
+      const username = byId('regUsername').value.trim();
+      const email = byId('regEmail').value.trim();
+      const password = byId('regPassword').value;
+      const agree = byId('agreeTerms')?.checked;
+
+      if (!agree) {
+        U.toast('يجب الموافقة على الشروط', 'ph-warning-circle', 'warning');
+        return;
+      }
+      if (!name || !username || !email || !password) return;
+
+      btn.setAttribute('aria-busy', 'true');
+      try {
+        const user = await API.post('/api/auth/register', {
+          name, username, email, password,
+        });
+        State.me = user;
+        Auth.close();
+        App.onAuthChange();
+        U.toast(`مرحباً بك في خَيال، ${user.name}!`, 'ph-confetti', 'success', 3200);
+        U.vibrate([15, 40, 15]);
+      } catch (err) {
+        const msg = err.data?.error || err.message || 'تعذّر إنشاء الحساب';
+        if (msg.includes('البريد')) byId('regEmail')?.setAttribute('aria-invalid', 'true');
+        if (msg.includes('المستخدم')) byId('regUsername')?.setAttribute('aria-invalid', 'true');
+        U.toast(msg, 'ph-warning-circle', 'error');
+      } finally {
+        btn.removeAttribute('aria-busy');
+      }
+    },
+
+    async logout() {
+      const ok = await App.confirm({
+        title: 'تسجيل الخروج؟',
+        message: 'ستحتاج لتسجيل الدخول مرة أخرى للوصول إلى حسابك.',
+        confirmText: 'خروج',
+        danger: true,
+      });
+      if (!ok) return;
+      try { await API.post('/api/auth/logout'); } catch {}
+      State.me = null;
+      App.onAuthChange();
+      App.goHome();
+      U.toast('تم تسجيل الخروج', 'ph-sign-out');
+    },
+
+    forgot(e) {
+      e && e.preventDefault();
+      U.toast('قريباً — استعادة كلمة المرور', 'ph-key');
+    },
+
+    openEditProfile() {
+      if (!State.me) { Auth.open('login'); return; }
+      const name = byId('epName');
+      const bio = byId('epBio');
+      const avatar = byId('epAvatar');
+      if (name) name.value = State.me.name || '';
+      if (bio) bio.value = State.me.bio || '';
+      if (avatar) avatar.value = State.me.avatar || '';
+      Layer.open('editProfileModal');
+    },
+
+    closeEditProfile(e) {
+      if (e && e.target !== e.currentTarget) return;
+      Layer.close('editProfileModal');
+    },
+
+    async saveProfile(e) {
+      e.preventDefault();
+      const name = byId('epName').value.trim();
+      const bio = byId('epBio').value.trim();
+      const avatar = byId('epAvatar').value.trim();
+      try {
+        const user = await API.patch('/api/me', { name, bio, avatar });
+        State.me = { ...State.me, ...user };
+        Auth.closeEditProfile();
+        App.updateUserUI();
+        U.toast('تم حفظ التعديلات', 'ph-check-circle', 'success');
+      } catch (err) {
+        U.toast(err.message || 'تعذّر الحفظ', 'ph-warning-circle', 'error');
+      }
+    },
+  };
+
+  /* ─────────────── 7. APP CORE ─────────────── */
+  const App = {
+    _initialized: false,
+
+    async init() {
+      if (App._initialized) return;
+      App._initialized = true;
+
+      App.applyTheme(Store.get('theme', 'dark'));
+      App.bindGlobal();
+      App.updateUserUI();
+      App.bindTabs();
+
+      // Show dock only in app view
+      App.onViewChange();
+
+      // Load initial data
+      if (State.me) {
+        App.refreshAll();
+      } else {
+        App.loadLandingFeed();
+      }
+
+      // Deep link
+      App.handleHashChange();
+      on(window, 'hashchange', App.handleHashChange);
+    },
+
+    bindGlobal() {
+      // Search
+      const searchInput = byId('searchInput');
+      if (searchInput) {
+        searchInput.addEventListener('input', U.debounce((e) => {
+          App.performSearch(e.target.value);
+        }, 260));
+      }
+
+      // Nav scroll state
+      const nav = byId('nav');
+      if (nav) {
+        window.addEventListener('scroll', () => {
+          nav.classList.toggle('is-scrolled', window.scrollY > 12);
+        }, { passive: true });
+      }
+
+      // Online/offline
+      on(window, 'online', () => {
+        State.online = true;
+        byId('netBar')?.setAttribute('data-open', 'false');
+        U.toast('عاد الاتصال', 'ph-wifi', 'success');
+      });
+      on(window, 'offline', () => {
+        State.online = false;
+        byId('netBar')?.setAttribute('data-open', 'true');
+      });
+
+      // Global click — close search results
+      on(document, 'click', (e) => {
+        if (!e.target.closest('.search')) {
+          const results = byId('searchResults');
+          if (results) results.dataset.open = 'false';
+        }
+      });
+
+      // Global Escape
+      on(document, 'keydown', (e) => {
+        if (e.key === 'Escape') {
+          const results = byId('searchResults');
+          if (results?.dataset.open === 'true') {
+            results.dataset.open = 'false';
+            byId('searchInput')?.blur();
+          }
+        }
+        // Cmd/Ctrl + K
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          e.preventDefault();
+          App.toggleCommandPalette();
+        }
+      });
+
+      // Username/Email async check
+      const regUsername = byId('regUsername');
+      const regEmail = byId('regEmail');
+      if (regUsername) {
+        regUsername.addEventListener('input', U.debounce((e) => Auth.checkUsername(e.target), 500));
+      }
+      if (regEmail) {
+        regEmail.addEventListener('input', U.debounce((e) => Auth.checkEmail(e.target), 500));
+      }
+
+      // Composer trigger — keyboard
+      $$('.composer-trigger').forEach(trig => {
+        trig.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            Composer.open();
+          }
+        });
+      });
+
+      // Sort tabs
+      $$('.sort-tab').forEach(t => {
+        on(t, 'click', () => {
+          $$('.sort-tab').forEach(x => x.setAttribute('aria-selected', 'false'));
+          t.setAttribute('aria-selected', 'true');
+          App.setSort(t.dataset.sort);
+        });
+      });
+
+      // Install banner
+      Install.init();
+
+      // Visibility — refresh on return
+      on(document, 'visibilitychange', () => {
+        if (document.visibilityState === 'visible' && State.me) {
+          App.refreshChatsBadge();
+        }
+      });
+    },
+
+    bindTabs() {
+      const dock = byId('dock');
+      if (!dock) return;
+      $$('.dock-item[data-tab]').forEach(btn => {
+        on(btn, 'click', () => App.switchTab(btn.dataset.tab));
+      });
+    },
+
+    onAuthChange() {
+      App.updateUserUI();
+      if (State.me) {
+        App.loadFeed('home');
+        App.loadChats();
+      } else {
+        App.goHome();
+      }
+    },
+
+    updateUserUI() {
+      const signIn = byId('signInBtn');
+      const avatarBtn = byId('avatarBtn');
+      const avatarImg = byId('avatarImg');
+      const composerAvatar = byId('composerAvatar');
+      const composerFormAvatar = byId('composerFormAvatar');
+      const composerUserName = byId('composerUserName');
+      const dock = byId('dock');
+
+      if (State.me) {
+        if (signIn) signIn.hidden = true;
+        if (avatarBtn) avatarBtn.hidden = false;
+        if (avatarImg) avatarImg.src = State.me.avatar || '';
+        if (composerAvatar) composerAvatar.src = State.me.avatar || '';
+        if (composerFormAvatar) composerFormAvatar.src = State.me.avatar || '';
+        if (composerUserName) composerUserName.textContent = State.me.name || '—';
+        if (dock) dock.hidden = false;
+        App.updateProfileUI();
+      } else {
+        if (signIn) signIn.hidden = false;
+        if (avatarBtn) avatarBtn.hidden = true;
+        if (dock) dock.hidden = true;
+      }
+    },
+
+    updateProfileUI() {
+      if (!State.me) return;
+      const set = (id, val) => { const el = byId(id); if (el) el.textContent = val; };
+      const img = byId('profileAvatar');
+      if (img) img.src = State.me.avatar || '';
+      set('profileName', State.me.name || '');
+      set('profileHandle', State.me.handle || '');
+      set('profileBio', State.me.bio || '');
+      set('statFollowers', U.formatNumber(State.me.followers || 0));
+      set('statFollowing', U.formatNumber(State.me.following || 0));
+    },
+
+    applyTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      const icon = byId('themeIcon');
+      if (icon) icon.className = theme === 'dark' ? 'ph ph-moon' : 'ph ph-sun';
+      Store.set('theme', theme);
+    },
+
+    toggleTheme() {
+      const current = document.documentElement.dataset.theme || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      App.applyTheme(next);
+      U.vibrate(8);
+    },
+
+    switchTab(tab, opts = {}) {
+      if (['liked', 'saved', 'profile', 'chat'].includes(tab) && !State.me) {
+        Auth.open('login');
+        return;
+      }
+
+      State.tab = tab;
+      $$('.tab-panel').forEach(p => {
+        p.classList.toggle('is-active', p.dataset.tab === tab);
+      });
+      $$('.dock-item[data-tab]').forEach(b => {
+        b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false');
+      });
+
+      if (!opts.silent) {
+        const url = new URL(location.href);
+        url.hash = tab === 'home' ? '' : `#${tab}`;
+        history.replaceState(null, '', url);
+        window.scrollTo({ top: 0, behavior: State.reducedMotion ? 'auto' : 'smooth' });
+      }
+
+      // Lazy load
+      const loaders = {
+        home: () => App.loadFeed('home'),
+        explore: () => App.loadFeed('explore'),
+        liked: () => App.loadFeed('liked'),
+        saved: () => App.loadFeed('saved'),
+        profile: () => App.loadProfile(),
+        chat: () => App.loadChats(),
+      };
+      loaders[tab] && loaders[tab]();
+    },
+
+    handleHashChange() {
+      const hash = location.hash.replace('#', '') || 'home';
+      const valid = ['home', 'explore', 'liked', 'saved', 'chat', 'profile'];
+      if (valid.includes(hash)) {
+        App.switchTab(hash, { silent: true });
+      }
+    },
+
+    onViewChange() {
+      const isApp = location.pathname.startsWith('/app') ||
+                    Store.get('entered_app', false);
+      const landing = byId('view-landing');
+      const app = byId('view-app');
+      if (landing) landing.hidden = isApp;
+      if (app) app.hidden = !isApp;
+    },
+
+    previewFeed() {
+      Store.set('entered_app', true);
+      const landing = byId('view-landing');
+      const app = byId('view-app');
+      if (landing) landing.hidden = true;
+      if (app) app.hidden = false;
+      if (State.me) {
+        byId('dock').hidden = false;
+        App.loadFeed('home');
+      } else {
+        App.loadFeed('home');
+      }
+      window.scrollTo({ top: 0 });
+    },
+
+    goHome() {
+      Store.remove('entered_app');
+      const landing = byId('view-landing');
+      const app = byId('view-app');
+      if (landing) landing.hidden = false;
+      if (app) app.hidden = true;
+      const dock = byId('dock');
+      if (dock) dock.hidden = true;
+      window.scrollTo({ top: 0 });
+    },
+
+    setSort(sort) {
+      State.sort = sort;
+      App.loadFeed(State.tab);
+    },
+
+    filterByTag(tag) {
+      State.filter = tag;
+      $$('.filter').forEach(f => {
+        f.setAttribute('aria-pressed', f.dataset.tag === tag ? 'true' : 'false');
+      });
+      App.loadFeed('home');
+    },
+
+    async refreshAll(showToast = false) {
+      if (!State.me) { App.loadLandingFeed(); return; }
+      const btn = $('.refresh-btn');
+      btn?.setAttribute('aria-busy', 'true');
+      try {
+        await Promise.all([
+          App.loadFeed('home'),
+          App.loadChats(),
+        ]);
+        if (showToast) U.toast('تم التحديث', 'ph-check-circle', 'success');
+      } finally {
+        btn?.removeAttribute('aria-busy');
+      }
+    },
+
+    async loadLandingFeed() {
+      const feed = byId('landingFeed');
+      if (!feed) return;
+      try {
+        const posts = await API.get('/api/posts?limit=6');
+        const html = posts.map(p => Render.prompt(p)).join('');
+        feed.innerHTML = html || Render.empty('لا توجد برومبتات بعد', 'ph-sparkle');
+      } catch {}
+    },
+
+    async loadFeed(which) {
+      const feedMap = {
+        home: 'homeFeed',
+        explore: 'exploreFeed',
+        liked: 'likedFeed',
+        saved: 'savedFeed',
+        profile: 'profilePanel',
+      };
+      const feedId = feedMap[which];
+      const feed = byId(feedId);
+      if (!feed) return;
+
+      // Show skeletons on first load
+      const isFirstLoad = !State.posts[which] || State.posts[which].length === 0;
+      if (isFirstLoad) {
+        feed.setAttribute('aria-busy', 'true');
+        feed.innerHTML = Array(6).fill(Render.skeleton()).join('');
+      }
+
+      try {
+        let posts = [];
+        if (which === 'liked' || which === 'saved') {
+          // Fetch all, filter client-side
+          const all = await API.get('/api/posts?limit=100');
+          posts = all.filter(p => which === 'liked' ? p.liked : p.saved);
+          App.updateCountPill(which, posts.length);
+        } else if (which === 'profile') {
+          posts = await API.get(`/api/users/${State.me.id}/posts`);
+        } else if (which === 'home') {
+          const params = new URLSearchParams({ sort: State.sort, limit: 50 });
+          if (State.filter) params.set('tag', State.filter);
+          posts = await API.get(`/api/posts?${params}`);
+          App.loadFilters(posts);
+        } else if (which === 'explore') {
+          posts = await API.get('/api/posts?sort=top&limit=50');
+          App.loadExploreFilters(posts);
+        }
+
+        State.posts[which] = posts;
+
+        if (posts.length === 0) {
+          feed.innerHTML = Render.emptyFor(which);
+        } else {
+          feed.innerHTML = posts.map(p => Render.prompt(p)).join('');
+        }
+        feed.setAttribute('aria-busy', 'false');
+      } catch (err) {
+        feed.innerHTML = Render.empty('تعذّر التحميل', 'ph-warning-circle');
+        feed.setAttribute('aria-busy', 'false');
+      }
+    },
+
+    updateCountPill(which, count) {
+      const pill = byId(which === 'liked' ? 'likedCount' : 'savedCount');
+      if (!pill) return;
+      pill.dataset.count = String(count);
+      const label = pill.querySelector('[data-count-label]');
+      if (label) label.textContent = U.formatNumber(count);
+    },
+
+    loadFilters(posts) {
+      const wrap = byId('filters');
+      if (!wrap) return;
+      const tags = new Set();
+      posts.forEach(p => (p.tags || []).forEach(t => tags.add(t)));
+      if (tags.size === 0) { wrap.innerHTML = ''; return; }
+
+      const top = [...tags].slice(0, 12);
+      wrap.innerHTML = `
+        <button class="filter" data-tag="" aria-pressed="${!State.filter ? 'true' : 'false'}" type="button">
+          <i class="ph ph-squares-four" aria-hidden="true"></i> الكل
+        </button>
+        ${top.map(t => `
+          <button class="filter" data-tag="${escapeHtml(t)}" aria-pressed="${State.filter === t ? 'true' : 'false'}" type="button">
+            ${escapeHtml(t)}
+          </button>
+        `).join('')}
+      `;
+      $$('.filter', wrap).forEach(btn => {
+        on(btn, 'click', () => {
+          const tag = btn.dataset.tag;
+          State.filter = tag || null;
+          $$('.filter', wrap).forEach(f => {
+            f.setAttribute('aria-pressed', f.dataset.tag === (tag || '') ? 'true' : 'false');
+          });
+          App.loadFeed('home');
+        });
+      });
+    },
+
+    loadExploreFilters(posts) {
+      const wrap = byId('exploreFilters');
+      if (!wrap) return;
+      const models = new Set();
+      posts.forEach(p => p.model && models.add(p.model));
+      if (models.size === 0) { wrap.innerHTML = ''; return; }
+
+      wrap.innerHTML = `
+        <button class="filter" aria-pressed="true" type="button"><i class="ph ph-squares-four" aria-hidden="true"></i> الكل</button>
+        ${[...models].slice(0, 8).map(m => `
+          <button class="filter" aria-pressed="false" type="button">${escapeHtml(m)}</button>
+        `).join('')}
+      `;
+    },
+
+    async loadProfile() {
+      if (!State.me) return;
+      App.updateProfileUI();
+      try {
+        const user = await API.get(`/api/users/${State.me.id}`);
+        State.me.followers = user.followers;
+        State.me.following = user.following;
+        App.updateProfileUI();
+        const posts = await API.get(`/api/users/${State.me.id}/posts`);
+        const stats = byId('statPosts');
+        if (stats) stats.textContent = U.formatNumber(posts.length);
+        State.posts.profile = posts;
+        const panel = byId('profilePanel');
+        if (panel) {
+          panel.innerHTML = posts.length
+            ? posts.map(p => Render.prompt(p)).join('')
+            : Render.emptyFor('profile');
+        }
+      } catch {}
+    },
+
+    async performSearch(q) {
+      const results = byId('searchResults');
+      if (!results) return;
+      if (!q || q.length < 2) {
+        results.dataset.open = 'false';
+        return;
+      }
+      try {
+        const posts = await API.get(`/api/posts?q=${encodeURIComponent(q)}&limit=8`);
+        if (posts.length === 0) {
+          results.innerHTML = `<div style="padding:20px;text-align:center;color:var(--fg-3);font-size:var(--fs-2)">لا نتائج</div>`;
+        } else {
+          results.innerHTML = posts.map(p => `
+            <div class="search-result" onclick="Post.openDetail(${p.id})" role="option" tabindex="0">
+              <img src="${escapeHtml(p.image || '')}" alt="" loading="lazy">
               <div class="search-result-info">
-                <strong>${U.esc(p.title)}</strong>
-                <span>${U.esc(p.prompt)}</span>
+                <strong>${escapeHtml(p.title)}</strong>
+                <span>${escapeHtml(p.prompt.slice(0, 60))}…</span>
               </div>
             </div>
           `).join('');
         }
-        results.classList.add('open');
+        results.dataset.open = 'true';
+      } catch {
+        results.dataset.open = 'false';
+      }
+    },
+
+    async refreshChatsBadge() {
+      if (!State.me) return;
+      try {
+        const chats = await API.get('/api/chats');
+        const unread = chats.reduce((sum, c) => sum + (c.unread || 0), 0);
+        const badge = byId('dockChatBadge');
+        if (badge) {
+          badge.hidden = unread === 0;
+          badge.textContent = unread > 99 ? '99+' : String(unread);
+        }
       } catch {}
-    }, 280);
+    },
 
-    input.addEventListener('input', e => {
-      const q = e.target.value.trim();
-      this.state.search = q;
-      if (this.state.tab !== 'home') this.switchTab('home');
-      else this.renderHomeFeed();
-      doSearch(q);
-    });
+    openProfile(userId) {
+      if (!userId) return;
+      // Simple stub — could route to /u/<id>
+      U.toast('صفحة المبدع قريباً', 'ph-user');
+    },
 
-    input.addEventListener('blur', () => setTimeout(() => results.classList.remove('open'), 200));
-    input.addEventListener('focus', () => { if (input.value.trim()) results.classList.add('open'); });
-  },
+    confirm({ title, message, confirmText = 'تأكيد', cancelText = 'إلغاء', danger = false }) {
+      return new Promise((resolve) => {
+        const scrim = create('div', {
+          class: 'scrim',
+          dataset: { open: 'false' },
+          role: 'dialog',
+          'aria-modal': 'true',
+        });
+        const modal = create('div', { class: 'modal' });
+        modal.innerHTML = `
+          <h3>${escapeHtml(title)}</h3>
+          <p>${escapeHtml(message)}</p>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" data-act="cancel">${escapeHtml(cancelText)}</button>
+            <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-act="confirm">${escapeHtml(confirmText)}</button>
+          </div>
+        `;
+        scrim.appendChild(modal);
+        document.body.appendChild(scrim);
 
-  async openPostFromSearch(id) {
-    try {
-      const p = await API.get(`/api/posts/${id}`);
-      U.copyText(p.prompt, async () => {
-        U.toast('تم نسخ البرومبت', 'ph-copy');
-        try { await API.post(`/api/posts/${id}/copy`); } catch {}
+        requestAnimationFrame(() => {
+          scrim.dataset.open = 'true';
+          const release = U.focusTrap(modal);
+          const finish = (val) => {
+            scrim.dataset.open = 'false';
+            release();
+            setTimeout(() => scrim.remove(), 300);
+            resolve(val);
+          };
+          modal.querySelector('[data-act="cancel"]').onclick = () => finish(false);
+          modal.querySelector('[data-act="confirm"]').onclick = () => finish(true);
+          scrim.onclick = (e) => { if (e.target === scrim) finish(false); };
+          on(document, 'keydown', function esc(e) {
+            if (e.key === 'Escape') {
+              document.removeEventListener('keydown', esc);
+              finish(false);
+            }
+          });
+        });
       });
-      U.$('#searchResults')?.classList.remove('open');
-      U.$('#searchInput').value = '';
-      this.state.search = '';
-    } catch {}
-  },
+    },
+  };
 
-  bindProfileTabs() {
-    U.$$('#profileTabs .tab').forEach(t => t.addEventListener('click', () => {
-      U.$$('#profileTabs .tab').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      this.state.profileTab = t.dataset.ptab;
-      this.renderProfilePanel();
-    }));
-  },
+  /* ─────────────── 8. RENDER ─────────────── */
+  const Render = {
+    prompt(p) {
+      const author = p.author_data || {};
+      const tags = Array.isArray(p.tags) ? p.tags : [];
+      const img = p.image || 'https://placehold.co/800x600/0E0E14/22D3EE?text=خَيال';
 
-  renderProfilePanel() {
-    const panel = U.$('#profilePanel');
-    if (!panel) return;
-    const tab = this.state.profileTab;
-    if (tab === 'posts') {
-      const mine = K.me ? this.state.posts.filter(p => p.author === K.me.id) : [];
-      panel.innerHTML = '<div class="feed" id="profilePostsFeed"></div>';
-      Feed.render('profilePostsFeed', mine, 'لم تنشر منشوراً بعد', 'شارِك أول واحد.');
-    } else if (tab === 'liked') {
-      const liked = this.state.posts.filter(p => p.liked);
-      panel.innerHTML = '<div class="feed" id="profileLikedFeed"></div>';
-      Feed.render('profileLikedFeed', liked, 'لا إعجابات بعد', 'اضغط القلب في أي منشور.');
-    } else if (tab === 'settings') {
-      panel.innerHTML = `
-        <div class="settings-list">
-          ${this.settingRow('إشعارات البريد', 'احصل على إشعار عند الإعجاب', true)}
-          ${this.settingRow('ملف عام', 'يمكن لأي شخص رؤية منشوراتك', true)}
-          ${this.settingRow('تقليل الحركة', 'تقليل الرسوم المتحركة', false)}
-          <a href="/privacy"><i class="ph ph-shield-check"></i> سياسة الخصوصية</a>
-          <a href="#" onclick="event.preventDefault();App.toggleTheme();U.toast('تم تبديل المظهر','ph-moon')"><i class="ph ph-moon"></i> تبديل المظهر</a>
-          <a href="#" onclick="event.preventDefault();if(confirm('مسح التخزين المؤقت؟')){navigator.serviceWorker?.controller?.postMessage('CLEAR_CACHE');U.toast('تم المسح','ph-broom')}"><i class="ph ph-broom"></i> مسح الكاش</a>
+      return `
+        <article class="prompt-card" data-post-id="${p.id}">
+          <div class="prompt-media">
+            <img
+              src="${escapeHtml(img)}"
+              alt="${escapeHtml(p.title || '')}"
+              loading="lazy"
+              data-state="loading"
+              onload="this.dataset.state='loaded'"
+              onerror="this.dataset.state='error'">
+
+            ${p.model ? `
+              <span class="prompt-model">
+                <i class="ph ph-sparkle" aria-hidden="true"></i>
+                ${escapeHtml(p.model)}
+              </span>
+            ` : ''}
+
+            <div class="prompt-floats">
+              <button
+                class="float-btn"
+                data-action="like"
+                aria-pressed="${p.liked ? 'true' : 'false'}"
+                aria-label="إعجاب"
+                onclick="Post.like(this, ${p.id})"
+                type="button">
+                <i class="ph ph-heart" aria-hidden="true"></i>
+              </button>
+
+              <button
+                class="float-btn"
+                data-action="save"
+                aria-pressed="${p.saved ? 'true' : 'false'}"
+                aria-label="حفظ"
+                onclick="Post.save(this, ${p.id})"
+                type="button">
+                <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="prompt-body">
+            ${author.id ? `
+              <div class="prompt-author" onclick="App.openProfile(${author.id})">
+                <img class="avatar avatar-sm" src="${escapeHtml(author.avatar || '')}" alt="" loading="lazy">
+                <div class="prompt-author-info">
+                  <span class="prompt-author-name">
+                    ${escapeHtml(author.name || '')}
+                    ${author.verified ? '<i class="ph ph-seal-check" aria-label="موثّق"></i>' : ''}
+                  </span>
+                  <span class="prompt-author-meta">${escapeHtml(author.handle || '')}</span>
+                </div>
+              </div>
+            ` : ''}
+
+            <h3 class="prompt-title">${escapeHtml(p.title || '')}</h3>
+
+            <div class="prompt-excerpt" onclick="Post.copy('${p.id}', this)">
+              ${escapeHtml(p.prompt || '')}
+              <button
+                type="button"
+                class="prompt-excerpt-copy"
+                aria-label="نسخ البرومبت"
+                onclick="event.stopPropagation();Post.copy('${p.id}', this.parentElement)">
+                <i class="ph ph-copy" aria-hidden="true"></i>
+              </button>
+            </div>
+
+            ${tags.length ? `
+              <div class="prompt-tags">
+                ${tags.slice(0, 4).map(t => `
+                  <button class="tag" type="button" onclick="App.filterByTag('${escapeHtml(t)}')">${escapeHtml(t)}</button>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="prompt-actions">
+            <button
+              class="action"
+              data-action="like"
+              aria-pressed="${p.liked ? 'true' : 'false'}"
+              onclick="Post.like(this, ${p.id})"
+              type="button">
+              <i class="ph ph-heart" aria-hidden="true"></i>
+              <span data-likes-count>${U.formatNumber(p.likes || 0)}</span>
+            </button>
+
+            <button class="action" onclick="Drawers.openComments(${p.id})" type="button">
+              <i class="ph ph-chat-circle" aria-hidden="true"></i>
+              <span>${U.formatNumber(p.comments || 0)}</span>
+            </button>
+
+            <button class="action action-primary" onclick="Post.copy('${p.id}', this)" type="button">
+              <i class="ph ph-copy" aria-hidden="true"></i>
+              <span>نسخ</span>
+            </button>
+          </div>
+        </article>
+      `;
+    },
+
+    skeleton() {
+      return `
+        <article class="prompt-card skeleton-card" aria-hidden="true">
+          <div class="prompt-media skeleton skeleton-media"></div>
+          <div class="prompt-body">
+            <div class="skeleton skeleton-line" style="width:55%"></div>
+            <div class="skeleton skeleton-line" style="width:85%;height:18px"></div>
+            <div class="skeleton skeleton-line" style="width:100%"></div>
+            <div class="skeleton skeleton-line" style="width:75%"></div>
+          </div>
+        </article>
+      `;
+    },
+
+    empty(title, icon = 'ph-sparkle') {
+      return `
+        <div class="empty-block">
+          <i class="ph ${icon}" aria-hidden="true"></i>
+          <h4>${escapeHtml(title)}</h4>
         </div>
       `;
-      U.$$('.switch').forEach(s => s.addEventListener('click', () => {
-        const on = s.getAttribute('aria-checked') === 'true';
-        s.setAttribute('aria-checked', String(!on));
-        U.haptic();
-      }));
-    }
-  },
+    },
 
-  settingRow(title, desc, on) {
-    return `<div class="setting-row">
-      <div class="meta"><strong>${title}</strong><span>${desc}</span></div>
-      <button class="switch" role="switch" aria-checked="${on}" aria-label="${title}"></button>
-    </div>`;
-  },
-
-  async openPublisher(uid) {
-    try {
-      const [u, posts] = await Promise.all([
-        API.get(`/api/users/${uid}`),
-        API.get(`/api/users/${uid}/posts`)
-      ]);
-      const isMe = K.me && K.me.id === u.id;
-      U.$('#commentsBody').innerHTML = `
-        <div style="padding:var(--s6);text-align:center;position:relative">
-          <div style="position:absolute;top:0;left:0;right:0;height:100px;background:linear-gradient(135deg,rgba(34,211,238,.3),rgba(139,92,246,.3))"></div>
-          <img src="${u.avatar}" style="width:100px;height:100px;border-radius:50%;object-fit:cover;border:4px solid var(--bg-0);position:relative;margin:40px auto 0">
-          <h3 style="margin-top:var(--s4);font-size:var(--t-2xl);font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px">
-            ${U.esc(u.name)}${u.verified ? '<i class="ph ph-seal-check" style="color:var(--cyan);font-size:22px"></i>' : ''}
-          </h3>
-          <div style="color:var(--fg-3);font-size:var(--t-sm);margin-top:4px">${U.esc(u.handle)}</div>
-          <p style="margin-top:var(--s4);color:var(--fg-2);line-height:1.7;max-width:44ch;margin-inline:auto">${U.esc(u.bio || '')}</p>
-          <div class="profile-stats" style="justify-content:center;margin-top:var(--s5)">
-            <div class="stat"><strong>${U.fmtNum(posts.length)}</strong><span>منشور</span></div>
-            <div class="stat"><strong>${U.fmtNum(u.followers)}</strong><span>متابِع</span></div>
-            <div class="stat"><strong>${U.fmtNum(u.following)}</strong><span>يتابع</span></div>
-          </div>
-          ${!isMe ? `
-          <div style="display:flex;gap:var(--s2);justify-content:center;margin-top:var(--s5);flex-wrap:wrap">
-            <button class="btn btn-primary btn-sm" onclick="App.followUser(${u.id},this)"><i class="ph ph-user-plus"></i> متابعة</button>
-            <button class="btn btn-glass btn-sm" onclick="Chat.openWithUser(${u.id})"><i class="ph ph-chat-circle-dots"></i> راسل</button>
-          </div>` : ''}
-        </div>`;
-      const cf = U.$('#commentForm');
-      if (cf) cf.style.display = 'none';
-      U.$('#commentsDrawer').classList.add('open');
-      document.body.style.overflow = 'hidden';
-    } catch (e) {
-      U.toast('تعذّر التحميل', 'ph-warning');
-    }
-  },
-
-  async followUser(uid, btn) {
-    if (!K.me) { Auth.open(); return; }
-    try {
-      const r = await API.post(`/api/users/${uid}/follow`);
-      btn.innerHTML = r.following ? '<i class="ph ph-check"></i> تتابعه' : '<i class="ph ph-user-plus"></i> متابعة';
-      btn.classList.toggle('btn-primary', !r.following);
-      btn.classList.toggle('btn-glass', r.following);
-      U.toast(r.following ? 'بدأت المتابعة' : 'أُلغيت المتابعة');
-      U.haptic();
-    } catch (e) { U.toast(e.message, 'ph-warning'); }
-  },
-
-  bindKeyboard() {
-    let lastG = 0;
-    document.addEventListener('keydown', e => {
-      const t = e.target;
-      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable) {
-        if (e.key === 'Escape') t.blur();
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); CommandPalette.open(); return; }
-      if (e.key === 'Escape') {
-        U.$$('.scrim').forEach(s => s.classList.remove('open'));
-        U.$$('.drawer').forEach(d => d.classList.remove('open'));
-        CommandPalette.close();
-        document.body.style.overflow = '';
-        return;
-      }
-      if (e.key === '/') { e.preventDefault(); U.$('#searchInput')?.focus(); return; }
-      if (e.key === 'n') { e.preventDefault(); Composer.open(); return; }
-      if (e.key === 'g') { lastG = Date.now(); return; }
-      if (Date.now() - lastG < 800) {
-        const map = { h: 'home', e: 'explore', c: 'chat', p: 'profile', l: 'liked', s: 'saved' };
-        const k = e.key.toLowerCase();
-        if (map[k]) { this.switchTab(map[k]); lastG = 0; }
-      }
-    });
-  },
-
-  bindGestures() {
-    let sx = 0, sy = 0;
-    const layout = U.$('#chatLayout');
-    if (!layout) return;
-    layout.addEventListener('touchstart', e => {
-      if (window.innerWidth > 820) return;
-      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
-    }, { passive: true });
-    layout.addEventListener('touchend', e => {
-      if (window.innerWidth > 820) return;
-      const dx = e.changedTouches[0].clientX - sx;
-      const dy = Math.abs(e.changedTouches[0].clientY - sy);
-      if (dy > 40) return;
-      if (dx > 80 && layout.classList.contains('show-list')) layout.classList.remove('show-list');
-      else if (dx < -80 && !layout.classList.contains('show-list')) layout.classList.add('show-list');
-    }, { passive: true });
-  },
-
-  applyUser() {
-    const u = K.me;
-    if (!u) return;
-    U.$('#signInBtn').style.display = 'none';
-    U.$('#avatarBtn').style.display = 'grid';
-    const av = U.$('#avatarImg'); if (av) av.src = u.avatar;
-    const pn = U.$('#profileName'); if (pn) pn.textContent = u.name;
-    const ph = U.$('#profileHandle'); if (ph) ph.textContent = u.handle;
-    const pb = U.$('#profileBio'); if (pb) pb.textContent = u.bio || '';
-    const pa = U.$('#profileAvatar'); if (pa) pa.src = u.avatar;
-    const ca = U.$('#composerAvatar'); if (ca) ca.src = u.avatar;
-  }
-};
-
-
-/* ═══ FEED ═══ */
-const Feed = {
-  render(id, posts, emptyT, emptyB, compact) {
-    const el = U.$('#' + id);
-    if (!el) return;
-
-    if (!posts.length) {
-      el.innerHTML = `<div class="empty">
-        <i class="ph ph-sparkle"></i>
-        <h4>${emptyT || 'لا توجد منشورات'}</h4>
-        <p>${emptyB || 'جرّب فلتراً آخر.'}</p>
-      </div>`;
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      el.innerHTML = posts.map(p => this.card(p, compact)).join('');
-      requestAnimationFrame(() => ImageLoader.observe());
-    });
-  },
-
-  card(p, compact) {
-    const a = p.author_data || K.users[p.author] || { name: 'غير معروف', handle: '@?', avatar: '' };
-    if (a.id) K.users[a.id] = a;
-    const tags = (p.tags || []).slice(0, 3).map(t =>
-      `<span class="tag" onclick="event.stopPropagation();App.setFilter('${U.esc(t)}')">#${U.esc(t)}</span>`
-    ).join('');
-    const v = a.verified ? '<i class="ph ph-seal-check verified"></i>' : '';
-    const hasImage = !!p.image;
-
-    return `<article class="prompt-card ${hasImage ? '' : 'no-image'}" data-post="${p.id}">
-      ${hasImage ? `
-      <div class="prompt-img" onclick="App.openPublisher(${a.id || p.author})">
-        <img src="${p.image}" alt="${U.esc(p.title)}" loading="lazy" decoding="async"
-             onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,rgba(34,211,238,.2),rgba(139,92,246,.2))'">
-        <span class="model-tag"><i class="ph ph-cpu"></i> ${U.esc(p.model || '')}</span>
-        <div class="card-actions-top" onclick="event.stopPropagation()">
-          <button class="glass-btn ${p.liked ? 'liked' : ''}" data-like="${p.id}" onclick="Feed.toggleLike(${p.id})" aria-label="إعجاب">
-            <i class="ph${p.liked ? '-fill' : ''} ph-heart"></i>
-          </button>
-          <button class="glass-btn ${p.saved ? 'saved' : ''}" data-save="${p.id}" onclick="Feed.toggleSave(${p.id})" aria-label="حفظ">
-            <i class="ph${p.saved ? '-fill' : ''} ph-bookmark-simple"></i>
-          </button>
+    emptyFor(which) {
+      const map = {
+        home: { title: 'لا توجد برومبتات بعد', icon: 'ph-sparkle', text: 'كن أول من ينشر!' },
+        explore: { title: 'لا يوجد استكشاف بعد', icon: 'ph-compass', text: 'عُد لاحقاً' },
+        liked: { title: 'لا توجد إعجابات بعد', icon: 'ph-heart', text: 'ابدأ بوضع قلبك على ما يعجبك' },
+        saved: { title: 'المكتبة فارغة', icon: 'ph-bookmark-simple', text: 'احفظ البرومبتات المميزة' },
+        profile: { title: 'لم تنشر بعد', icon: 'ph-image-square', text: 'شارك أول برومبت لك' },
+      };
+      const cfg = map[which] || map.home;
+      return `
+        <div class="empty-block">
+          <i class="ph ${cfg.icon}" aria-hidden="true"></i>
+          <h4>${cfg.title}</h4>
+          <p>${cfg.text}</p>
         </div>
-      </div>` : `
-      <div style="padding:14px 16px 0;display:flex;justify-content:space-between;align-items:center">
-        <span class="model-tag" style="position:static"><i class="ph ph-cpu"></i> ${U.esc(p.model || 'منشور نصي')}</span>
-        <div style="display:flex;gap:6px">
-          <button class="glass-btn ${p.liked ? 'liked' : ''}" data-like="${p.id}" onclick="Feed.toggleLike(${p.id})" aria-label="إعجاب" style="position:static">
-            <i class="ph${p.liked ? '-fill' : ''} ph-heart"></i>
-          </button>
-          <button class="glass-btn ${p.saved ? 'saved' : ''}" data-save="${p.id}" onclick="Feed.toggleSave(${p.id})" aria-label="حفظ" style="position:static">
-            <i class="ph${p.saved ? '-fill' : ''} ph-bookmark-simple"></i>
-          </button>
-        </div>
-      </div>`}
-      <div class="prompt-body">
-        <div class="author-row" onclick="App.openPublisher(${a.id || p.author})">
-          <img class="author-avatar" src="${a.avatar || ''}" alt="" loading="lazy">
-          <div class="author-info">
-            <span class="author-name">${U.esc(a.name)}${v}</span>
-            <span class="author-meta">${U.esc(a.handle)} · ${U.fmtDate(p.time)}</span>
-          </div>
-        </div>
-        <h3 class="prompt-title">${U.esc(p.title)}</h3>
-        <div class="prompt-excerpt" onclick="event.stopPropagation();Feed.copyPrompt(${p.id})" title="انقر للنسخ">${U.esc(p.prompt)}</div>
-        <div class="prompt-tags">${tags}</div>
-      </div>
-      <div class="prompt-actions">
-        <button class="action ${p.liked ? 'liked' : ''}" data-like-action="${p.id}" onclick="Feed.toggleLike(${p.id})">
-          <i class="ph${p.liked ? '-fill' : ''} ph-heart"></i>
-          <span data-like-count="${p.id}">${U.fmtNum(p.likes)}</span>
-        </button>
-        <button class="action" onclick="Drawers.openComments(${p.id})" aria-label="تعليقات">
-          <i class="ph ph-chat-circle"></i>
-          <span data-comment-count="${p.id}">${U.fmtNum(p.comments || 0)}</span>
-        </button>
-        <button class="action" onclick="Feed.share(${p.id})" aria-label="مشاركة">
-          <i class="ph ph-share-network"></i>
-        </button>
-        <button class="action" onclick="U.speak(${JSON.stringify(p.prompt)})" aria-label="استماع">
-          <i class="ph ph-speaker-high"></i>
-        </button>
-        ${!compact ? `
-        <button class="action action-primary" data-copy="${p.id}" onclick="Feed.copyPrompt(${p.id})">
-          <i class="ph ph-copy"></i><span>نسخ</span>
-        </button>` : `
-        <button class="action" data-copy="${p.id}" onclick="Feed.copyPrompt(${p.id})">
-          <i class="ph ph-copy"></i><span data-copies="${p.id}">${U.fmtNum(p.copies)}</span>
-        </button>`}
-      </div>
-    </article>`;
-  },
+      `;
+    },
+  };
 
-  async toggleLike(id) {
-    if (!K.me) { Auth.open(); return; }
-    const p = App.state.posts.find(x => x.id === id);
-    if (!p) return;
-    const wasLiked = p.liked;
-    p.liked = !p.liked;
-    p.likes += p.liked ? 1 : -1;
-    this.syncCard(p);
-    U.haptic();
+  /* ─────────────── 9. POST ─────────────── */
+  const Post = {
+    async like(btn, postId) {
+      if (!State.me) { Auth.open('login'); return; }
+      if (State._pendingLikes.has(postId)) return;
+      State._pendingLikes.add(postId);
 
-    try {
-      const r = await API.post(`/api/posts/${id}/like`);
-      p.liked = r.liked; p.likes = r.likes;
-      this.syncCard(p);
-      Counts.update();
-    } catch (e) {
-      p.liked = wasLiked;
-      p.likes += wasLiked ? 1 : -1;
-      this.syncCard(p);
-      U.toast(e.message, 'ph-warning');
-    }
-  },
+      const wasLiked = btn.getAttribute('aria-pressed') === 'true';
+      const nextLiked = !wasLiked;
 
-  async toggleSave(id) {
-    if (!K.me) { Auth.open(); return; }
-    const p = App.state.posts.find(x => x.id === id);
-    if (!p) return;
-    const wasSaved = p.saved;
-    p.saved = !p.saved;
-    p.saves = (p.saves || 0) + (p.saved ? 1 : -1);
-    this.syncCard(p);
-    U.haptic();
+      // Optimistic
+      Post._toggleLikeUI(postId, nextLiked, wasLiked);
+      U.vibrate(12);
 
-    try {
-      const r = await API.post(`/api/posts/${id}/save`);
-      p.saved = r.saved; p.saves = r.saves;
-      this.syncCard(p);
-      Counts.update();
-      U.toast(r.saved ? 'حُفظ' : 'أُزيل', 'ph-bookmark-simple');
-    } catch (e) {
-      p.saved = wasSaved;
-      p.saves = (p.saves || 0) + (wasSaved ? 1 : -1);
-      this.syncCard(p);
-      U.toast(e.message, 'ph-warning');
-    }
-  },
-
-  syncCard(p) {
-    U.$$(`[data-like="${p.id}"]`).forEach(b => {
-      b.classList.toggle('liked', p.liked);
-      const i = b.querySelector('i'); if (i) i.className = `ph${p.liked ? '-fill' : ''} ph-heart`;
-    });
-    U.$$(`[data-save="${p.id}"]`).forEach(b => {
-      b.classList.toggle('saved', p.saved);
-      const i = b.querySelector('i'); if (i) i.className = `ph${p.saved ? '-fill' : ''} ph-bookmark-simple`;
-    });
-    U.$$(`[data-like-action="${p.id}"]`).forEach(b => {
-      b.classList.toggle('liked', p.liked);
-      const i = b.querySelector('i'); if (i) i.className = `ph${p.liked ? '-fill' : ''} ph-heart`;
-    });
-    U.$$(`[data-like-count="${p.id}"]`).forEach(el => el.textContent = U.fmtNum(p.likes));
-  },
-
-  async copyPrompt(id) {
-    const p = App.state.posts.find(x => x.id === id);
-    if (!p) return;
-    U.copyText(p.prompt, async () => {
-      U.$$(`[data-copy="${id}"]`).forEach(btn => {
-        btn.classList.add('copied');
-        const lbl = btn.querySelector('span');
-        const orig = lbl ? lbl.textContent : '';
-        if (lbl) lbl.textContent = 'تم النسخ';
-        setTimeout(() => { btn.classList.remove('copied'); if (lbl) lbl.textContent = orig; }, 1600);
-      });
-      U.toast('تم نسخ البرومبت', 'ph-copy');
-      U.haptic();
       try {
-        const r = await API.post(`/api/posts/${id}/copy`);
-        U.$$(`[data-copies="${id}"]`).forEach(el => el.textContent = U.fmtNum(r.copies));
-      } catch {}
-    });
-  },
-
-  async share(id) {
-    const p = App.state.posts.find(x => x.id === id);
-    if (!p) return;
-    const url = location.origin + '/app#prompt-' + id;
-    const shareData = {
-      title: p.title || 'برومبت على خَيال',
-      text: (p.prompt || '').slice(0, 140) + (p.prompt && p.prompt.length > 140 ? '…' : ''),
-      url
-    };
-    try {
-      if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
-        await navigator.share(shareData);
-        U.haptic();
-      } else if (navigator.share) {
-        await navigator.share(shareData);
-        U.haptic();
-      } else {
-        U.copy(url, () => U.toast('تم نسخ الرابط', 'ph-link'));
+        const res = await API.post(`/api/posts/${postId}/like`);
+        Post._syncLikeUI(postId, res.liked, res.likes);
+        // Update local state
+        Object.values(State.posts).forEach(arr => {
+          const p = arr.find(x => x.id === postId);
+          if (p) { p.liked = res.liked; p.likes = res.likes; }
+        });
+      } catch {
+        // Rollback
+        Post._syncLikeUI(postId, wasLiked, null);
+        U.toast('تعذّر تحديث الإعجاب', 'ph-warning-circle', 'error');
+      } finally {
+        State._pendingLikes.delete(postId);
       }
-    } catch (e) {
-      if (e && e.name !== 'AbortError') U.copy(url, () => U.toast('تم نسخ الرابط', 'ph-link'));
-    }
-  }
-};
+    },
 
-
-/* ═══ COMPOSER — نمط فيسبوك ═══ */
-const Composer = {
-  _mode: null,
-
-  open() {
-    if (!K.me) { Auth.open(); return; }
-
-    this._mode = null;
-    U.$$('.type-card').forEach(c => c.classList.remove('active'));
-    const form = U.$('#composerForm');
-    if (form) { form.style.display = 'none'; form.reset(); }
-    U.$('#composerTypes').style.display = 'grid';
-    U.$('#imageField').style.display = 'none';
-
-    const av = U.$('#composerFormAvatar');
-    if (av && K.me.avatar) av.src = K.me.avatar;
-    const nm = U.$('#composerUserName');
-    if (nm) nm.textContent = K.me.name;
-
-    U.$('#composerModal').classList.add('open');
-    document.body.style.overflow = 'hidden';
-    // ❌ لا كيبورد تلقائي
-  },
-
-  close(e) {
-    if (e && e.target !== e.currentTarget) return;
-    U.$('#composerModal').classList.remove('open');
-    document.body.style.overflow = '';
-    U.blur();
-    setTimeout(() => {
-      const form = U.$('#composerForm');
-      if (form) { form.reset(); form.style.display = 'none'; }
-      U.$$('.type-card').forEach(c => c.classList.remove('active'));
-      U.$('#composerTypes').style.display = 'grid';
-      U.$('#imageField').style.display = 'none';
-      this._mode = null;
-    }, 300);
-  },
-
-  chooseType(type) {
-    this._mode = type;
-    U.$$('.type-card').forEach(c => c.classList.toggle('active', c.dataset.type === type));
-
-    const form = U.$('#composerForm');
-    if (form) form.style.display = 'flex';
-
-    const imgField = U.$('#imageField');
-    const promptTextarea = U.$('#cPrompt');
-    const imgInput = U.$('#cImage');
-
-    if (type === 'prompt') {
-      if (imgField) imgField.style.display = 'flex';
-      if (imgInput) imgInput.required = true;
-      if (promptTextarea) promptTextarea.placeholder = 'Paste the exact prompt here…';
-    } else {
-      if (imgField) imgField.style.display = 'none';
-      if (imgInput) { imgInput.required = false; imgInput.value = ''; }
-      if (promptTextarea) promptTextarea.placeholder = 'اكتب برومبتك أو نصاً…';
-      this.clearPreview();
-    }
-  },
-
-  previewImage(url) {
-    const wrap = U.$('#imgPreview');
-    const img = U.$('#imgPreviewEl');
-    if (!wrap || !img) return;
-    const u = (url || '').trim();
-    if (!u || !/^https?:\/\//i.test(u)) {
-      wrap.hidden = true;
-      img.removeAttribute('src');
-      return;
-    }
-    img.onload = () => { wrap.hidden = false; };
-    img.onerror = () => { wrap.hidden = true; };
-    img.src = u;
-  },
-
-  clearPreview() {
-    const wrap = U.$('#imgPreview');
-    const img = U.$('#imgPreviewEl');
-    const input = U.$('#cImage');
-    if (wrap) wrap.hidden = true;
-    if (img) img.removeAttribute('src');
-    if (input) input.value = '';
-  },
-
-  async publish(e) {
-    e.preventDefault();
-    if (!K.me) { Auth.open(); return; }
-    if (!this._mode) { U.toast('اختر نوع المنشور أولاً', 'ph-warning'); return; }
-
-    const btn = U.$('#composerSubmit');
-    const orig = btn.innerHTML;
-    btn.disabled = true;
-    btn.classList.add('loading');
-    btn.innerHTML = '<span>جارٍ…</span>';
-
-    const body = {
-      title: (U.$('#cTitle').value || '').trim(),
-      prompt: (U.$('#cPrompt').value || '').trim(),
-      image: (U.$('#cImage')?.value || '').trim(),
-      model: U.$('#cModel').value,
-      tags: (U.$('#cTags').value || '').split(/[,،]/).map(t => t.trim()).filter(Boolean)
-    };
-
-    if (!body.title) { U.toast('أدخل عنواناً', 'ph-warning'); btn.disabled = false; btn.classList.remove('loading'); btn.innerHTML = orig; return; }
-    if (!body.prompt) { U.toast('أدخل نص البرومبت', 'ph-warning'); btn.disabled = false; btn.classList.remove('loading'); btn.innerHTML = orig; return; }
-    if (this._mode === 'prompt' && !body.image) { U.toast('أدخل رابط الصورة', 'ph-warning'); btn.disabled = false; btn.classList.remove('loading'); btn.innerHTML = orig; return; }
-
-    try {
-      const post = await API.post('/api/posts', body);
-      App.state.posts.unshift(post);
-      if (post.author_data) K.users[post.author_data.id] = post.author_data;
-
-      this.close();
-      App.renderAllFeeds();
-      U.toast('نُشر المنشور بنجاح', 'ph-sparkle');
-      U.haptic();
-
-      App.switchTab('profile');
-      App.state.profileTab = 'posts';
-      U.$$('#profileTabs .tab').forEach(x => x.classList.toggle('active', x.dataset.ptab === 'posts'));
-      App.renderProfilePanel();
-    } catch (err) {
-      U.toast(err.message, 'ph-warning');
-    } finally {
-      btn.disabled = false;
-      btn.classList.remove('loading');
-      btn.innerHTML = orig;
-    }
-  }
-};
-
-
-/* ═══ AUTH ═══ */
-const Auth = {
-  open(mode = 'login') {
-    U.$('#authModal').classList.add('open');
-    document.body.style.overflow = 'hidden';
-    this.switchMode(mode);
-    // ❌ لا كيبورد تلقائي
-  },
-
-  close(e) {
-    if (e && e.target !== e.currentTarget) return;
-    U.$('#authModal').classList.remove('open');
-    document.body.style.overflow = '';
-    U.blur();
-    setTimeout(() => {
-      U.$('#loginForm')?.reset();
-      U.$('#registerForm')?.reset();
-      const ps = U.$('#pwStrength'); if (ps) ps.dataset.level = '0';
-    }, 350);
-  },
-
-  switchMode(mode) {
-    U.$$('.auth-mini-form').forEach(f => {
-      f.classList.toggle('active',
-        (mode === 'login' && f.id === 'loginForm') ||
-        (mode === 'register' && f.id === 'registerForm')
-      );
-    });
-    const title = U.$('#authMiniTitle');
-    const sub = U.$('#authMiniSub');
-    if (title) title.textContent = mode === 'login' ? 'تسجيل الدخول' : 'حساب جديد';
-    if (sub) sub.textContent = mode === 'login' ? 'أهلاً بعودتك إلى خَيال' : 'دقيقة واحدة للانضمام';
-    // ❌ لا كيبورد تلقائي
-  },
-
-  togglePassword(btn) {
-    const input = btn.parentElement.querySelector('input');
-    const icon = btn.querySelector('i');
-    if (input.type === 'password') {
-      input.type = 'text';
-      icon.className = 'ph ph-eye-slash';
-    } else {
-      input.type = 'password';
-      icon.className = 'ph ph-eye';
-    }
-  },
-
-  checkStrength(pw) {
-    const bar = U.$('#pwStrength');
-    if (!bar) return;
-    if (!pw) { bar.dataset.level = '0'; return; }
-    let score = 0;
-    if (pw.length >= 6) score++;
-    if (pw.length >= 10) score++;
-    if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
-    if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
-    bar.dataset.level = String(Math.max(1, Math.min(4, score)));
-  },
-
-  async login(e) {
-    e.preventDefault();
-    const btn = U.$('#loginSubmit');
-    const orig = btn.innerHTML;
-    btn.disabled = true;
-    btn.classList.add('loading');
-    btn.innerHTML = '<span>جارٍ…</span>';
-
-    try {
-      const user = await API.post('/api/auth/login', {
-        identifier: U.$('#loginIdentifier').value.trim(),
-        password: U.$('#loginPassword').value,
-        remember: true
+    _toggleLikeUI(postId, liked, fallback) {
+      $$(`[data-post-id="${postId}"] [data-action="like"]`).forEach(el => {
+        el.setAttribute('aria-pressed', liked ? 'true' : 'false');
       });
-      K.me = user;
-      this.close();
-      App.applyUser();
-      await App.refreshAll();
-      App.enterApp();
-      U.toast('أهلاً ' + user.name + '!', 'ph-hand-waving');
-      U.haptic();
-    } catch (err) {
-      U.toast(err.message, 'ph-warning');
-      const card = U.$('.auth-mini');
-      if (card) { card.style.animation = 'none'; setTimeout(() => card.style.animation = 'shake .4s', 10); }
-    } finally {
-      btn.disabled = false;
-      btn.classList.remove('loading');
-      btn.innerHTML = orig;
-    }
-  },
+    },
 
-  async register(e) {
-    e.preventDefault();
-    const btn = U.$('#registerSubmit');
-    const orig = btn.innerHTML;
-    btn.disabled = true;
-    btn.classList.add('loading');
-    btn.innerHTML = '<span>جارٍ…</span>';
-
-    try {
-      const user = await API.post('/api/auth/register', {
-        name: U.$('#regName').value.trim(),
-        username: U.$('#regUsername').value.trim(),
-        email: U.$('#regEmail').value.trim(),
-        password: U.$('#regPassword').value
+    _syncLikeUI(postId, liked, count) {
+      $$(`[data-post-id="${postId}"] [data-action="like"]`).forEach(el => {
+        el.setAttribute('aria-pressed', liked ? 'true' : 'false');
       });
-      K.me = user;
-      this.close();
-      App.applyUser();
-      await App.refreshAll();
-      App.enterApp();
-      U.toast('مرحباً بك في خَيال!', 'ph-confetti');
-      U.haptic();
-    } catch (err) {
-      U.toast(err.message, 'ph-warning');
-      const card = U.$('.auth-mini');
-      if (card) { card.style.animation = 'none'; setTimeout(() => card.style.animation = 'shake .4s', 10); }
-    } finally {
-      btn.disabled = false;
-      btn.classList.remove('loading');
-      btn.innerHTML = orig;
-    }
-  },
+      if (count != null) {
+        $$(`[data-post-id="${postId}"] [data-likes-count]`).forEach(el => {
+          el.textContent = U.formatNumber(count);
+        });
+      }
+    },
 
-  async logout() {
-    try { await API.post('/api/auth/logout'); } catch {}
-    K.me = null;
-    App.state.posts = [];
-    App.state.chats = [];
-    U.$('#signInBtn').style.display = '';
-    U.$('#avatarBtn').style.display = 'none';
-    App.showView('view-landing');
-    U.toast('تم تسجيل الخروج', 'ph-sign-out');
-    try { history.replaceState(null, '', '/'); } catch {}
-  },
+    async save(btn, postId) {
+      if (!State.me) { Auth.open('login'); return; }
+      if (State._pendingSaves.has(postId)) return;
+      State._pendingSaves.add(postId);
 
-  openEditProfile() {
-    if (!K.me) return;
-    U.$('#epName').value = K.me.name;
-    U.$('#epBio').value = K.me.bio || '';
-    U.$('#epAvatar').value = K.me.avatar || '';
-    U.$('#editProfileModal').classList.add('open');
-    document.body.style.overflow = 'hidden';
-  },
+      const wasSaved = btn.getAttribute('aria-pressed') === 'true';
+      const nextSaved = !wasSaved;
 
-  closeEditProfile(e) {
-    if (e && e.target !== e.currentTarget) return;
-    U.$('#editProfileModal').classList.remove('open');
-    document.body.style.overflow = '';
-    U.blur();
-  },
-
-  async saveProfile(e) {
-    e.preventDefault();
-    try {
-      const updated = await API.patch('/api/me', {
-        name: U.$('#epName').value.trim(),
-        bio: U.$('#epBio').value.trim(),
-        avatar: U.$('#epAvatar').value.trim()
+      $$(`[data-post-id="${postId}"] [data-action="save"]`).forEach(el => {
+        el.setAttribute('aria-pressed', nextSaved ? 'true' : 'false');
       });
-      K.me = { ...K.me, ...updated };
-      this.closeEditProfile();
-      App.applyUser();
-      U.toast('تم الحفظ', 'ph-check-circle');
-    } catch (e) { U.toast(e.message, 'ph-warning'); }
-  }
-};
+      U.vibrate(8);
 
+      try {
+        const res = await API.post(`/api/posts/${postId}/save`);
+        $$(`[data-post-id="${postId}"] [data-action="save"]`).forEach(el => {
+          el.setAttribute('aria-pressed', res.saved ? 'true' : 'false');
+        });
+        Object.values(State.posts).forEach(arr => {
+          const p = arr.find(x => x.id === postId);
+          if (p) { p.saved = res.saved; p.saves = res.saves; }
+        });
+        U.toast(res.saved ? 'تم الحفظ' : 'أُزيل من المحفوظة', res.saved ? 'ph-bookmark-simple-fill' : 'ph-bookmark-simple');
+      } catch {
+        $$(`[data-post-id="${postId}"] [data-action="save"]`).forEach(el => {
+          el.setAttribute('aria-pressed', wasSaved ? 'true' : 'false');
+        });
+        U.toast('تعذّر الحفظ', 'ph-warning-circle', 'error');
+      } finally {
+        State._pendingSaves.delete(postId);
+      }
+    },
 
-/* ═══ CHAT ═══ */
-const Chat = {
-  render() {
-    const list = U.$('#chatList'); if (!list) return;
-    if (!App.state.chats.length) {
-      list.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--fg-3);font-size:13px">
-        لا محادثات بعد.<br><br>ابدأ محادثة من ملف أي مبدع.
-      </div>`;
-      this.renderThread(); return;
-    }
-    list.innerHTML = App.state.chats.map(c => {
-      const u = c.with_user || { name: '?', avatar: '' };
-      const active = c.id === App.state.activeChat;
-      return `<div class="chat-item ${active ? 'active' : ''} ${c.unread ? 'unread' : ''}" onclick="Chat.open(${c.id})">
-        <img class="author-avatar" src="${u.avatar || ''}" alt="" loading="lazy">
-        <div class="chat-item-info">
-          <div class="chat-item-top">
-            <span class="chat-name">${U.esc(u.name)}</span>
-            <span class="chat-time">${c.time || ''}</span>
-          </div>
-          <div class="chat-preview">${U.esc(c.last || '')}</div>
-        </div>
-        ${c.unread ? '<span class="unread-dot"></span>' : ''}
-      </div>`;
-    }).join('');
-    if (!App.state.activeChat && App.state.chats[0]) App.state.activeChat = App.state.chats[0].id;
-    this.renderThread();
-    App.updateBadges();
-  },
+    async copy(postId, btn) {
+      // Find prompt text
+      let text = '';
+      Object.values(State.posts).forEach(arr => {
+        const p = arr.find(x => x.id === parseInt(postId));
+        if (p) text = p.prompt;
+      });
 
-  open(id) {
-    App.state.activeChat = id;
-    this.render();
-    const layout = U.$('#chatLayout');
-    if (layout && window.innerWidth > 820) layout.classList.add('show-list');
-    if (layout && window.innerWidth <= 820) layout.classList.remove('show-list');
-    U.haptic();
-  },
-
-  async openWithUser(uid) {
-    if (!K.me) { Auth.open(); return; }
-    U.$$('.drawer').forEach(d => d.classList.remove('open'));
-    document.body.style.overflow = '';
-    try {
-      const r = await API.post(`/api/chats/with/${uid}`);
-      App.state.chats = await API.get('/api/chats');
-      App.state.activeChat = r.id;
-      App.switchTab('chat');
-    } catch (e) { U.toast(e.message, 'ph-warning'); }
-  },
-
-  async renderThread() {
-    const cid = App.state.activeChat;
-    const head = U.$('#chatHead');
-    const body = U.$('#chatBody');
-    if (!head || !body) return;
-    if (!cid) { head.innerHTML = ''; body.innerHTML = ''; return; }
-    const chat = App.state.chats.find(x => x.id === cid);
-    if (!chat) { head.innerHTML = ''; body.innerHTML = ''; return; }
-    const u = chat.with_user || { name: '?', avatar: '', id: 0 };
-
-    head.innerHTML = `
-      <button class="icon-btn" onclick="Chat.backToList()" style="display:${window.innerWidth <= 820 ? 'grid' : 'none'}">
-        <i class="ph ph-arrow-right"></i>
-      </button>
-      <img class="author-avatar" src="${u.avatar || ''}" alt="">
-      <div class="chat-head-info">
-        <strong>${U.esc(u.name)}</strong>
-        <span>متصل الآن</span>
-      </div>
-      <button class="icon-btn" onclick="App.openPublisher(${u.id || 0})" aria-label="الملف">
-        <i class="ph ph-user-circle"></i>
-      </button>
-    `;
-
-    try {
-      const msgs = await API.get(`/api/chats/${cid}/messages`);
-      body.innerHTML = msgs.map(m => `
-        <div class="msg ${m.from === 'me' ? 'me' : 'them'}">
-          ${U.esc(m.text).replace(/\n/g, '<br>')}
-          <span class="msg-time">${m.time}</span>
-        </div>
-      `).join('');
-      body.scrollTop = body.scrollHeight;
-    } catch { body.innerHTML = ''; }
-  },
-
-  backToList() { U.$('#chatLayout')?.classList.add('show-list'); },
-
-  async send(e) {
-    e.preventDefault();
-    const input = U.$('#chatInput');
-    const text = input.value.trim();
-    if (!text) return;
-    const cid = App.state.activeChat;
-    if (!cid) return;
-
-    const body = U.$('#chatBody');
-    const time = new Date().toTimeString().slice(0, 5);
-    body.insertAdjacentHTML('beforeend',
-      `<div class="msg me">${U.esc(text).replace(/\n/g, '<br>')}<span class="msg-time">${time}</span></div>`);
-    body.scrollTop = body.scrollHeight;
-    input.value = '';
-    input.style.height = 'auto';
-
-    try {
-      await API.post(`/api/chats/${cid}/messages`, { text });
-      const chats = await API.get('/api/chats');
-      App.state.chats = chats;
-      this.render();
-    } catch (err) {
-      U.toast(err.message, 'ph-warning');
-      this.renderThread();
-    }
-  },
-
-  filterList(q) {
-    const items = U.$$('#chatList .chat-item');
-    const query = q.toLowerCase().trim();
-    items.forEach(it => {
-      const name = it.querySelector('.chat-name')?.textContent.toLowerCase() || '';
-      it.style.display = (!query || name.includes(query)) ? '' : 'none';
-    });
-  },
-
-  newChat() { U.toast('افتح ملف أي مبدع', 'ph-info'); },
-  attach() { U.toast('الملفات قريباً', 'ph-paperclip'); }
-};
-
-
-/* ═══ DRAWERS ═══ */
-const Drawers = {
-  currentPost: null,
-
-  async openComments(pid) {
-    this.currentPost = pid;
-    U.$('#commentsDrawer').classList.add('open');
-    document.body.style.overflow = 'hidden';
-    const cf = U.$('#commentForm');
-    if (cf) cf.style.display = 'flex';
-    try {
-      const comments = await API.get(`/api/posts/${pid}/comments`);
-      U.$('#commentCount').textContent = `(${U.fmtNum(comments.length)})`;
-      this.renderComments(comments);
-    } catch {
-      U.$('#commentsBody').innerHTML = '<div class="empty"><p>تعذّر التحميل</p></div>';
-    }
-  },
-
-  closeComments() {
-    U.$('#commentsDrawer').classList.remove('open');
-    document.body.style.overflow = '';
-    U.blur();
-  },
-
-  renderComments(comments) {
-    const body = U.$('#commentsBody');
-    if (!comments.length) {
-      body.innerHTML = `<div class="empty">
-        <i class="ph ph-chat-circle"></i>
-        <h4>لا تعليقات بعد</h4>
-        <p>كن أول من يعلّق.</p>
-      </div>`;
-      return;
-    }
-    body.innerHTML = comments.map(c => {
-      const a = c.author_data || K.users[c.author] || { name: '?', avatar: '' };
-      return `<div class="comment">
-        <img class="author-avatar" src="${a.avatar || ''}" alt="" loading="lazy">
-        <div class="comment-body">
-          <div class="comment-top">
-            <span class="comment-name">${U.esc(a.name)}</span>
-            <span class="comment-time">${U.fmtDate(c.time)}</span>
-          </div>
-          <div class="comment-text">${U.esc(c.text)}</div>
-        </div>
-      </div>`;
-    }).join('');
-  }
-};
-
-const Comments = {
-  async send(e) {
-    e.preventDefault();
-    const input = U.$('#commentInput');
-    const text = input.value.trim();
-    if (!text) return;
-    const pid = Drawers.currentPost;
-    if (!pid) return;
-    try {
-      await API.post(`/api/posts/${pid}/comments`, { text });
-      input.value = '';
-      input.style.height = 'auto';
-      const comments = await API.get(`/api/posts/${pid}/comments`);
-      Drawers.renderComments(comments);
-      U.$('#commentCount').textContent = `(${U.fmtNum(comments.length)})`;
-      U.$$(`[data-comment-count="${pid}"]`).forEach(el => el.textContent = U.fmtNum(comments.length));
-      const p = App.state.posts.find(x => x.id === pid);
-      if (p) p.comments = comments.length;
-      U.toast('أُضيف تعليقك', 'ph-chat-circle');
-    } catch (err) { U.toast(err.message, 'ph-warning'); }
-  }
-};
-
-
-/* ═══ BOOT ═══ */
-const style = document.createElement('style');
-style.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
-document.head.appendChild(style);
-
-
-
-/* ═══ PWA INSTALL ═══ */
-const Install = {
-  deferred: null,
-
-  init() {
-    window.addEventListener('beforeinstallprompt', e => {
-      e.preventDefault();
-      this.deferred = e;
-      if (!U.storage.get('install_dismissed', false)) {
-        const b = U.$('#installBanner');
-        if (b) {
-          b.hidden = false;
-          requestAnimationFrame(() => b.classList.add('show'));
+      if (!text) {
+        const card = btn.closest('.prompt-card');
+        if (card) {
+          const excerpt = card.querySelector('.prompt-excerpt');
+          if (excerpt) text = excerpt.textContent.trim();
         }
       }
-    });
-    window.addEventListener('appinstalled', () => {
-      this.deferred = null;
-      this.dismiss(true);
-      U.toast('تم التثبيت بنجاح', 'ph-check-circle');
-    });
-  },
 
-  async prompt() {
-    if (!this.deferred) {
-      U.toast('استخدم قائمة المتصفح: إضافة إلى الشاشة الرئيسية', 'ph-info');
-      return;
-    }
-    this.deferred.prompt();
-    const { outcome } = await this.deferred.userChoice;
-    this.deferred = null;
-    if (outcome === 'accepted') this.dismiss(true);
-    else this.dismiss();
-  },
+      const ok = await U.copy(text);
+      if (ok) {
+        U.toast('تم نسخ البرومبت', 'ph-check-circle', 'success');
+        U.vibrate([10, 30, 10]);
+        // Increment server-side counter
+        API.post(`/api/posts/${postId}/copy`).catch(() => {});
+        // Visual feedback
+        if (btn && btn.dataset) {
+          btn.dataset.state = 'copied';
+          setTimeout(() => delete btn.dataset.state, 1400);
+        }
+      } else {
+        U.toast('تعذّر النسخ', 'ph-warning-circle', 'error');
+      }
+    },
 
-  dismiss(permanent) {
-    const b = U.$('#installBanner');
-    if (b) {
-      b.classList.remove('show');
-      setTimeout(() => { b.hidden = true; }, 400);
+    openDetail(id) {
+      U.toast('عرض التفاصيل قريباً', 'ph-eye');
+    },
+  };
+
+  /* ─────────────── 10. COMPOSER ─────────────── */
+  const Composer = {
+    _type: null,
+
+    open() {
+      if (!State.me) { Auth.open('login'); return; }
+      Composer._type = null;
+      Composer._reset();
+      Layer.open('composerModal');
+    },
+
+    close(e) {
+      if (e && e.target !== e.currentTarget) return;
+      Layer.close('composerModal');
+      Composer._reset();
+    },
+
+    _reset() {
+      const form = byId('composerForm');
+      if (form) { form.reset(); form.classList.remove('is-active'); }
+      $$('.type-card').forEach(c => c.removeAttribute('aria-pressed'));
+      const img = byId('imgPreview');
+      if (img) img.hidden = true;
+      const imgEl = byId('imgPreviewEl');
+      if (imgEl) imgEl.src = '';
+    },
+
+    chooseType(type) {
+      Composer._type = type;
+      const form = byId('composerForm');
+      const types = byId('composerTypes');
+      const imageField = byId('imageField');
+      const promptField = byId('cPrompt');
+
+      if (types) types.hidden = true;
+      if (form) form.classList.add('is-active');
+      if (imageField) imageField.hidden = type !== 'prompt';
+      if (promptField) {
+        promptField.placeholder = type === 'prompt'
+          ? 'اكتب البرومبت…'
+          : 'اكتب نص المنشور…';
+      }
+      setTimeout(() => byId('cTitle')?.focus(), 100);
+    },
+
+    previewImage(url) {
+      const wrap = byId('imgPreview');
+      const img = byId('imgPreviewEl');
+      if (!wrap || !img) return;
+      if (!url || !/^https?:\/\//.test(url)) {
+        wrap.hidden = true;
+        return;
+      }
+      img.src = url;
+      wrap.hidden = false;
+    },
+
+    clearPreview() {
+      const wrap = byId('imgPreview');
+      const img = byId('imgPreviewEl');
+      const input = byId('cImage');
+      if (wrap) wrap.hidden = true;
+      if (img) img.src = '';
+      if (input) input.value = '';
+    },
+
+    async publish(e) {
+      e.preventDefault();
+      if (!State.me) { Auth.open('login'); return; }
+
+      const btn = byId('composerSubmit');
+      const title = byId('cTitle').value.trim();
+      const prompt = byId('cPrompt').value.trim();
+      const image = byId('cImage')?.value.trim() || '';
+      const model = byId('cModel')?.value || '';
+      const tags = (byId('cTags')?.value || '')
+        .split(/[،,]/).map(t => t.trim()).filter(Boolean);
+
+      if (!title || !prompt) {
+        U.toast('أكمل العنوان والنص', 'ph-warning-circle', 'warning');
+        return;
+      }
+
+      btn.setAttribute('aria-busy', 'true');
+      try {
+        const payload = { title, prompt, tags };
+        if (Composer._type === 'prompt') {
+          payload.image = image;
+          payload.model = model;
+        }
+
+        const post = await API.post('/api/posts', payload);
+
+        // Optimistic insert at top of home feed
+        if (!State.posts.home) State.posts.home = [];
+        State.posts.home.unshift(post);
+
+        const feed = byId('homeFeed');
+        if (feed) {
+          const emptyBlock = feed.querySelector('.empty-block');
+          if (emptyBlock) emptyBlock.remove();
+          const card = document.createElement('div');
+          card.innerHTML = Render.prompt(post);
+          feed.insertBefore(card.firstElementChild, feed.firstChild);
+        }
+
+        Composer.close();
+        U.toast('تم النشر!', 'ph-confetti', 'success', 3200);
+        U.vibrate([15, 40, 15]);
+        App.switchTab('home', { silent: true });
+      } catch (err) {
+        U.toast(err.data?.error || 'تعذّر النشر', 'ph-warning-circle', 'error');
+      } finally {
+        btn.removeAttribute('aria-busy');
+      }
+    },
+  };
+
+  /* ─────────────── 11. COMMENTS / DRAWERS ─────────────── */
+  const Drawers = {
+    async openComments(postId) {
+      State.activePost = postId;
+      const body = byId('commentsBody');
+      const count = byId('commentCount');
+      const form = byId('commentForm');
+      if (!body) return;
+
+      body.innerHTML = `<div class="empty-block"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite"></i></div>`;
+
+      Layer.open('commentsDrawer');
+      if (byId('commentsScrim')) byId('commentsScrim').dataset.open = 'true';
+
+      try {
+        const comments = await API.get(`/api/posts/${postId}/comments`);
+        if (count) count.textContent = comments.length ? `(${comments.length})` : '';
+        if (form) form.style.display = State.me ? 'flex' : 'none';
+        body.innerHTML = comments.length
+          ? comments.map(c => Render.comment(c)).join('')
+          : `<div class="empty-block"><i class="ph ph-chat-circle"></i><h4>لا تعليقات بعد</h4><p>كن أول من يعلّق</p></div>`;
+      } catch {
+        body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4></div>`;
+      }
+    },
+
+    closeComments() {
+      Layer.close('commentsDrawer');
+      if (byId('commentsScrim')) byId('commentsScrim').dataset.open = 'false';
+      State.activePost = null;
+    },
+  };
+
+  const Comments = {
+    async send(e) {
+      e.preventDefault();
+      if (!State.activePost || !State.me) return;
+      const input = byId('commentInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const body = byId('commentsBody');
+      const tempId = 'temp-' + Date.now();
+
+      // Optimistic
+      const emptyBlock = body.querySelector('.empty-block');
+      if (emptyBlock) emptyBlock.remove();
+      body.insertAdjacentHTML('afterbegin', `
+        <div class="comment" data-temp="${tempId}">
+          <img class="avatar avatar-sm" src="${escapeHtml(State.me.avatar || '')}" alt="">
+          <div class="comment-body">
+            <div class="comment-top">
+              <span class="comment-name">${escapeHtml(State.me.name)}</span>
+              <span class="comment-time">الآن</span>
+            </div>
+            <div class="comment-text">${escapeHtml(text)}</div>
+          </div>
+        </div>
+      `);
+      input.value = '';
+      U.autoGrow(input);
+
+      try {
+        const c = await API.post(`/api/posts/${State.activePost}/comments`, { text });
+        body.querySelector(`[data-temp="${tempId}"]`)?.remove();
+        body.insertAdjacentHTML('afterbegin', Render.comment({ ...c, author_data: State.me }));
+        const count = byId('commentCount');
+        if (count) {
+          const n = body.querySelectorAll('.comment').length;
+          count.textContent = `(${n})`;
+        }
+      } catch {
+        body.querySelector(`[data-temp="${tempId}"]`)?.remove();
+        U.toast('تعذّر إرسال التعليق', 'ph-warning-circle', 'error');
+      }
+    },
+  };
+
+  Render.comment = (c) => {
+    const a = c.author_data || {};
+    return `
+      <div class="comment" data-comment-id="${c.id}">
+        <img class="avatar avatar-sm" src="${escapeHtml(a.avatar || '')}" alt="">
+        <div class="comment-body">
+          <div class="comment-top">
+            <span class="comment-name">${escapeHtml(a.name || '')}</span>
+            <span class="comment-time">${U.formatTime(c.time)}</span>
+          </div>
+          <div class="comment-text">${escapeHtml(c.text || '')}</div>
+          ${State.me && a.id === State.me.id ? `
+            <div class="comment-actions">
+              <button type="button" data-action="delete" onclick="Comments.delete(${c.id})">
+                <i class="ph ph-trash" aria-hidden="true"></i> حذف
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  };
+
+  Comments.delete = async (id) => {
+    const el = document.querySelector(`[data-comment-id="${id}"]`);
+    if (el) el.style.opacity = '0.5';
+    try {
+      await API.del(`/api/comments/${id}`);
+      el?.remove();
+      const count = byId('commentCount');
+      const body = byId('commentsBody');
+      if (count && body) {
+        const n = body.querySelectorAll('.comment').length;
+        count.textContent = n ? `(${n})` : '';
+      }
+    } catch {
+      if (el) el.style.opacity = '1';
+      U.toast('تعذّر الحذف', 'ph-warning-circle', 'error');
     }
-    if (permanent !== false) U.storage.set('install_dismissed', true);
+  };
+
+  /* ─────────────── 12. CHAT ─────────────── */
+  const Chat = {
+    async load() {
+      const list = byId('chatList');
+      if (!list || !State.me) return;
+
+      try {
+        const chats = await API.get('/api/chats');
+        State.chats = chats;
+        if (chats.length === 0) {
+          list.innerHTML = `<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا محادثات</h4><p>ابدأ محادثة جديدة</p></div>`;
+          return;
+        }
+        list.innerHTML = chats.map(c => Render.chatItem(c)).join('');
+        App.refreshChatsBadge();
+      } catch {
+        list.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4></div>`;
+      }
+    },
+
+    async open(id) {
+      State.activeChat = id;
+      const layout = byId('chatLayout');
+      const head = byId('chatHead');
+      const body = byId('chatBody');
+      if (!layout || !head || !body) return;
+
+      layout.dataset.view = 'thread';
+
+      const chat = State.chats.find(c => c.id === id);
+      const other = chat?.with_user;
+
+      if (head) {
+        head.innerHTML = `
+          <button class="btn btn-icon btn-ghost btn-sm" id="chatBackBtn" onclick="Chat.showList()" aria-label="رجوع" type="button">
+            <i class="ph ph-arrow-right" aria-hidden="true"></i>
+          </button>
+          <img class="avatar avatar-sm" src="${escapeHtml(other?.avatar || '')}" alt="">
+          <div class="chat-thread-info">
+            <strong>${escapeHtml(other?.name || 'محادثة')}</strong>
+            <span>متصل</span>
+          </div>
+        `;
+      }
+
+      body.innerHTML = `<div style="text-align:center;padding:var(--sp-6)"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite;font-size:24px;color:var(--c-brand)"></i></div>`;
+
+      try {
+        const msgs = await API.get(`/api/chats/${id}/messages`);
+        body.innerHTML = msgs.length
+          ? msgs.map(m => Render.message(m)).join('')
+          : `<div class="empty-block" style="padding:32px"><i class="ph ph-chat-circle"></i><p>ابدأ المحادثة</p></div>`;
+        Chat.scrollBottom();
+      } catch {
+        body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4></div>`;
+      }
+    },
+
+    showList() {
+      const layout = byId('chatLayout');
+      if (layout) layout.dataset.view = 'list';
+      State.activeChat = null;
+    },
+
+    async send(e) {
+      e.preventDefault();
+      const input = byId('chatInput');
+      const text = input.value.trim();
+      if (!text || !State.activeChat) return;
+
+      const body = byId('chatBody');
+      const emptyBlock = body.querySelector('.empty-block');
+      if (emptyBlock) emptyBlock.remove();
+
+      body.insertAdjacentHTML('beforeend', `
+        <div class="msg msg-me" data-temp>
+          ${escapeHtml(text)}
+          <span class="msg-time">الآن</span>
+        </div>
+      `);
+      input.value = '';
+      U.autoGrow(input);
+      Chat.scrollBottom();
+
+      try {
+        const m = await API.post(`/api/chats/${State.activeChat}/messages`, { text });
+        body.querySelector('[data-temp]')?.remove();
+        body.insertAdjacentHTML('beforeend', Render.message(m));
+        Chat.scrollBottom();
+      } catch {
+        body.querySelector('[data-temp]')?.remove();
+        U.toast('تعذّر الإرسال', 'ph-warning-circle', 'error');
+      }
+    },
+
+    scrollBottom() {
+      const body = byId('chatBody');
+      if (body) body.scrollTop = body.scrollHeight;
+    },
+
+    filterList(q) {
+      const list = byId('chatList');
+      if (!list) return;
+      const items = $$('.chat-item', list);
+      const query = q.trim().toLowerCase();
+      items.forEach(item => {
+        const name = (item.dataset.name || '').toLowerCase();
+        item.hidden = query && !name.includes(query);
+      });
+    },
+
+    newChat() {
+      U.toast('اختر مستخدماً لبدء محادثة', 'ph-note-pencil');
+    },
+
+    attach() {
+      U.toast('قريباً — إرفاق ملفات', 'ph-paperclip');
+    },
+  };
+
+  Render.chatItem = (c) => {
+    const other = c.with_user || {};
+    const unread = c.unread || 0;
+    return `
+      <button
+        class="chat-item"
+        data-chat-id="${c.id}"
+        data-name="${escapeHtml(other.name || '')}"
+        aria-current="${State.activeChat === c.id ? 'true' : 'false'}"
+        onclick="Chat.open(${c.id})"
+        type="button"
+        role="listitem">
+        <img class="avatar" src="${escapeHtml(other.avatar || '')}" alt="" loading="lazy">
+        <div class="chat-item-info">
+          <div class="chat-item-top">
+            <span class="chat-item-name">${escapeHtml(other.name || 'محادثة')}</span>
+            <span class="chat-item-time">${escapeHtml(c.time || '')}</span>
+          </div>
+          <div class="chat-item-preview">${escapeHtml(c.last || '')}</div>
+        </div>
+        ${unread > 0 ? '<span class="badge badge-dot"></span>' : ''}
+      </button>
+    `;
+  };
+
+  Render.message = (m) => `
+    <div class="msg msg-${m.from === 'me' ? 'me' : 'them'}">
+      ${escapeHtml(m.text || '')}
+      <span class="msg-time">${escapeHtml(m.time || '')}</span>
+    </div>
+  `;
+
+  /* ─────────────── 13. EXPLORE ─────────────── */
+  const Explore = {
+    openCollection(kind) {
+      U.toast(`فتح: ${kind}`, 'ph-compass');
+      App.loadFeed('explore');
+    },
+  };
+
+  /* ─────────────── 14. INSTALL (PWA) ─────────────── */
+  const Install = {
+    _deferred: null,
+
+    init() {
+      const banner = byId('installBanner');
+      if (!banner) return;
+
+      // Skip if dismissed recently
+      const dismissed = Store.get('install_dismissed', 0);
+      if (Date.now() - dismissed < 7 * 24 * 60 * 60 * 1000) return;
+
+      on(window, 'beforeinstallprompt', (e) => {
+        e.preventDefault();
+        Install._deferred = e;
+        setTimeout(() => {
+          banner.hidden = false;
+          requestAnimationFrame(() => banner.dataset.open = 'true');
+        }, 3000);
+      });
+
+      on(window, 'appinstalled', () => {
+        banner.dataset.open = 'false';
+        setTimeout(() => banner.hidden = true, 400);
+        Store.set('install_dismissed', Date.now() + 365 * 24 * 60 * 60 * 1000);
+        U.toast('تم التثبيت!', 'ph-download-simple', 'success');
+      });
+    },
+
+    prompt() {
+      const banner = byId('installBanner');
+      if (!Install._deferred) {
+        U.toast('افتح القائمة واختر "إضافة إلى الشاشة الرئيسية"', 'ph-info', 'default', 4000);
+        banner.dataset.open = 'false';
+        setTimeout(() => banner.hidden = true, 400);
+        return;
+      }
+      Install._deferred.prompt();
+      Install._deferred.userChoice.then(({ outcome }) => {
+        banner.dataset.open = 'false';
+        setTimeout(() => banner.hidden = true, 400);
+        if (outcome === 'dismissed') {
+          Store.set('install_dismissed', Date.now());
+        }
+        Install._deferred = null;
+      });
+    },
+
+    dismiss() {
+      const banner = byId('installBanner');
+      if (banner) {
+        banner.dataset.open = 'false';
+        setTimeout(() => banner.hidden = true, 400);
+      }
+      Store.set('install_dismissed', Date.now());
+    },
+  };
+
+  /* ─────────────── 15. COMMAND PALETTE ─────────────── */
+  const CommandPalette = {
+    open() {
+      const scrim = byId('cmdkScrim');
+      if (!scrim) return;
+      scrim.dataset.open = 'true';
+      Layer.open(scrim);
+      const input = byId('cmdkInput');
+      if (input) {
+        input.value = '';
+        input.focus();
+        CommandPalette.render('');
+      }
+      on(input, 'input', (e) => CommandPalette.render(e.target.value));
+    },
+
+    close(e) {
+      if (e && e.target !== e.currentTarget) return;
+      const scrim = byId('cmdkScrim');
+      if (scrim) {
+        scrim.dataset.open = 'false';
+        Layer.close(scrim);
+      }
+    },
+
+    render(q) {
+      const results = byId('cmdkResults');
+      if (!results) return;
+      const query = q.trim().toLowerCase();
+      const cmds = [
+        { icon: 'ph-house', label: 'الرئيسية', action: () => App.switchTab('home') },
+        { icon: 'ph-compass', label: 'استكشف', action: () => App.switchTab('explore') },
+        { icon: 'ph-plus', label: 'منشور جديد', action: () => Composer.open() },
+        { icon: 'ph-chat-circle-dots', label: 'الرسائل', action: () => App.switchTab('chat') },
+        { icon: 'ph-user', label: 'حسابي', action: () => App.switchTab('profile') },
+        { icon: 'ph-moon', label: 'تبديل المظهر', action: () => App.toggleTheme() },
+      ];
+      const filtered = query
+        ? cmds.filter(c => c.label.toLowerCase().includes(query))
+        : cmds;
+
+      if (filtered.length === 0) {
+        results.innerHTML = `<div style="padding:20px;text-align:center;color:var(--fg-3);font-size:14px">لا نتائج</div>`;
+        return;
+      }
+
+      results.innerHTML = filtered.map((c, i) => `
+        <button class="cmdk-item" data-cmd-index="${i}" type="button">
+          <i class="ph ${c.icon}" aria-hidden="true"></i>
+          <span>${escapeHtml(c.label)}</span>
+        </button>
+      `).join('');
+
+      $$('.cmdk-item', results).forEach((btn, i) => {
+        on(btn, 'click', () => {
+          filtered[i].action();
+          CommandPalette.close();
+        });
+      });
+    },
+
+    toggle() {
+      const scrim = byId('cmdkScrim');
+      if (!scrim) return;
+      if (scrim.dataset.open === 'true') CommandPalette.close();
+      else CommandPalette.open();
+    },
+  };
+
+  App.toggleCommandPalette = () => CommandPalette.toggle();
+
+  /* ─────────────── 16. INIT ─────────────── */
+  function boot() {
+    App.init();
+
+    // Global click for composer trigger in composer modal backdrop
+    const composerModal = byId('composerModal');
+    if (composerModal) {
+      on(composerModal, 'click', (e) => {
+        if (e.target === composerModal) Composer.close();
+      });
+    }
+
+    // Chat input — auto-grow
+    const chatInput = byId('chatInput');
+    if (chatInput) {
+      on(chatInput, 'input', () => U.autoGrow(chatInput));
+      on(chatInput, 'keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          Chat.send(e);
+        }
+      });
+    }
+
+    // Comment input — auto-grow
+    const commentInput = byId('commentInput');
+    if (commentInput) {
+      on(commentInput, 'input', () => U.autoGrow(commentInput));
+    }
+
+    // Composer type buttons — a11y
+    $$('.type-card').forEach(btn => {
+      on(btn, 'click', () => {
+        $$('.type-card').forEach(x => x.setAttribute('aria-pressed', 'false'));
+        btn.setAttribute('aria-pressed', 'true');
+      });
+    });
+
+    // Service Worker
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+    }
   }
-};
 
+  // Expose
+  window.U = U;
+  window.Auth = Auth;
+  window.App = App;
+  window.Post = Post;
+  window.Composer = Composer;
+  window.Chat = Chat;
+  window.Drawers = Drawers;
+  window.Comments = Comments;
+  window.Explore = Explore;
+  window.Install = Install;
+  window.CommandPalette = CommandPalette;
+  window.Layer = Layer;
 
-document.addEventListener('DOMContentLoaded', () => {
-  App.init();
-  Install.init();
-});
-
-window.App = App;
-window.Feed = Feed;
-window.Composer = Composer;
-window.Auth = Auth;
-window.Chat = Chat;
-window.Drawers = Drawers;
-window.Comments = Comments;
-window.U = U;
-window.CommandPalette = CommandPalette;
-window.Install = Install;
-
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
 })();
