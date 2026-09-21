@@ -1,0 +1,152 @@
+<div class="view-overlay" id="editProfileView" hidden>
+
+  <header class="view-overlay-head">
+    <button class="btn btn-icon btn-ghost" data-action="close-edit-profile" aria-label="إغلاق" type="button">
+      <i class="ph ph-x" aria-hidden="true"></i>
+    </button>
+    <h2>تعديل الملف</h2>
+    <button class="btn btn-primary btn-sm" id="editProfileSubmit" data-action="save-profile" type="button">
+      <i class="ph ph-check" aria-hidden="true"></i>
+      <span>حفظ</span>
+    </button>
+  </header>
+
+  <div class="view-overlay-body">
+    <form id="editProfileForm" onsubmit="Profile.save(event)" novalidate>
+
+      <!-- ═══ Cover + Avatar ═══ -->
+      <section class="edit-section">
+        <h3 class="edit-section-title"><i class="ph ph-image"></i> الغلاف والصورة</h3>
+
+        <div class="edit-media-row">
+          <div class="edit-cover-preview" id="editCoverPreview" data-cover="aurora">
+            <div class="profile-cover-pattern"></div>
+            <button type="button" class="edit-media-btn" data-action="pick-cover-file" aria-label="رفع صورة">
+              <i class="ph ph-upload-simple"></i>
+            </button>
+          </div>
+          <div class="edit-avatar-preview" id="editAvatarPreview">
+            <img id="editAvatarImg" src="" alt="">
+            <button type="button" class="edit-media-btn" data-action="pick-avatar-file" aria-label="رفع صورة">
+              <i class="ph ph-upload-simple"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>نمط الغلاف</label>
+          <div class="cover-presets" id="coverPresets">
+            <button type="button" class="cover-preset" data-cover="aurora" style="--c1:#22D3EE;--c2:#8B5CF6"></button>
+            <button type="button" class="cover-preset" data-cover="sunset" style="--c1:#FBBF24;--c2:#FB7185"></button>
+            <button type="button" class="cover-preset" data-cover="forest" style="--c1:#34D399;--c2:#22D3EE"></button>
+            <button type="button" class="cover-preset" data-cover="royal" style="--c1:#8B5CF6;--c2:#EC4899"></button>
+            <button type="button" class="cover-preset" data-cover="midnight" style="--c1:#1E1E2A;--c2:#0A0A0F"></button>
+            <button type="button" class="cover-preset" data-cover="ocean" style="--c1:#0EA5E9;--c2:#22D3EE"></button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>شكل الصورة الرمزية</label>
+          <div class="shape-picker" id="avatarShapePicker">
+            <button type="button" class="shape-option" data-shape="circle" aria-pressed="false">
+              <span class="shape-preview shape-circle"></span>
+              <span>دائري</span>
+            </button>
+            <button type="button" class="shape-option" data-shape="rounded" aria-pressed="true">
+              <span class="shape-preview shape-rounded"></span>
+              <span>ناعم</span>
+            </button>
+            <button type="button" class="shape-option" data-shape="square" aria-pressed="false">
+              <span class="shape-preview shape-square"></span>
+              <span>مربع</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="epAvatarUrl">أو رابط الصورة</label>
+          <input class="input" id="epAvatarUrl" type="url" placeholder="https://…" inputmode="url">
+        </div>
+      </section>
+
+      <!-- ═══ المعلومات الأساسية ═══ -->
+      <section class="edit-section">
+        <h3 class="edit-section-title"><i class="ph ph-user"></i> المعلومات</h3>
+
+        <div class="field">
+          <label for="epName">الاسم الكامل</label>
+          <input class="input" id="epName" type="text" required minlength="2" maxlength="80">
+        </div>
+
+        <div class="field">
+          <label for="epPronouns">الضمائر <span class="field-opt">(اختياري)</span></label>
+          <input class="input" id="epPronouns" type="text" maxlength="20" placeholder="مثال: هو/هي">
+        </div>
+
+        <div class="field">
+          <label for="epStatus">الحالة <span class="field-opt">(قصيرة)</span></label>
+          <input class="input" id="epStatus" type="text" maxlength="100" placeholder="مثال: أصمم المستقبل 🚀">
+        </div>
+
+        <div class="field">
+          <label for="epBio">نبذة</label>
+          <textarea class="textarea" id="epBio" maxlength="300" rows="3"
+                    style="font-family:var(--font-sans);direction:rtl;text-align:right;min-height:80px;font-size:15px"></textarea>
+          <div class="field-hint"><span id="epBioCount">0</span> / 300</div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="epLocation">الموقع</label>
+            <input class="input" id="epLocation" type="text" maxlength="60" placeholder="مثال: الرياض">
+          </div>
+          <div class="field">
+            <label for="epWebsite">الموقع الإلكتروني</label>
+            <input class="input" id="epWebsite" type="url" maxlength="120" placeholder="https://…" inputmode="url">
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ المظهر ═══ -->
+      <section class="edit-section">
+        <h3 class="edit-section-title"><i class="ph ph-palette"></i> المظهر</h3>
+
+        <div class="field">
+          <label>اللون المميز</label>
+          <div class="accent-picker" id="accentPicker">
+            <button type="button" class="accent-swatch" data-color="#22D3EE" style="--sw:#22D3EE" aria-pressed="true"></button>
+            <button type="button" class="accent-swatch" data-color="#8B5CF6" style="--sw:#8B5CF6" aria-pressed="false"></button>
+            <button type="button" class="accent-swatch" data-color="#FB7185" style="--sw:#FB7185" aria-pressed="false"></button>
+            <button type="button" class="accent-swatch" data-color="#FBBF24" style="--sw:#FBBF24" aria-pressed="false"></button>
+            <button type="button" class="accent-swatch" data-color="#34D399" style="--sw:#34D399" aria-pressed="false"></button>
+            <button type="button" class="accent-swatch" data-color="#60A5FA" style="--sw:#60A5FA" aria-pressed="false"></button>
+            <button type="button" class="accent-swatch" data-color="#F472B6" style="--sw:#F472B6" aria-pressed="false"></button>
+            <button type="button" class="accent-swatch" data-color="#FAFAFA" style="--sw:#FAFAFA" aria-pressed="false"></button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>نمط البطاقة</label>
+          <div class="style-picker" id="cardStylePicker">
+            <button type="button" class="style-option" data-style="glass" aria-pressed="true">
+              <span class="style-preview style-glass"></span>
+              <span>زجاجي</span>
+            </button>
+            <button type="button" class="style-option" data-style="solid" aria-pressed="false">
+              <span class="style-preview style-solid"></span>
+              <span>صلب</span>
+            </button>
+            <button type="button" class="style-option" data-style="gradient" aria-pressed="false">
+              <span class="style-preview style-gradient"></span>
+              <span>متدرج</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </form>
+  </div>
+</div>
+
+<input type="file" id="avatarFileInput" accept="image/*" hidden>
+<input type="file" id="coverFileInput" accept="image/*" hidden>
