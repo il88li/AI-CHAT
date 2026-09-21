@@ -1,0 +1,39 @@
+<section class="tab-panel" id="tab-chat" data-tab="chat">
+  <div class="page-head">
+    <div>
+      <h1>الرسائل</h1>
+      <p>تحدّث مع المبدعين.</p>
+    </div>
+  </div>
+
+  <div class="chat-layout" id="chatLayout">
+    <div class="chat-list">
+      <div class="chat-list-head">
+        <h3>صندوق الوارد</h3>
+        <button class="icon-btn" onclick="Chat.newChat()" aria-label="محادثة جديدة">
+          <i class="ph ph-note-pencil"></i>
+        </button>
+      </div>
+      <div class="chat-search">
+        <i class="ph ph-magnifying-glass"></i>
+        <input type="text" placeholder="ابحث في المحادثات…" oninput="Chat.filterList(this.value)">
+      </div>
+      <div class="chat-scroll" id="chatList"></div>
+    </div>
+    <div class="chat-thread" id="chatThread">
+      <div class="chat-head" id="chatHead"></div>
+      <div class="chat-body" id="chatBody"></div>
+      <form class="chat-composer" onsubmit="Chat.send(event)">
+        <button type="button" class="icon-btn" onclick="Chat.attach()" aria-label="إرفاق">
+          <i class="ph ph-paperclip"></i>
+        </button>
+        <textarea id="chatInput" placeholder="اكتب رسالة…" rows="1"
+                  oninput="U.autoGrow(this)" enterkeyhint="send"></textarea>
+        <button type="submit" class="btn btn-primary btn-icon" aria-label="إرسال"
+                style="border-radius:14px;min-width:42px;min-height:42px">
+          <i class="ph ph-paper-plane-tilt"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+</section>
