@@ -4,7 +4,7 @@
       <h1>الرئيسية</h1>
       <p>أحدث البرومبتات من المنصة.</p>
     </div>
-    <button class="btn btn-glass btn-sm refresh-btn" onclick="App.refreshAll()" aria-label="تحديث">
+    <button class="btn btn-glass btn-sm refresh-btn" id="refreshBtn" onclick="App.refreshAll(true)" aria-label="تحديث">
       <i class="ph ph-arrow-clockwise"></i>
     </button>
   </div>
@@ -25,16 +25,16 @@
 
   <div class="filters" id="filters"></div>
 
-  <!-- Pull to refresh indicator -->
-  <div class="ptr" id="ptr">
-    <i class="ph ph-arrow-clockwise"></i>
+  <!-- Pull-to-Refresh Container -->
+  <div class="ptr-wrap" id="ptrWrap">
+    <div class="ptr" id="ptr">
+      <i class="ph ph-arrow-clockwise"></i>
+    </div>
+    <div class="feed" id="homeFeed">
+      {% include 'partials/skeletons.html' %}
+    </div>
   </div>
 
-  <div class="feed" id="homeFeed">
-    {% include 'partials/skeletons.html' %}
-  </div>
-
-  <!-- Infinite scroll loader -->
   <div class="load-more" id="homeLoader" style="display:none">
     <span class="spinner"></span>
     <span>جارٍ التحميل…</span>
