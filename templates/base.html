@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#08080C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>{% block title %}خَيال{% endblock %}</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<style>
+@font-face{font-family:'Hajeen';src:url('https://cdn.jsdelivr.net/gh/hamzashahbaz/hajeen-font@main/Hajeen-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1" defer></script>
+<link rel="stylesheet" href="/static/style.css?v=4">
+{% block styles %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+
+<div class="aurora"><div class="aurora-mid"></div></div>
+
+<!-- شريط عدم الاتصال -->
+<div class="net-bar" id="netBar" hidden>
+  <i class="ph ph-wifi-slash"></i><span>أنت غير متصل بالإنترنت</span>
+</div>
+
+{% include 'partials/nav.html' %}
+
+{% block body %}{% endblock %}
+
+{% include 'partials/dock.html' %}
+{% include 'partials/modals/auth.html' %}
+{% include 'partials/modals/composer.html' %}
+{% include 'partials/modals/edit_profile.html' %}
+{% include 'partials/drawers/comments.html' %}
+{% include 'partials/drawers/notifications.html' %}
+
+<div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
+
+<!-- Command Palette -->
+<div class="cmdk-scrim" id="cmdkScrim" onclick="CommandPalette.close(event)">
+  <div class="cmdk" onclick="event.stopPropagation()">
+    <div class="cmdk-input-wrap">
+      <i class="ph ph-magnifying-glass"></i>
+      <input type="text" id="cmdkInput" placeholder="اكتب أمراً أو ابحث…" autocomplete="off">
+      <kbd>ESC</kbd>
+    </div>
+    <div class="cmdk-results" id="cmdkResults"></div>
+  </div>
+</div>
+
+<script>
+  window.__ME__ = {{ me | tojson }};
+  window.__BUILD__ = '4.0';
+</script>
+<script src="/static/app.js?v=4" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
