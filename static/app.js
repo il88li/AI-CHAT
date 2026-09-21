@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v12.1
-   Fixes: Settings.open robustness · dock double-binding · settings.html import
+   خَيال — app.js v13.0
+   Settings: Profile dashboard (posts + appearance + account tabs)
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -14,7 +14,7 @@
     SEARCH_DEBOUNCE: 280,
     DRAFT_KEY: 'khayal.composer.draft',
     THEME_KEY: 'khayal.theme',
-    BUILD: '12.1',
+    BUILD: '13.0',
   };
 
   const S = {
@@ -1556,10 +1556,12 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     SETTINGS (v12 — robust open)
+     SETTINGS (v13 — Profile dashboard)
      ═══════════════════════════════════════════════════════════════ */
   const Settings = {
     view: null,
+    section: 'posts',
+    postsLoaded: false,
     state: {
       cover: 'aurora',
       avatar_frame: 'ring',
@@ -1586,10 +1588,12 @@
       this.view.querySelector('[data-action="save-settings"]')
         ?.addEventListener('click', () => self.save());
 
-      this.view.querySelectorAll('.settings-nav-item').forEach(btn => {
+      // Tabs
+      this.view.querySelectorAll('.settings-tab').forEach(btn => {
         btn.addEventListener('click', () => self.switchSection(btn.dataset.section));
       });
 
+      // Cover
       const coverPicker = document.getElementById('settingsCoverPresets');
       if (coverPicker) {
         coverPicker.addEventListener('click', (e) => {
@@ -1603,6 +1607,7 @@
         });
       }
 
+      // Frame
       const framePicker = document.getElementById('settingsFramePicker');
       if (framePicker) {
         framePicker.addEventListener('click', (e) => {
@@ -1616,6 +1621,7 @@
         });
       }
 
+      // Accent
       const accentPicker = document.getElementById('settingsAccentPicker');
       if (accentPicker) {
         accentPicker.addEventListener('click', (e) => {
@@ -1631,6 +1637,7 @@
         });
       }
 
+      // Card style
       const stylePicker = document.getElementById('settingsCardStylePicker');
       if (stylePicker) {
         stylePicker.addEventListener('click', (e) => {
@@ -1644,6 +1651,7 @@
         });
       }
 
+      // Pronouns
       const pronounPicker = document.getElementById('settingsPronounPicker');
       const pronounHidden = document.getElementById('setPronouns');
       if (pronounPicker && pronounHidden) {
@@ -1654,19 +1662,20 @@
           b.setAttribute('aria-checked', 'true');
           pronounHidden.value = b.dataset.pronoun || '';
           self.state.pronouns = pronounHidden.value;
+          self.updatePreview();
           if (window.Sounds) Sounds.play('toggle');
         });
       }
 
+      // Name / Bio / Website
       const nameEl = document.getElementById('setName');
       if (nameEl) {
         nameEl.addEventListener('input', () => {
           self.state.name = nameEl.value;
-          const p = document.getElementById('settingsPreviewName');
-          if (p) p.textContent = nameEl.value || 'اسمك هنا';
+          const p = document.getElementById('settingsHeroName');
+          if (p) p.textContent = nameEl.value || '—';
         });
       }
-
       const bioEl = document.getElementById('setBio');
       if (bioEl) {
         bioEl.addEventListener('input', () => {
@@ -1674,10 +1683,10 @@
           if (c) c.textContent = bioEl.value.length;
         });
       }
-
       const webEl = document.getElementById('setWebsite');
       if (webEl) webEl.addEventListener('input', () => { self.state.website = webEl.value; });
 
+      // Sounds
       const soundToggle = document.getElementById('soundsToggle');
       if (soundToggle) {
         soundToggle.addEventListener('click', () => {
@@ -1686,7 +1695,6 @@
           if (window.Sounds) Sounds.setEnabled(next);
         });
       }
-
       const vol = document.getElementById('volumeSlider');
       const volHint = document.getElementById('volumeHint');
       if (vol) {
@@ -1696,7 +1704,6 @@
           if (volHint) volHint.textContent = vol.value + '%';
         });
       }
-
       this.view.querySelectorAll('.sound-card').forEach(card => {
         card.addEventListener('click', () => {
           if (window.Sounds) Sounds.play(card.dataset.sound);
@@ -1705,6 +1712,7 @@
         });
       });
 
+      // Generic switches
       this.view.querySelectorAll('.switch:not(#soundsToggle)').forEach(sw => {
         sw.addEventListener('click', () => {
           const next = sw.getAttribute('aria-checked') !== 'true';
@@ -1713,6 +1721,12 @@
         });
       });
 
+      // Stats button → jump to posts tab
+      this.view.querySelectorAll('[data-stat="posts"]').forEach(btn => {
+        btn.addEventListener('click', () => self.switchSection('posts'));
+      });
+
+      // Change password
       const chg = document.getElementById('changePasswordBtn');
       if (chg) {
         chg.addEventListener('click', () => {
@@ -1736,6 +1750,7 @@
         });
       }
 
+      // Logout
       const logout = document.getElementById('logoutBtn');
       if (logout) {
         logout.addEventListener('click', () => {
@@ -1746,26 +1761,22 @@
     },
 
     open() {
-      // إعادة ربط view إذا لم يكن موجوداً — يحمي من سباق تحميل
       if (!this.view) this.view = document.getElementById('settingsView');
-
       if (!this.view) {
-        console.error('[خَيال] لم يُعثر على #settingsView. تحقق من استيراد partials/views/settings.html في base.html');
+        console.error('[خَيال] #settingsView مفقود');
         if (window.Toast) Toast.show('صفحة الإعدادات غير متوفرة', 'error');
         return;
       }
 
-      // Hydrate دائماً قبل الفتح
       this.hydrate();
-
       this.view.hidden = false;
       document.body.classList.add('view-open');
       if (window.Sounds) Sounds.play('open');
 
-      setTimeout(() => {
-        const first = this.view.querySelector('.settings-nav-item.is-active');
-        if (first) first.focus({ preventScroll: true });
-      }, 120);
+      // Lazy-load posts on first open
+      if (!this.postsLoaded) {
+        this.loadUserPosts();
+      }
     },
 
     close() {
@@ -1777,7 +1788,9 @@
 
     switchSection(name) {
       if (!name || !this.view) return;
-      this.view.querySelectorAll('.settings-nav-item').forEach(b => {
+      this.section = name;
+
+      this.view.querySelectorAll('.settings-tab').forEach(b => {
         const on = b.dataset.section === name;
         b.classList.toggle('is-active', on);
         b.setAttribute('aria-selected', on ? 'true' : 'false');
@@ -1785,6 +1798,11 @@
       this.view.querySelectorAll('.settings-panel').forEach(p => {
         p.classList.toggle('is-active', p.dataset.panel === name);
       });
+
+      // Show save button only on appearance tab
+      const saveBtn = document.getElementById('settingsSave');
+      if (saveBtn) saveBtn.hidden = name !== 'appearance';
+
       if (window.Sounds) Sounds.play('tab');
     },
 
@@ -1803,6 +1821,7 @@
         pronouns: u.pronouns || '',
       };
 
+      // Fill form
       const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
       set('setName', this.state.name);
       set('setWebsite', this.state.website);
@@ -1810,6 +1829,7 @@
       const bc = document.getElementById('setBioCount');
       if (bc) bc.textContent = (this.state.bio || '').length;
 
+      // Pronouns
       const pp = document.getElementById('settingsPronounPicker');
       const ph = document.getElementById('setPronouns');
       if (pp && ph) {
@@ -1821,16 +1841,19 @@
         ph.value = match ? (match.dataset.pronoun || '') : '';
       }
 
+      // Cover
       const cp = document.getElementById('settingsCoverPresets');
       if (cp) cp.querySelectorAll('.cover-preset').forEach(b => {
         b.setAttribute('aria-pressed', b.dataset.cover === this.state.cover ? 'true' : 'false');
       });
 
+      // Frame
       const fp = document.getElementById('settingsFramePicker');
       if (fp) fp.querySelectorAll('.frame-option').forEach(b => {
         b.setAttribute('aria-pressed', b.dataset.frame === this.state.avatar_frame ? 'true' : 'false');
       });
 
+      // Accent
       const ap = document.getElementById('settingsAccentPicker');
       if (ap) ap.querySelectorAll('.accent-swatch').forEach(b => {
         b.setAttribute('aria-pressed', b.dataset.color === this.state.accent_color ? 'true' : 'false');
@@ -1838,11 +1861,13 @@
       const ah = document.getElementById('accentHint');
       if (ah) ah.textContent = this.state.accent_color;
 
+      // Card style
       const sp = document.getElementById('settingsCardStylePicker');
       if (sp) sp.querySelectorAll('.style-option').forEach(b => {
         b.setAttribute('aria-pressed', b.dataset.style === this.state.card_style ? 'true' : 'false');
       });
 
+      // Sounds
       const st = document.getElementById('soundsToggle');
       if (st && window.Sounds) st.setAttribute('aria-checked', Sounds.isEnabled() ? 'true' : 'false');
       const vs = document.getElementById('volumeSlider');
@@ -1850,24 +1875,109 @@
       const vh = document.getElementById('volumeHint');
       if (vh && window.Sounds) vh.textContent = Math.round(Sounds.getVolume() * 100) + '%';
 
-      this.updatePreview();
+      // Hero
+      this.renderHero(u);
+
+      // Ensure save button visibility
+      const saveBtn = document.getElementById('settingsSave');
+      if (saveBtn) saveBtn.hidden = this.section !== 'appearance';
+    },
+
+    renderHero(u) {
+      const cover = document.getElementById('settingsHeroCover');
+      if (cover) cover.dataset.cover = u.cover || 'aurora';
+
+      const avatar = document.getElementById('settingsHeroAvatar');
+      if (avatar) {
+        avatar.src = u.avatar || '';
+        avatar.alt = u.name || '';
+        avatar.dataset.frame = u.avatar_shape || 'ring';
+      }
+
+      const name = document.getElementById('settingsHeroName');
+      if (name) name.textContent = u.name || '—';
+
+      const handle = document.getElementById('settingsHeroHandle');
+      if (handle) handle.textContent = u.handle || '@—';
+
+      const pronouns = document.getElementById('settingsHeroPronouns');
+      if (pronouns) {
+        if (u.pronouns) {
+          pronouns.textContent = u.pronouns;
+          pronouns.hidden = false;
+        } else {
+          pronouns.hidden = true;
+        }
+      }
+
+      const hero = document.getElementById('settingsHeroProfile');
+      if (hero) hero.dataset.style = u.card_style || 'glass';
+
+      const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
+      setStat('settingsStatPosts', u.posts_count || 0);
+      setStat('settingsStatFollowers', u.followers || 0);
+      setStat('settingsStatFollowing', u.following || 0);
+      setStat('settingsStatLikes', u.total_likes || 0);
+    },
+
+    async loadUserPosts() {
+      const feed = document.getElementById('settingsUserPosts');
+      if (!feed || !S.me) return;
+
+      feed.innerHTML = Feed.skeletonsHtml();
+      feed.setAttribute('aria-busy', 'true');
+
+      try {
+        const items = await API.get(`/api/users/${S.me.id}/posts`);
+        if (!items || !items.length) {
+          feed.innerHTML = Feed.emptyHtml(
+            'ph-image-square',
+            'لا منشورات بعد',
+            'ابدأ بنشر أول برومبت لك.'
+          );
+        } else {
+          feed.innerHTML = '';
+          const frag = document.createDocumentFragment();
+          items.forEach(p => frag.appendChild(Post.renderCard(p)));
+          feed.appendChild(frag);
+        }
+        this.postsLoaded = true;
+      } catch (err) {
+        feed.innerHTML = Feed.emptyHtml(
+          'ph-cloud-slash',
+          'تعذّر التحميل',
+          err.message || 'حاول مرة أخرى'
+        );
+      } finally {
+        feed.setAttribute('aria-busy', 'false');
+      }
     },
 
     updatePreview() {
-      const pc = document.getElementById('settingsPreviewCover');
-      const pa = document.getElementById('settingsPreviewAvatar');
-      const pn = document.getElementById('settingsPreviewName');
-      const ph = document.getElementById('settingsPreviewHandle');
-      const card = document.getElementById('settingsPreviewCard');
+      const heroCover = document.getElementById('settingsHeroCover');
+      if (heroCover) heroCover.dataset.cover = this.state.cover;
 
-      if (pc) pc.dataset.cover = this.state.cover;
-      if (pa) {
-        pa.dataset.frame = this.state.avatar_frame;
-        if (this.state.avatar && !pa.src) pa.src = this.state.avatar;
+      const heroAvatar = document.getElementById('settingsHeroAvatar');
+      if (heroAvatar) {
+        heroAvatar.dataset.frame = this.state.avatar_frame;
+        if (this.state.avatar && !heroAvatar.src) heroAvatar.src = this.state.avatar;
       }
-      if (pn) pn.textContent = this.state.name || 'اسمك هنا';
-      if (ph) ph.textContent = this.state.handle || '@username';
-      if (card) card.dataset.style = this.state.card_style;
+
+      const hero = document.getElementById('settingsHeroProfile');
+      if (hero) hero.dataset.style = this.state.card_style;
+
+      const name = document.getElementById('settingsHeroName');
+      if (name) name.textContent = this.state.name || '—';
+
+      const pronouns = document.getElementById('settingsHeroPronouns');
+      if (pronouns) {
+        if (this.state.pronouns) {
+          pronouns.textContent = this.state.pronouns;
+          pronouns.hidden = false;
+        } else {
+          pronouns.hidden = true;
+        }
+      }
     },
 
     async save() {
@@ -1892,6 +2002,7 @@
         if (window.Sounds) Sounds.play('success');
         Toast.show('تم الحفظ', 'success');
         Auth.updateChrome(user);
+        this.hydrate();
         if (S.tab === 'profile' && S.viewingUser && S.viewingUser.id === user.id) {
           Profile.load(user.id);
         }
