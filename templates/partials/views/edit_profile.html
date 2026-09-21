@@ -14,19 +14,19 @@
   <div class="view-overlay-body">
     <form id="editProfileForm" onsubmit="Profile.save(event)" novalidate>
 
-      <!-- ═══ Cover + Avatar ═══ -->
+      <!-- ═══ الغلاف والصورة ═══ -->
       <section class="edit-section">
         <h3 class="edit-section-title"><i class="ph ph-image"></i> الغلاف والصورة</h3>
 
         <div class="edit-media-row">
           <div class="edit-cover-preview" id="editCoverPreview" data-cover="aurora">
-            <div class="profile-cover-pattern"></div>
+            <div class="profile-cover-pattern" aria-hidden="true"></div>
             <button type="button" class="edit-media-btn" data-action="pick-cover-file" aria-label="رفع صورة">
               <i class="ph ph-upload-simple"></i>
             </button>
           </div>
           <div class="edit-avatar-preview" id="editAvatarPreview">
-            <img id="editAvatarImg" src="" alt="">
+            <img id="editAvatarImg" src="" alt="" data-frame="ring">
             <button type="button" class="edit-media-btn" data-action="pick-avatar-file" aria-label="رفع صورة">
               <i class="ph ph-upload-simple"></i>
             </button>
@@ -35,41 +35,67 @@
 
         <div class="field">
           <label>نمط الغلاف</label>
-          <div class="cover-presets" id="coverPresets">
-            <button type="button" class="cover-preset" data-cover="aurora" style="--c1:#22D3EE;--c2:#8B5CF6"></button>
-            <button type="button" class="cover-preset" data-cover="sunset" style="--c1:#FBBF24;--c2:#FB7185"></button>
-            <button type="button" class="cover-preset" data-cover="forest" style="--c1:#34D399;--c2:#22D3EE"></button>
-            <button type="button" class="cover-preset" data-cover="royal" style="--c1:#8B5CF6;--c2:#EC4899"></button>
-            <button type="button" class="cover-preset" data-cover="midnight" style="--c1:#1E1E2A;--c2:#0A0A0F"></button>
-            <button type="button" class="cover-preset" data-cover="ocean" style="--c1:#0EA5E9;--c2:#22D3EE"></button>
+          <div class="cover-presets" id="coverPresets" role="radiogroup" aria-label="نمط الغلاف">
+            <button type="button" class="cover-preset" data-cover="aurora"   aria-label="أورورا"          aria-pressed="false" style="--c1:#22D3EE;--c2:#8B5CF6"></button>
+            <button type="button" class="cover-preset" data-cover="sunset"   aria-label="غروب"            aria-pressed="false" style="--c1:#FBBF24;--c2:#FB7185"></button>
+            <button type="button" class="cover-preset" data-cover="forest"   aria-label="غابة"            aria-pressed="false" style="--c1:#34D399;--c2:#22D3EE"></button>
+            <button type="button" class="cover-preset" data-cover="royal"    aria-label="ملكي"            aria-pressed="false" style="--c1:#8B5CF6;--c2:#EC4899"></button>
+            <button type="button" class="cover-preset" data-cover="midnight" aria-label="منتصف الليل"     aria-pressed="false" style="--c1:#1E1E2A;--c2:#0A0A0F"></button>
+            <button type="button" class="cover-preset" data-cover="ocean"    aria-label="محيط"            aria-pressed="false" style="--c1:#0EA5E9;--c2:#22D3EE"></button>
+            <button type="button" class="cover-preset" data-cover="cyber"    aria-label="سايبر"           aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="candy"    aria-label="حلوى"            aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="mesh"     aria-label="شبكة ناعمة"      aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="noir"     aria-label="نوار"            aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="topo"     aria-label="طبوجرافيا"       aria-pressed="false"></button>
+            <button type="button" class="cover-preset" data-cover="dots"     aria-label="نقاط"            aria-pressed="false"></button>
           </div>
         </div>
 
         <div class="field">
-          <label>شكل الصورة الرمزية</label>
-          <div class="shape-picker" id="avatarShapePicker">
-            <button type="button" class="shape-option" data-shape="circle" aria-pressed="false">
-              <span class="shape-preview shape-circle"></span>
-              <span>دائري</span>
+          <label>إطار الصورة الشخصية</label>
+          <div class="frame-picker" id="avatarFramePicker" role="radiogroup" aria-label="إطار الصورة">
+            <button type="button" class="frame-option" data-frame="none"     aria-pressed="false" aria-label="بلا إطار">
+              <span class="frame-preview frame-preview--none" aria-hidden="true">خ</span>
+              <span class="frame-label">بلا إطار</span>
             </button>
-            <button type="button" class="shape-option" data-shape="rounded" aria-pressed="true">
-              <span class="shape-preview shape-rounded"></span>
-              <span>ناعم</span>
+            <button type="button" class="frame-option" data-frame="ring"     aria-pressed="true"  aria-label="حلقة">
+              <span class="frame-preview frame-preview--ring" aria-hidden="true">خ</span>
+              <span class="frame-label">حلقة</span>
             </button>
-            <button type="button" class="shape-option" data-shape="square" aria-pressed="false">
-              <span class="shape-preview shape-square"></span>
-              <span>مربع</span>
+            <button type="button" class="frame-option" data-frame="gradient" aria-pressed="false" aria-label="متدرج">
+              <span class="frame-preview frame-preview--gradient" aria-hidden="true">خ</span>
+              <span class="frame-label">متدرج</span>
+            </button>
+            <button type="button" class="frame-option" data-frame="neon"     aria-pressed="false" aria-label="نيون">
+              <span class="frame-preview frame-preview--neon" aria-hidden="true">خ</span>
+              <span class="frame-label">نيون</span>
+            </button>
+            <button type="button" class="frame-option" data-frame="double"   aria-pressed="false" aria-label="مزدوج">
+              <span class="frame-preview frame-preview--double" aria-hidden="true">خ</span>
+              <span class="frame-label">مزدوج</span>
+            </button>
+            <button type="button" class="frame-option" data-frame="polaroid" aria-pressed="false" aria-label="بولارويد">
+              <span class="frame-preview frame-preview--polaroid" aria-hidden="true">خ</span>
+              <span class="frame-label">بولارويد</span>
+            </button>
+            <button type="button" class="frame-option" data-frame="glass"    aria-pressed="false" aria-label="زجاجي">
+              <span class="frame-preview frame-preview--glass" aria-hidden="true">خ</span>
+              <span class="frame-label">زجاجي</span>
+            </button>
+            <button type="button" class="frame-option" data-frame="hex"      aria-pressed="false" aria-label="سُدَاسي">
+              <span class="frame-preview frame-preview--hex" aria-hidden="true">خ</span>
+              <span class="frame-label">سُدَاسي</span>
             </button>
           </div>
         </div>
 
         <div class="field">
-          <label for="epAvatarUrl">أو رابط الصورة</label>
+          <label for="epAvatarUrl">أو رابط الصورة الشخصية</label>
           <input class="input" id="epAvatarUrl" type="url" placeholder="https://…" inputmode="url">
         </div>
       </section>
 
-      <!-- ═══ المعلومات الأساسية ═══ -->
+      <!-- ═══ المعلومات ═══ -->
       <section class="edit-section">
         <h3 class="edit-section-title"><i class="ph ph-user"></i> المعلومات</h3>
 
@@ -79,13 +105,15 @@
         </div>
 
         <div class="field">
-          <label for="epPronouns">الضمائر <span class="field-opt">(اختياري)</span></label>
-          <input class="input" id="epPronouns" type="text" maxlength="20" placeholder="مثال: هو/هي">
-        </div>
-
-        <div class="field">
-          <label for="epStatus">الحالة <span class="field-opt">(قصيرة)</span></label>
-          <input class="input" id="epStatus" type="text" maxlength="100" placeholder="مثال: أصمم المستقبل 🚀">
+          <label>الضمائر <span class="field-opt">(اختياري)</span></label>
+          <div class="pronoun-picker" id="pronounPicker" role="radiogroup" aria-label="الضمائر">
+            <button type="button" class="pronoun-option" data-pronoun="هو"      role="radio" aria-checked="false">هو</button>
+            <button type="button" class="pronoun-option" data-pronoun="هي"      role="radio" aria-checked="false">هي</button>
+            <button type="button" class="pronoun-option" data-pronoun="هم"      role="radio" aria-checked="false">هم</button>
+            <button type="button" class="pronoun-option" data-pronoun="هن"      role="radio" aria-checked="false">هن</button>
+            <button type="button" class="pronoun-option" data-pronoun=""        role="radio" aria-checked="true">لا تفضل</button>
+          </div>
+          <input type="hidden" id="epPronouns" value="">
         </div>
 
         <div class="field">
@@ -95,15 +123,9 @@
           <div class="field-hint"><span id="epBioCount">0</span> / 300</div>
         </div>
 
-        <div class="field-row">
-          <div class="field">
-            <label for="epLocation">الموقع</label>
-            <input class="input" id="epLocation" type="text" maxlength="60" placeholder="مثال: الرياض">
-          </div>
-          <div class="field">
-            <label for="epWebsite">الموقع الإلكتروني</label>
-            <input class="input" id="epWebsite" type="url" maxlength="120" placeholder="https://…" inputmode="url">
-          </div>
+        <div class="field">
+          <label for="epWebsite">الموقع الإلكتروني</label>
+          <input class="input" id="epWebsite" type="url" maxlength="120" placeholder="https://…" inputmode="url">
         </div>
       </section>
 
@@ -150,3 +172,31 @@
 
 <input type="file" id="avatarFileInput" accept="image/*" hidden>
 <input type="file" id="coverFileInput" accept="image/*" hidden>
+
+<script>
+/* ─── Pronoun picker: keeps aria-checked + hidden input in sync ─── */
+(function(){
+  var picker = document.getElementById('pronounPicker');
+  var hidden = document.getElementById('epPronouns');
+  if (!picker || !hidden) return;
+  picker.addEventListener('click', function(e){
+    var btn = e.target.closest('.pronoun-option');
+    if (!btn) return;
+    picker.querySelectorAll('.pronoun-option').forEach(function(b){
+      b.setAttribute('aria-checked', 'false');
+    });
+    btn.setAttribute('aria-checked', 'true');
+    hidden.value = btn.dataset.pronoun || '';
+  });
+  /* preload current value when view opens */
+  document.addEventListener('edit-profile:open', function(ev){
+    var val = (ev.detail && ev.detail.pronouns) || '';
+    var match = picker.querySelector('.pronoun-option[data-pronoun="' + val.replace(/"/g,'') + '"]')
+             || picker.querySelector('.pronoun-option[data-pronoun=""]');
+    picker.querySelectorAll('.pronoun-option').forEach(function(b){
+      b.setAttribute('aria-checked', b === match ? 'true' : 'false');
+    });
+    hidden.value = match ? (match.dataset.pronoun || '') : '';
+  });
+})();
+</script>
