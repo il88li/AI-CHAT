@@ -2663,45 +2663,86 @@ body.chat-fullscreen .composer-trigger{
 .view-overlay{
   position:fixed;
   inset:0;
-  z-index:var(--z-modal);
+  z-index:calc(var(--z-modal) + 50);
   background:var(--bg-0);
   display:flex;
   flex-direction:column;
   animation:view-overlay-in var(--dur-3) var(--ease-out);
+  isolation:isolate;
 }
-.view-overlay[hidden]{display:none}
+.view-overlay[hidden]{display:none !important}
 @keyframes view-overlay-in{
-  from{opacity:0;transform:translateY(8px)}
+  from{opacity:0;transform:translateY(12px)}
   to{opacity:1;transform:translateY(0)}
+}
+
+/* Hide app chrome while a fixed view is open */
+body.view-open .nav,
+body.view-open .dock,
+body.view-open .install-banner,
+body.view-open .new-posts-pill{
+  opacity:0 !important;
+  pointer-events:none !important;
+  visibility:hidden !important;
+}
+body.view-open{
+  overflow:hidden !important;
 }
 
 .view-overlay-head{
   display:flex;
+  flex-direction:row;
+  flex-wrap:nowrap;
   align-items:center;
   justify-content:space-between;
   gap:var(--sp-3);
   padding:calc(var(--sp-3) + var(--safe-top)) var(--sp-4) var(--sp-3);
-  background:color-mix(in srgb, var(--bg-0) 92%, transparent);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
+  background:var(--bg-0);
   border-bottom:1px solid var(--border-1);
   flex-shrink:0;
   position:sticky;
   top:0;
-  z-index:10;
+  z-index:20;
+  min-height:calc(52px + var(--safe-top));
+}
+.view-overlay-head > .btn-icon{
+  flex-shrink:0;
+  width:40px;
+  height:40px;
 }
 .view-overlay-head h2{
+  flex:1 1 auto;
   font-size:var(--fs-5);
   font-weight:var(--fw-bold);
   letter-spacing:var(--ls-tight);
   margin:0;
+  text-align:center;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  line-height:1.2;
+}
+.view-overlay-head > .btn-primary,
+.view-overlay-head > .btn-primary.btn-sm{
+  flex-shrink:0;
+  min-width:72px;
+  height:36px;
+  padding-inline:14px;
 }
 
 .view-overlay-body{
-  flex:1;
+  flex:1 1 auto;
   overflow-y:auto;
-  padding:var(--sp-5) var(--pad-x) calc(var(--sp-16) + var(--safe-bot));
+  -webkit-overflow-scrolling:touch;
+  padding:var(--sp-5) var(--pad-x) calc(var(--sp-8) + var(--safe-bot));
   overscroll-behavior:contain;
+}
+
+/* Bio counter always LTR so numbers read current / max */
+.field-hint{
+  direction:ltr;
+  unicode-bidi:isolate;
+  text-align:start;
 }
 
 /* Composer inside view */
