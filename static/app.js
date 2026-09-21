@@ -1,13 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════
-   خَيال — app.js v8.0
-   Instagram-Reels-style feed · Infinite Scroll · PTR · New Posts
-   Scroll Memory · Skeleton Fade · Tab Transitions
+   خَيال — app.js v9.0
+   Instagram-style feed · Profile complete · All modules
    ═══════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
-  console.log('[خَيال] app.js v8.0');
+  console.log('[خَيال] app.js v9.0');
 
-  /* ─────────────── Helpers ─────────────── */
   var $ = function (s) { return document.querySelector(s); };
   var $$ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
   var byId = function (x) { return document.getElementById(x); };
@@ -17,7 +15,6 @@
     });
   };
 
-  /* ─────────────── State ─────────────── */
   var S = {
     me: (typeof window.__ME__ !== 'undefined' && window.__ME__) || null,
     tab: 'home',
@@ -34,7 +31,6 @@
   window.__State = S;
   try { S.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) {}
 
-  /* ─────────────── Toast ─────────────── */
   function toast(msg, tone) {
     var wrap = byId('toastWrap');
     if (!wrap) { console.log('[toast]', msg); return; }
@@ -54,7 +50,6 @@
     }, 2400);
   }
 
-  /* ─────────────── Layer ─────────────── */
   var Layer = {
     open: function (ref) {
       var n = typeof ref === 'string' ? byId(ref) : ref;
@@ -71,9 +66,6 @@
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     RENDER
-     ═══════════════════════════════════════════════════════════ */
   var Render = {
     prompt: function (p) {
       var a = p.author_data || {};
@@ -91,7 +83,7 @@
           '</div>' +
         '</div>' +
         '<div class="prompt-body">' +
-          (a.id ? '<div class="prompt-author" data-action="open-profile" data-user="' + a.id + '"><img class="avatar avatar-sm" src="' + esc(a.avatar || '') + '" alt="" loading="lazy"><div class="prompt-author-info"><span class="prompt-author-name">' + esc(a.name || '') + (a.verified ? ' <i class="ph ph-seal-check"></i>' : '') + '</span><span class="prompt-author-meta">' + esc(a.handle || '') + '</span></div></div>' : '') +
+          (a.id ? '<div class="prompt-author" data-action="open-user-profile" data-user="' + a.id + '"><img class="avatar avatar-sm" src="' + esc(a.avatar || '') + '" alt="" loading="lazy"><div class="prompt-author-info"><span class="prompt-author-name">' + esc(a.name || '') + (a.verified ? ' <i class="ph ph-seal-check"></i>' : '') + '</span><span class="prompt-author-meta">' + esc(a.handle || '') + '</span></div></div>' : '') +
           '<h3 class="prompt-title">' + esc(p.title) + '</h3>' +
           '<div class="prompt-excerpt" data-action="copy" data-post="' + p.id + '">' + esc(p.prompt) + '<button type="button" class="prompt-excerpt-copy" aria-label="نسخ"><i class="ph ph-copy"></i></button></div>' +
           (tags.length ? '<div class="prompt-tags">' + tags.slice(0, 4).map(function (t) { return '<button class="tag" type="button" data-action="filter-tag" data-tag="' + esc(t) + '">' + esc(t) + '</button>'; }).join('') + '</div>' : '') +
@@ -154,12 +146,8 @@
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     U — utilities
-     ═══════════════════════════════════════════════════════════ */
   var U = {
     toast: toast,
-
     num: function (n) {
       if (n == null) return '0';
       n = Number(n) || 0;
@@ -167,7 +155,6 @@
       if (n < 1e6) return (n / 1000).toFixed(n < 1e4 ? 1 : 0).replace(/\.0$/, '') + 'K';
       return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
     },
-
     time: function (iso) {
       if (!iso) return '';
       var d = new Date(iso);
@@ -178,13 +165,11 @@
       if (sec < 604800) return 'قبل ' + Math.floor(sec / 86400) + ' ي';
       return d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' });
     },
-
     autoGrow: function (ta) {
       if (!ta) return;
       ta.style.height = 'auto';
       ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
     },
-
     debounce: function (fn, wait) {
       var t;
       return function () {
@@ -193,7 +178,6 @@
         t = setTimeout(function () { fn.apply(c, a); }, wait || 250);
       };
     },
-
     copy: function (text) {
       if (navigator.clipboard && window.isSecureContext) {
         return navigator.clipboard.writeText(text);
@@ -211,16 +195,13 @@
         ok ? resolve() : reject();
       });
     },
-
     buzz: function (ms) {
       if (S.reducedMotion) return;
       try { navigator.vibrate && navigator.vibrate(ms || 10); } catch (_) {}
     },
-
     lockScroll: function (lock) {
       document.body.style.overflow = lock ? 'hidden' : '';
     },
-
     focusTrap: function (container) {
       if (!container) return function () {};
       var sel = 'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -242,24 +223,19 @@
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     INFINITE SCROLL — Instagram-style prefetch
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ INFINITE SCROLL ═══════ */
   var Infinite = {
     _observers: {},
     _loading: {},
     _hasMore: { home: true, explore: true, liked: true, saved: true },
-    _lastId: {},
 
     attach: function (which) {
       var feedId = { home: 'homeFeed', explore: 'exploreFeed', liked: 'likedFeed', saved: 'savedFeed' }[which];
       var feed = byId(feedId);
       if (!feed) return;
-
       Infinite.detach(which);
       Infinite._hasMore[which] = true;
 
-      // Sentinel بعد الـ feed
       var sentinelId = 'sentinel-' + which;
       var sentinel = byId(sentinelId);
       if (!sentinel) {
@@ -299,12 +275,12 @@
       var feed = byId(feedId);
       if (!feed) { Infinite._loading[which] = false; return; }
 
-      // Loader
       var loader = document.createElement('div');
       loader.className = 'load-more';
       loader.id = 'loader-' + which;
       loader.innerHTML = '<span class="spinner"></span><span>جارٍ التحميل…</span>';
-      feed.parentNode.insertBefore(loader, byId('sentinel-' + which));
+      var sentinel = byId('sentinel-' + which);
+      feed.parentNode.insertBefore(loader, sentinel);
 
       var url = '/api/posts?limit=20&before_id=' + lastId;
       if (which === 'home') {
@@ -321,17 +297,11 @@
         })
         .then(function (newPosts) {
           loader.remove();
-          if (!newPosts.length) {
-            Infinite._hasMore[which] = false;
-            return;
-          }
-
-          // Filter للـ liked/saved
+          if (!newPosts.length) { Infinite._hasMore[which] = false; return; }
           var filtered = newPosts;
           if (which === 'liked') filtered = newPosts.filter(function (p) { return p.liked; });
           if (which === 'saved') filtered = newPosts.filter(function (p) { return p.saved; });
 
-          // Append with stagger
           var frag = document.createDocumentFragment();
           filtered.forEach(function (p, i) {
             var wrap = document.createElement('div');
@@ -344,14 +314,9 @@
             S.posts[which].push(p);
           });
           feed.appendChild(frag);
-
-          // Reveal
           requestAnimationFrame(function () {
             var newCards = feed.querySelectorAll('.prompt-card[style*="opacity: 0"]');
-            newCards.forEach(function (c) {
-              c.style.opacity = '1';
-              c.style.transform = 'translateY(0)';
-            });
+            newCards.forEach(function (c) { c.style.opacity = '1'; c.style.transform = 'translateY(0)'; });
           });
         })
         .catch(function () {
@@ -359,22 +324,13 @@
           if (l) l.remove();
           toast('تعذّر تحميل المزيد', 'error');
         })
-        .finally(function () {
-          Infinite._loading[which] = false;
-        });
+        .finally(function () { Infinite._loading[which] = false; });
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     PULL-TO-REFRESH
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ PTR ═══════ */
   var PTR = {
-    _startY: 0,
-    _currentY: 0,
-    _pulling: false,
-    _threshold: 80,
-    _ptr: null,
-
+    _startY: 0, _currentY: 0, _pulling: false, _threshold: 80, _ptr: null,
     init: function () {
       PTR._ptr = byId('ptr');
       if (!PTR._ptr) return;
@@ -382,7 +338,6 @@
       document.addEventListener('touchmove', PTR.onMove, { passive: false });
       document.addEventListener('touchend', PTR.onEnd, { passive: true });
     },
-
     onStart: function (e) {
       if (window.scrollY > 5) return;
       if (document.querySelector('.scrim[data-open="true"]')) return;
@@ -390,7 +345,6 @@
       PTR._startY = e.touches[0].clientY;
       PTR._pulling = true;
     },
-
     onMove: function (e) {
       if (!PTR._pulling) return;
       PTR._currentY = e.touches[0].clientY;
@@ -403,7 +357,6 @@
       if (pull > PTR._threshold) PTR._ptr.classList.add('ready');
       else PTR._ptr.classList.remove('ready');
     },
-
     onEnd: function () {
       if (!PTR._pulling) return;
       PTR._pulling = false;
@@ -412,14 +365,9 @@
       if (pull > PTR._threshold) {
         PTR._ptr.classList.add('refreshing');
         PTR._ptr.style.transform = 'translateY(60px)';
-        App.refreshAll().finally(function () {
-          setTimeout(PTR.reset, 500);
-        });
-      } else {
-        PTR.reset();
-      }
+        App.refreshAll().finally(function () { setTimeout(PTR.reset, 500); });
+      } else { PTR.reset(); }
     },
-
     reset: function () {
       if (!PTR._ptr) return;
       PTR._ptr.classList.remove('pulling', 'ready', 'refreshing');
@@ -430,12 +378,9 @@
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     NEW POSTS PILL
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ NEW POSTS PILL ═══════ */
   var NewPostsPill = {
     _pill: null,
-
     ensure: function () {
       if (NewPostsPill._pill) return NewPostsPill._pill;
       var p = document.createElement('button');
@@ -451,20 +396,16 @@
       NewPostsPill._pill = p;
       return p;
     },
-
     show: function () {
       var p = NewPostsPill.ensure();
       requestAnimationFrame(function () { p.classList.add('show'); });
     },
-
     hide: function () {
       if (NewPostsPill._pill) NewPostsPill._pill.classList.remove('show');
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     SCROLL MEMORY
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ SCROLL MEMORY ═══════ */
   var ScrollMemory = {
     positions: {},
     save: function (tab) { ScrollMemory.positions[tab] = window.scrollY; },
@@ -474,9 +415,7 @@
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     AUTH
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ AUTH ═══════ */
   var Auth = {
     open: function (mode) {
       mode = mode || 'login';
@@ -501,14 +440,11 @@
         if (inp) { try { inp.focus(); } catch (_) {} }
       }, 200);
     },
-
     close: function (e) {
       if (e && e.target !== e.currentTarget) return;
       Layer.close('authModal');
     },
-
     switchMode: function (mode) { Auth.open(mode); },
-
     togglePassword: function (btn) {
       var wrap = btn.closest('.input-wrap');
       var inp = wrap ? wrap.querySelector('input') : null;
@@ -517,9 +453,7 @@
       var i = btn.querySelector('i');
       if (i) i.className = inp.type === 'password' ? 'ph ph-eye' : 'ph ph-eye-slash';
     },
-
     checkStrength: function () {},
-
     login: function (e) {
       if (e) e.preventDefault();
       var idn = (byId('loginIdentifier') || {}).value;
@@ -544,7 +478,6 @@
           if (btn) btn.removeAttribute('aria-busy');
         });
     },
-
     register: function (e) {
       if (e) e.preventDefault();
       var name = (byId('regName') || {}).value;
@@ -573,22 +506,18 @@
           if (btn) btn.removeAttribute('aria-busy');
         });
     },
-
     logout: function () {
       if (!confirm('تسجيل الخروج؟')) return;
       fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
         .then(function () { location.reload(); })
         .catch(function () { location.reload(); });
     },
-
-    openEditProfile: function () { toast('قريباً'); },
-    closeEditProfile: function () {},
-    saveProfile: function (e) { if (e) e.preventDefault(); }
+    openEditProfile: function () { Profile.openEdit(); },
+    closeEditProfile: function (e) { Profile.closeEdit(e); },
+    saveProfile: function (e) { Profile.save(e); }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     APP CORE
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ APP ═══════ */
   var App = {
     switchTab: function (tab, opts) {
       opts = opts || {};
@@ -597,7 +526,6 @@
         Auth.open('login');
         return;
       }
-
       var prevTab = S.tab;
       if (prevTab !== tab) ScrollMemory.save(prevTab);
       S.tab = tab;
@@ -617,20 +545,18 @@
         } catch (_) {}
       }
 
-      // Load content
       var loaders = {
         home: function () { App.loadFeed('home'); },
         explore: function () { App.loadFeed('explore'); },
         liked: function () { App.loadFeed('liked'); },
         saved: function () { App.loadFeed('saved'); },
-        profile: function () { App.loadProfile(); },
+        profile: function () { Profile.openMine(); },
         chat: function () { App.loadChats(); }
       };
       if (loaders[tab]) {
         try { loaders[tab](); } catch (e) { console.error(e); }
       }
 
-      // Scroll restoration
       if (ScrollMemory.positions[tab]) ScrollMemory.restore(tab);
       else window.scrollTo(0, 0);
     },
@@ -709,7 +635,7 @@
     },
 
     loadFeed: function (which) {
-      var feedId = { home: 'homeFeed', explore: 'exploreFeed', liked: 'likedFeed', saved: 'savedFeed', profile: 'profilePanel' }[which];
+      var feedId = { home: 'homeFeed', explore: 'exploreFeed', liked: 'likedFeed', saved: 'savedFeed' }[which];
       var feed = byId(feedId);
       if (!feed) return Promise.resolve();
 
@@ -722,9 +648,6 @@
       var url;
       if (which === 'liked' || which === 'saved') {
         url = '/api/posts?limit=50';
-      } else if (which === 'profile') {
-        if (!S.me) return Promise.resolve();
-        url = '/api/users/' + S.me.id + '/posts';
       } else if (which === 'home') {
         url = '/api/posts?limit=20&sort=' + S.sort;
         if (S.filter) url += '&tag=' + encodeURIComponent(S.filter);
@@ -737,7 +660,6 @@
         .then(function (posts) {
           if (which === 'liked') posts = posts.filter(function (p) { return p.liked; });
           if (which === 'saved') posts = posts.filter(function (p) { return p.saved; });
-
           S.posts[which] = posts;
 
           if (which === 'liked' || which === 'saved') {
@@ -748,7 +670,6 @@
             feed.innerHTML = Render.emptyFor(which);
           } else {
             feed.innerHTML = posts.map(Render.prompt).join('');
-            // Stagger fade-in
             var cards = feed.querySelectorAll('.prompt-card:not(.skeleton-card)');
             cards.forEach(function (c, i) {
               c.style.opacity = '0';
@@ -759,13 +680,11 @@
               cards.forEach(function (c) { c.style.opacity = '1'; c.style.transform = 'translateY(0)'; });
             });
 
-            // Infinite scroll for supported tabs
             if (['home', 'explore', 'liked', 'saved'].indexOf(which) >= 0) {
               Infinite.attach(which);
             }
           }
 
-          // Filters
           if (which === 'home') App.loadFilters(posts);
           if (which === 'explore') App.loadExploreFilters(posts);
 
@@ -813,32 +732,6 @@
         html += '<button class="filter" aria-pressed="false" type="button">' + esc(m) + '</button>';
       });
       wrap.innerHTML = html;
-    },
-
-    loadProfile: function () {
-      if (!S.me) return;
-      App.updateProfileUI();
-      fetch('/api/users/' + S.me.id, { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (user) {
-          S.me.followers = user.followers;
-          S.me.following = user.following;
-          App.updateProfileUI();
-        })
-        .catch(function () {});
-      App.loadFeed('profile');
-    },
-
-    updateProfileUI: function () {
-      if (!S.me) return;
-      var set = function (id, v) { var n = byId(id); if (n) n.textContent = v; };
-      var img = byId('profileAvatar');
-      if (img) img.src = S.me.avatar || '';
-      set('profileName', S.me.name || '');
-      set('profileHandle', S.me.handle || '');
-      set('profileBio', S.me.bio || '');
-      set('statFollowers', U.num(S.me.followers || 0));
-      set('statFollowing', U.num(S.me.following || 0));
     },
 
     updateUserUI: function () {
@@ -915,21 +808,13 @@
         .catch(function () { results.dataset.open = 'false'; });
     },
 
-    openProfile: function () { toast('صفحة المبدع قريباً', 'ph-user'); },
-
     handleHash: function () {
       var h = (location.hash || '').replace('#', '') || 'home';
       var valid = ['home', 'explore', 'liked', 'saved', 'chat', 'profile'];
       if (valid.indexOf(h) >= 0) App.switchTab(h, { silent: true });
     },
 
-    onAuthChange: function () {
-      App.updateUserUI();
-      if (S.me) App.loadFeed('home');
-    },
-
     init: function () {
-      /* Nav scroll */
       var nav = byId('nav');
       if (nav) {
         window.addEventListener('scroll', function () {
@@ -937,13 +822,11 @@
         }, { passive: true });
       }
 
-      /* Search */
       var search = byId('searchInput');
       if (search) {
         search.addEventListener('input', U.debounce(function (e) { App.doSearch(e.target.value); }, 260));
       }
 
-      /* Online/offline */
       window.addEventListener('online', function () {
         var nb = byId('netBar');
         if (nb) nb.dataset.open = 'false';
@@ -954,7 +837,6 @@
         if (nb) nb.dataset.open = 'true';
       });
 
-      /* Close search on outside click */
       document.addEventListener('click', function (e) {
         if (!e.target.closest('.search')) {
           var r = byId('searchResults');
@@ -962,7 +844,6 @@
         }
       });
 
-      /* Escape */
       document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') {
           var r = byId('searchResults');
@@ -974,7 +855,6 @@
         }
       });
 
-      /* Chat input auto-grow */
       var ci = byId('chatInput');
       if (ci) {
         ci.addEventListener('input', function () { U.autoGrow(ci); });
@@ -985,10 +865,8 @@
       var cmi = byId('commentInput');
       if (cmi) cmi.addEventListener('input', function () { U.autoGrow(cmi); });
 
-      /* PTR */
       PTR.init();
 
-      /* Visibility — check for new posts */
       document.addEventListener('visibilitychange', function () {
         if (document.visibilityState === 'visible' && S.me && S.tab === 'home') {
           fetch('/api/posts?limit=1', { credentials: 'same-origin' })
@@ -1002,16 +880,13 @@
         }
       });
 
-      /* Service worker */
       if ('serviceWorker' in navigator && location.protocol === 'https:') {
         navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
       }
 
-      /* Update UI */
       App.updateUserUI();
       App.handleHash();
 
-      /* Load initial */
       if (S.me) {
         App.loadFeed('home');
         App.loadChats();
@@ -1021,9 +896,7 @@
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     POST — like/save/copy
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ POST ═══════ */
   var Post = {
     like: function (btn, postId) {
       if (!S.me) { Auth.open('login'); return; }
@@ -1031,12 +904,10 @@
       S.pendingLikes[postId] = true;
       var wasLiked = btn.getAttribute('aria-pressed') === 'true';
       var next = !wasLiked;
-
       $$('[data-post-id="' + postId + '"] [data-action="like"]').forEach(function (x) {
         x.setAttribute('aria-pressed', next ? 'true' : 'false');
       });
       U.buzz(12);
-
       fetch('/api/posts/' + postId + '/like', { method: 'POST', credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
         .then(function (d) {
@@ -1059,19 +930,16 @@
         })
         .finally(function () { delete S.pendingLikes[postId]; });
     },
-
     save: function (btn, postId) {
       if (!S.me) { Auth.open('login'); return; }
       if (!postId || S.pendingSaves[postId]) return;
       S.pendingSaves[postId] = true;
       var wasSaved = btn.getAttribute('aria-pressed') === 'true';
       var next = !wasSaved;
-
       $$('[data-post-id="' + postId + '"] [data-action="save"]').forEach(function (x) {
         x.setAttribute('aria-pressed', next ? 'true' : 'false');
       });
       U.buzz(8);
-
       fetch('/api/posts/' + postId + '/save', { method: 'POST', credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
         .then(function (d) {
@@ -1092,7 +960,6 @@
         })
         .finally(function () { delete S.pendingSaves[postId]; });
     },
-
     copy: function (postId, btn) {
       var text = '';
       Object.keys(S.posts).forEach(function (k) {
@@ -1113,29 +980,23 @@
         })
         .catch(function () { toast('فشل النسخ', 'error'); });
     },
-
     open: function () { toast('قريباً', 'ph-eye'); }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     COMPOSER
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ COMPOSER ═══════ */
   var Composer = {
     _type: null,
-
     open: function () {
       if (!S.me) { Auth.open('login'); return; }
       Composer._type = null;
       Composer.reset();
       Layer.open('composerModal');
     },
-
     close: function (e) {
       if (e && e.target !== e.currentTarget) return;
       Layer.close('composerModal');
       Composer.reset();
     },
-
     reset: function () {
       var form = byId('composerForm');
       var types = byId('composerTypes');
@@ -1144,7 +1005,6 @@
       if (types) types.hidden = false;
       if (prev) prev.hidden = true;
     },
-
     chooseType: function (type) {
       Composer._type = type;
       var types = byId('composerTypes');
@@ -1157,7 +1017,6 @@
       if (promptEl) promptEl.placeholder = type === 'prompt' ? 'اكتب البرومبت…' : 'اكتب نص المنشور…';
       setTimeout(function () { var t = byId('cTitle'); if (t) t.focus(); }, 100);
     },
-
     previewImage: function (url) {
       var p = byId('imgPreview');
       var i = byId('imgPreviewEl');
@@ -1169,7 +1028,6 @@
         p.hidden = true;
       }
     },
-
     clearPreview: function () {
       var p = byId('imgPreview');
       var i = byId('imgPreviewEl');
@@ -1178,7 +1036,6 @@
       if (i) i.src = '';
       if (inp) inp.value = '';
     },
-
     publish: function (e) {
       if (e) e.preventDefault();
       if (!S.me) { Auth.open('login'); return; }
@@ -1188,7 +1045,6 @@
       var tags = ((byId('cTags') || {}).value || '').split(/[،,]/).map(function (s) { return s.trim(); }).filter(Boolean);
       var btn = byId('composerSubmit');
       if (btn) btn.setAttribute('aria-busy', 'true');
-
       fetch('/api/posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1206,7 +1062,6 @@
           if (!res.ok) throw new Error((res.d && res.d.error) || 'فشل النشر');
           toast('تم النشر!', 'success');
           Composer.close();
-          // أضف المنشور للـ feed مباشرة
           if (S.posts.home) S.posts.home.unshift(res.d);
           setTimeout(function () { location.reload(); }, 600);
         })
@@ -1217,9 +1072,7 @@
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     CHAT
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ CHAT ═══════ */
   var Chat = {
     open: function (chatId) {
       S.activeChat = chatId;
@@ -1228,7 +1081,6 @@
       var body = byId('chatBody');
       if (!layout || !head || !body) return;
       layout.dataset.view = 'thread';
-
       var chat = null;
       for (var i = 0; i < S.chats.length; i++) {
         if (S.chats[i].id === chatId) { chat = S.chats[i]; break; }
@@ -1237,9 +1089,7 @@
       head.innerHTML = '<button class="btn btn-icon btn-ghost btn-sm" data-action="chat-list" aria-label="رجوع" type="button"><i class="ph ph-arrow-right"></i></button>' +
         '<img class="avatar avatar-sm" src="' + esc(other.avatar || '') + '" alt="">' +
         '<div class="chat-thread-info"><strong>' + esc(other.name || 'محادثة') + '</strong><span>متصل</span></div>';
-
       body.innerHTML = '<div style="text-align:center;padding:var(--sp-6)"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite;font-size:24px;color:var(--c-brand)"></i></div>';
-
       fetch('/api/chats/' + chatId + '/messages', { credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
         .then(function (msgs) {
@@ -1248,13 +1098,11 @@
         })
         .catch(function () { body.innerHTML = Render.empty('تعذّر التحميل', 'ph-warning-circle'); });
     },
-
     showList: function () {
       var layout = byId('chatLayout');
       if (layout) layout.dataset.view = 'list';
       S.activeChat = null;
     },
-
     send: function (e) {
       if (e) e.preventDefault();
       var input = byId('chatInput');
@@ -1267,7 +1115,6 @@
       input.value = '';
       U.autoGrow(input);
       Chat.scrollBottom();
-
       fetch('/api/chats/' + S.activeChat + '/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1287,12 +1134,10 @@
           toast('تعذّر الإرسال', 'error');
         });
     },
-
     scrollBottom: function () {
       var body = byId('chatBody');
       if (body) body.scrollTop = body.scrollHeight;
     },
-
     filterList: function (q) {
       var list = byId('chatList');
       if (!list) return;
@@ -1302,14 +1147,11 @@
         item.hidden = !!(query && name.indexOf(query) < 0);
       });
     },
-
     newChat: function () { toast('اختر مستخدماً للبدء', 'ph-note-pencil'); },
     attach: function () { toast('قريباً', 'ph-paperclip'); }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     DRAWERS + COMMENTS
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ DRAWERS + COMMENTS ═══════ */
   var Drawers = {
     openComments: function (postId) {
       S.activePost = postId;
@@ -1322,7 +1164,6 @@
       Layer.open(m);
       if (scrim) scrim.dataset.open = 'true';
       if (form) form.style.display = S.me ? 'flex' : 'none';
-
       fetch('/api/posts/' + postId + '/comments', { credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
         .then(function (list) {
@@ -1332,7 +1173,6 @@
         })
         .catch(function () { body.innerHTML = Render.empty('تعذّر التحميل', 'ph-warning-circle'); });
     },
-
     closeComments: function () {
       Layer.close('commentsDrawer');
       var scrim = byId('commentsScrim');
@@ -1355,7 +1195,6 @@
       body.insertAdjacentHTML('afterbegin', '<div class="comment" data-temp="' + tmp + '"><img class="avatar avatar-sm" src="' + esc(S.me.avatar) + '" alt=""><div class="comment-body"><div class="comment-top"><span class="comment-name">' + esc(S.me.name) + '</span><span class="comment-time">الآن</span></div><div class="comment-text">' + esc(text) + '</div></div></div>');
       input.value = '';
       U.autoGrow(input);
-
       fetch('/api/posts/' + S.activePost + '/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1379,7 +1218,6 @@
           toast('تعذّر الإرسال', 'error');
         });
     },
-
     delete: function (cid) {
       var node = document.querySelector('[data-comment-id="' + cid + '"]');
       if (node) node.style.opacity = '0.5';
@@ -1400,16 +1238,554 @@
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     EXPLORE
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ PROFILE ═══════ */
+  var Profile = {
+    _viewing: null,
+    _isOwn: true,
+    _currentTab: 'posts',
+    _data: null,
+    _pickedCover: null,
+
+    open: function (userId) {
+      if (!userId) return;
+      S.tab = 'profile';
+      $$('.tab-panel').forEach(function (p) {
+        p.classList.toggle('is-active', p.getAttribute('data-tab') === 'profile');
+      });
+      $$('.dock-item[data-tab]').forEach(function (b) {
+        b.setAttribute('aria-current', b.getAttribute('data-tab') === 'profile' ? 'page' : 'false');
+      });
+      Profile._viewing = userId;
+      Profile._isOwn = !!(S.me && S.me.id === userId);
+      Profile._currentTab = 'posts';
+      Profile.load();
+    },
+
+    openMine: function () {
+      if (!S.me) { Auth.open('login'); return; }
+      S.tab = 'profile';
+      $$('.tab-panel').forEach(function (p) {
+        p.classList.toggle('is-active', p.getAttribute('data-tab') === 'profile');
+      });
+      $$('.dock-item[data-tab]').forEach(function (b) {
+        b.setAttribute('aria-current', b.getAttribute('data-tab') === 'profile' ? 'page' : 'false');
+      });
+      Profile._viewing = S.me.id;
+      Profile._isOwn = true;
+      Profile._currentTab = 'posts';
+      Profile.load();
+    },
+
+    load: function () {
+      var skeleton = byId('profileSkeleton');
+      var card = byId('profileCard');
+      var tabs = byId('profileTabs');
+      if (skeleton) skeleton.hidden = false;
+      if (card) card.hidden = true;
+      if (tabs) tabs.hidden = true;
+
+      fetch('/api/users/' + Profile._viewing, { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+        .then(function (user) {
+          Profile._data = user;
+          var av = byId('profileAvatar');
+          if (av) av.src = user.avatar || '';
+          var editAv = byId('editAvatarImg');
+          if (editAv) editAv.src = user.avatar || '';
+          var name = byId('profileName');
+          if (name) name.textContent = user.name || '—';
+          var verified = byId('profileVerified');
+          if (verified) verified.hidden = !user.verified;
+          var handle = byId('profileHandle');
+          if (handle) handle.textContent = user.handle || '@—';
+          var bio = byId('profileBio');
+          if (bio) {
+            bio.textContent = user.bio || '';
+            bio.hidden = !user.bio;
+          }
+          Profile._renderMeta(user);
+          Profile._renderStats(user);
+          var cover = byId('profileCover');
+          if (cover) cover.dataset.cover = user.cover || 'aurora';
+          var editCover = byId('editCoverPreview');
+          if (editCover) editCover.dataset.cover = user.cover || 'aurora';
+          Profile._renderActions(user);
+          Profile._renderTabsVisibility();
+          if (skeleton) skeleton.hidden = true;
+          if (card) card.hidden = false;
+          if (tabs) tabs.hidden = false;
+          Profile.loadPanel(Profile._currentTab);
+        })
+        .catch(function (err) {
+          console.error('[Profile] load failed:', err);
+          if (skeleton) skeleton.hidden = true;
+          var panel = byId('profilePanel');
+          if (panel) panel.innerHTML = Render.empty('تعذّر تحميل الملف', 'ph-warning-circle', 'حاول مرة أخرى');
+        });
+    },
+
+    _renderMeta: function (user) {
+      var meta = byId('profileMeta');
+      if (!meta) return;
+      var hasLocation = !!user.location;
+      var hasWebsite = !!user.website;
+      var hasJoined = !!user.created_at;
+      var anyVisible = hasLocation || hasWebsite || hasJoined;
+      meta.hidden = !anyVisible;
+      if (!anyVisible) return;
+      var locEl = byId('profileLocation');
+      if (locEl) {
+        locEl.hidden = !hasLocation;
+        if (hasLocation) locEl.querySelector('span').textContent = user.location;
+      }
+      var webEl = byId('profileWebsite');
+      if (webEl) {
+        webEl.hidden = !hasWebsite;
+        if (hasWebsite) {
+          var a = webEl.querySelector('a');
+          a.href = user.website;
+          a.textContent = user.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+        }
+      }
+      var joinedEl = byId('profileJoined');
+      if (joinedEl) {
+        joinedEl.hidden = !hasJoined;
+        if (hasJoined) {
+          var d = new Date(user.created_at);
+          var months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+          joinedEl.querySelector('span').textContent = 'انضم ' + months[d.getMonth()] + ' ' + d.getFullYear();
+        }
+      }
+    },
+
+    _renderStats: function (user) {
+      var set = function (id, v) { var n = byId(id); if (n) n.textContent = U.num(v || 0); };
+      set('statFollowers', user.followers);
+      set('statFollowing', user.following);
+      set('statPosts', user.posts_count);
+      set('statLikes', user.total_likes || 0);
+    },
+
+    _renderActions: function (user) {
+      var box = byId('profileActions');
+      if (!box) return;
+      if (Profile._isOwn) {
+        box.innerHTML =
+          '<button class="btn btn-primary btn-sm" data-action="edit-profile" type="button">' +
+            '<i class="ph ph-pencil-simple"></i><span>تعديل الملف</span>' +
+          '</button>' +
+          '<button class="btn btn-secondary btn-sm" data-action="share-profile" type="button">' +
+            '<i class="ph ph-share-network"></i><span>مشاركة</span>' +
+          '</button>';
+      } else {
+        var isFollowing = !!user.is_following;
+        box.innerHTML =
+          '<button class="btn ' + (isFollowing ? 'btn-secondary' : 'btn-primary') + ' btn-sm" ' +
+                  'data-action="toggle-follow" data-user="' + user.id + '" ' +
+                  'aria-pressed="' + (isFollowing ? 'true' : 'false') + '" type="button">' +
+            '<i class="ph ' + (isFollowing ? 'ph-user-check' : 'ph-user-plus') + '"></i>' +
+            '<span>' + (isFollowing ? 'متابَع' : 'متابعة') + '</span>' +
+          '</button>' +
+          '<button class="btn btn-secondary btn-sm" data-action="message-user" data-user="' + user.id + '" type="button">' +
+            '<i class="ph ph-chat-circle"></i><span>رسالة</span>' +
+          '</button>' +
+          '<button class="btn btn-ghost btn-sm" data-action="share-profile" type="button" aria-label="مشاركة">' +
+            '<i class="ph ph-share-network"></i>' +
+          '</button>';
+      }
+    },
+
+    _renderTabsVisibility: function () {
+      var savedTab = byId('profileSavedTab');
+      var settingsTab = byId('profileSettingsTab');
+      if (savedTab) savedTab.hidden = !Profile._isOwn;
+      if (settingsTab) settingsTab.hidden = !Profile._isOwn;
+    },
+
+    loadPanel: function (tab) {
+      Profile._currentTab = tab;
+      $$('#profileTabs .tab').forEach(function (t) {
+        t.setAttribute('aria-selected', t.getAttribute('data-ptab') === tab ? 'true' : 'false');
+      });
+      var panel = byId('profilePanel');
+      if (!panel) return;
+      panel.className = 'profile-panel';
+      panel.innerHTML = '<div class="empty-block"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite"></i></div>';
+
+      if (tab === 'settings') { Profile._renderSettings(panel); return; }
+      if (tab === 'about')    { Profile._renderAbout(panel); return; }
+
+      panel.className = 'profile-panel feed';
+
+      var url;
+      if (tab === 'posts') {
+        url = '/api/users/' + Profile._viewing + '/posts';
+      } else if (tab === 'liked') {
+        url = '/api/posts?limit=100';
+      } else if (tab === 'saved') {
+        url = '/api/posts?limit=100';
+      }
+
+      fetch(url, { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (posts) {
+          if (tab === 'liked') posts = posts.filter(function (p) { return p.liked; });
+          if (tab === 'saved') posts = posts.filter(function (p) { return p.saved; });
+
+          if (!posts || !posts.length) {
+            var emptyMsg = Profile._isOwn
+              ? { posts: ['لم تنشر بعد', 'ph-image-square', 'شارك أول برومبت لك'],
+                  liked: ['لا إعجابات بعد', 'ph-heart', 'اضغط القلب على ما يعجبك'],
+                  saved: ['المكتبة فارغة', 'ph-bookmark-simple', 'احفظ ما تريد الرجوع إليه'] }[tab]
+              : { posts: ['لا برومبتات', 'ph-image-square', 'لم يشارك هذا المستخدم شيئاً بعد'],
+                  liked: ['لا إعجابات', 'ph-heart', ''],
+                  saved: ['مخفي', 'ph-lock', ''] }[tab];
+            panel.innerHTML = Render.empty(emptyMsg[0], emptyMsg[1], emptyMsg[2]);
+            return;
+          }
+
+          panel.innerHTML = posts.map(Render.prompt).join('');
+          var cards = panel.querySelectorAll('.prompt-card');
+          cards.forEach(function (c, i) {
+            c.style.opacity = '0';
+            c.style.transform = 'translateY(8px)';
+            c.style.transition = 'opacity .3s var(--ease-out) ' + Math.min(i * 30, 250) + 'ms, transform .3s var(--ease-out) ' + Math.min(i * 30, 250) + 'ms';
+          });
+          requestAnimationFrame(function () {
+            cards.forEach(function (c) { c.style.opacity = '1'; c.style.transform = 'translateY(0)'; });
+          });
+        })
+        .catch(function () {
+          panel.innerHTML = Render.empty('تعذّر التحميل', 'ph-warning-circle', 'حاول مرة أخرى');
+        });
+    },
+
+    _renderAbout: function (panel) {
+      var u = Profile._data || {};
+      var joined = u.created_at ? new Date(u.created_at) : null;
+      var months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+      panel.innerHTML =
+        '<div class="profile-about">' +
+          '<div class="about-section">' +
+            '<h4><i class="ph ph-user"></i> نبذة</h4>' +
+            '<p>' + (u.bio ? esc(u.bio) : (Profile._isOwn ? 'لم تضف نبذة بعد.' : 'لا توجد نبذة.')) + '</p>' +
+          '</div>' +
+          '<div class="about-section">' +
+            '<h4><i class="ph ph-info"></i> معلومات</h4>' +
+            (u.location ? '<div class="about-row"><span class="label">الموقع</span><span class="value">' + esc(u.location) + '</span></div>' : '') +
+            (u.website ? '<div class="about-row"><span class="label">الموقع الإلكتروني</span><span class="value"><a href="' + esc(u.website) + '" target="_blank" rel="noopener noreferrer" style="color:var(--c-brand)">' + esc(u.website.replace(/^https?:\/\//, '')) + '</a></span></div>' : '') +
+            '<div class="about-row"><span class="label">المعرّف</span><span class="value" style="font-family:var(--font-mono)">' + esc(u.handle || '') + '</span></div>' +
+            (joined ? '<div class="about-row"><span class="label">تاريخ الانضمام</span><span class="value">' + months[joined.getMonth()] + ' ' + joined.getFullYear() + '</span></div>' : '') +
+            '<div class="about-row"><span class="label">عدد البرومبتات</span><span class="value">' + U.num(u.posts_count || 0) + '</span></div>' +
+          '</div>' +
+          '<div class="about-section">' +
+            '<h4><i class="ph ph-chart-line"></i> الإحصائيات</h4>' +
+            '<div class="about-row"><span class="label">إجمالي الإعجابات</span><span class="value">' + U.num(u.total_likes || 0) + '</span></div>' +
+            '<div class="about-row"><span class="label">إجمالي النسخ</span><span class="value">' + U.num(u.total_copies || 0) + '</span></div>' +
+            '<div class="about-row"><span class="label">المتابعون</span><span class="value">' + U.num(u.followers || 0) + '</span></div>' +
+            '<div class="about-row"><span class="label">يتابع</span><span class="value">' + U.num(u.following || 0) + '</span></div>' +
+          '</div>' +
+        '</div>';
+    },
+
+    _renderSettings: function (panel) {
+      var theme = document.documentElement.getAttribute('data-theme') || 'dark';
+      panel.innerHTML =
+        '<div class="settings-list">' +
+          '<div class="settings-group">' +
+            '<div class="settings-group-title">المظهر</div>' +
+            '<div class="setting-row">' +
+              '<div class="setting-row-info">' +
+                '<strong>الوضع الليلي</strong>' +
+                '<span>تبديل بين المظهر الفاتح والداكن</span>' +
+              '</div>' +
+              '<button class="switch" data-action="toggle-theme" role="switch" ' +
+                     'aria-checked="' + (theme === 'dark' ? 'true' : 'false') + '" ' +
+                     'aria-label="الوضع الليلي" type="button"></button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="settings-group">' +
+            '<div class="settings-group-title">الحساب</div>' +
+            '<div class="setting-row" data-action="edit-profile" style="cursor:pointer">' +
+              '<div class="setting-row-info">' +
+                '<strong>تعديل الملف الشخصي</strong>' +
+                '<span>الاسم، النبذة، الصورة، الغلاف</span>' +
+              '</div>' +
+              '<i class="ph ph-caret-left" style="color:var(--fg-3)"></i>' +
+            '</div>' +
+            '<div class="setting-row" data-action="open-change-password" style="cursor:pointer">' +
+              '<div class="setting-row-info">' +
+                '<strong>تغيير كلمة المرور</strong>' +
+                '<span>حدّث كلمة المرور الخاصة بحسابك</span>' +
+              '</div>' +
+              '<i class="ph ph-caret-left" style="color:var(--fg-3)"></i>' +
+            '</div>' +
+          '</div>' +
+          '<div class="settings-group">' +
+            '<div class="settings-group-title">الخصوصية والأمان</div>' +
+            '<div class="setting-row" data-action="open-privacy" style="cursor:pointer">' +
+              '<div class="setting-row-info">' +
+                '<strong>سياسة الخصوصية</strong>' +
+                '<span>اقرأ كيف نحفظ بياناتك ونحميها</span>' +
+              '</div>' +
+              '<i class="ph ph-caret-left" style="color:var(--fg-3)"></i>' +
+            '</div>' +
+          '</div>' +
+          '<div class="settings-group">' +
+            '<div class="settings-group-title">الجلسة</div>' +
+            '<div class="setting-row" data-action="logout" style="cursor:pointer">' +
+              '<div class="setting-row-info">' +
+                '<strong>تسجيل الخروج</strong>' +
+                '<span>إنهاء الجلسة على هذا الجهاز</span>' +
+              '</div>' +
+              '<i class="ph ph-sign-out" style="color:var(--fg-2)"></i>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    },
+
+    toggleFollow: function (btn, userId) {
+      if (!S.me) { Auth.open('login'); return; }
+      if (!userId || userId === S.me.id) return;
+      var wasFollowing = btn.getAttribute('aria-pressed') === 'true';
+      var next = !wasFollowing;
+      btn.setAttribute('aria-pressed', next ? 'true' : 'false');
+      btn.classList.toggle('btn-primary', !next);
+      btn.classList.toggle('btn-secondary', next);
+      var icon = btn.querySelector('i');
+      var label = btn.querySelector('span');
+      if (icon) icon.className = 'ph ' + (next ? 'ph-user-check' : 'ph-user-plus');
+      if (label) label.textContent = next ? 'متابَع' : 'متابعة';
+      var folEl = byId('statFollowers');
+      if (folEl) {
+        var cur = parseInt(folEl.textContent.replace(/[^0-9]/g, '')) || 0;
+        folEl.textContent = U.num(Math.max(0, cur + (next ? 1 : -1)));
+      }
+      fetch('/api/users/' + userId + '/follow', { method: 'POST', credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          btn.setAttribute('aria-pressed', res.following ? 'true' : 'false');
+          if (folEl) folEl.textContent = U.num(res.followers);
+          toast(res.following ? 'بدأت المتابعة' : 'ألغيت المتابعة', 'success');
+        })
+        .catch(function () {
+          btn.setAttribute('aria-pressed', wasFollowing ? 'true' : 'false');
+          btn.classList.toggle('btn-primary', wasFollowing);
+          btn.classList.toggle('btn-secondary', !wasFollowing);
+          if (icon) icon.className = 'ph ' + (wasFollowing ? 'ph-user-check' : 'ph-user-plus');
+          if (label) label.textContent = wasFollowing ? 'متابَع' : 'متابعة';
+          toast('تعذّر تحديث المتابعة', 'error');
+        });
+    },
+
+    shareProfile: function () {
+      var url = location.origin + '/u/' + (Profile._data && Profile._data.handle ? Profile._data.handle.replace('@', '') : '');
+      var title = (Profile._data && Profile._data.name) ? Profile._data.name + ' على خَيال' : 'خَيال';
+      if (navigator.share) {
+        navigator.share({ title: title, url: url })
+          .then(function () { toast('تمت المشاركة', 'success'); })
+          .catch(function (e) {
+            if (e.name !== 'AbortError') {
+              U.copy(url).then(function () { toast('تم نسخ الرابط', 'success'); }).catch(function () {});
+            }
+          });
+      } else {
+        U.copy(url).then(function () { toast('تم نسخ الرابط', 'success'); }).catch(function () { toast('تعذّرت المشاركة', 'error'); });
+      }
+    },
+
+    copyHandle: function () {
+      var handle = (Profile._data && Profile._data.handle) || '';
+      if (!handle) return;
+      U.copy(handle)
+        .then(function () { toast('تم نسخ ' + handle, 'success'); })
+        .catch(function () { toast('تعذّر النسخ', 'error'); });
+    },
+
+    messageUser: function (userId) {
+      if (!S.me) { Auth.open('login'); return; }
+      fetch('/api/chats/with/' + userId, { method: 'POST', credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          toast('فتح المحادثة…');
+          App.switchTab('chat');
+          setTimeout(function () { Chat.open(res.id); }, 300);
+        })
+        .catch(function () { toast('تعذّر فتح المحادثة', 'error'); });
+    },
+
+    openEdit: function () {
+      if (!S.me) { Auth.open('login'); return; }
+      var u = Profile._data && Profile._viewing === S.me.id ? Profile._data : S.me;
+      var name = byId('epName'); if (name) name.value = u.name || '';
+      var bio = byId('epBio'); if (bio) { bio.value = u.bio || ''; Profile._updateBioCount(); }
+      var loc = byId('epLocation'); if (loc) loc.value = u.location || '';
+      var web = byId('epWebsite'); if (web) web.value = u.website || '';
+      var av = byId('epAvatarUrl'); if (av) av.value = '';
+      var editAv = byId('editAvatarImg'); if (editAv) editAv.src = u.avatar || '';
+      var cover = byId('editCoverPreview');
+      if (cover) { cover.dataset.cover = u.cover || 'aurora'; cover.style.backgroundImage = ''; }
+      $$('.cover-preset').forEach(function (p) {
+        p.setAttribute('aria-pressed', p.dataset.cover === (u.cover || 'aurora') ? 'true' : 'false');
+      });
+      Layer.open('editProfileModal');
+      setTimeout(function () { if (name) name.focus(); }, 200);
+    },
+
+    closeEdit: function (e) {
+      if (e && e.target !== e.currentTarget) return;
+      Layer.close('editProfileModal');
+    },
+
+    _updateBioCount: function () {
+      var bio = byId('epBio');
+      var counter = byId('epBioCount');
+      if (bio && counter) counter.textContent = String(bio.value.length);
+    },
+
+    pickCover: function () {
+      var presets = byId('coverPresetsField');
+      if (presets) presets.hidden = !presets.hidden;
+    },
+
+    pickAvatar: function () {
+      var input = byId('avatarFileInput');
+      if (!input) return;
+      input.value = '';
+      input.click();
+    },
+
+    _handleAvatarFile: function (file) {
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) { toast('الصورة كبيرة (الحد 2MB)', 'warning'); return; }
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        var editAv = byId('editAvatarImg');
+        if (editAv) editAv.src = e.target.result;
+        var urlInput = byId('epAvatarUrl');
+        if (urlInput) urlInput.value = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    },
+
+    _handleCoverFile: function (file) {
+      if (!file) return;
+      if (file.size > 3 * 1024 * 1024) { toast('الصورة كبيرة (الحد 3MB)', 'warning'); return; }
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        var cover = byId('editCoverPreview');
+        if (cover) {
+          cover.style.backgroundImage = 'url(' + e.target.result + ')';
+          cover.style.backgroundSize = 'cover';
+          cover.style.backgroundPosition = 'center';
+        }
+        Profile._pickedCover = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    },
+
+    save: function (e) {
+      if (e) e.preventDefault();
+      if (!S.me) return;
+      var btn = byId('editProfileSubmit');
+      var name = (byId('epName') || {}).value || '';
+      var bio = (byId('epBio') || {}).value || '';
+      var location = (byId('epLocation') || {}).value || '';
+      var website = (byId('epWebsite') || {}).value || '';
+      var avatar = (byId('epAvatarUrl') || {}).value || '';
+      var coverEl = byId('editCoverPreview');
+      var cover = coverEl && coverEl.dataset ? coverEl.dataset.cover : 'aurora';
+      if (!name.trim()) { toast('الاسم مطلوب', 'warning'); return; }
+      if (btn) btn.setAttribute('aria-busy', 'true');
+      var payload = {
+        name: name.trim(),
+        bio: bio.trim(),
+        location: location.trim(),
+        website: website.trim(),
+        cover: cover
+      };
+      if (avatar) payload.avatar = avatar;
+      if (Profile._pickedCover) payload.cover_image = Profile._pickedCover;
+
+      fetch('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload)
+      })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+        .then(function (updated) {
+          S.me = Object.assign({}, S.me, updated);
+          Profile._pickedCover = null;
+          Profile.closeEdit();
+          App.updateUserUI();
+          toast('تم حفظ التعديلات', 'success');
+          if (Profile._viewing === S.me.id) Profile.load();
+        })
+        .catch(function () { toast('تعذّر الحفظ', 'error'); })
+        .finally(function () { if (btn) btn.removeAttribute('aria-busy'); });
+    },
+
+    openFollowers: function (kind) {
+      if (!Profile._viewing) return;
+      var title = byId('followersTitle');
+      if (title) title.textContent = kind === 'followers' ? 'المتابعون' : 'يتابع';
+      var body = byId('followersBody');
+      if (body) body.innerHTML = '<div class="empty-block"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite"></i></div>';
+      Layer.open('followersDrawer');
+      var scrim = byId('followersScrim');
+      if (scrim) scrim.dataset.open = 'true';
+      fetch('/api/users/' + Profile._viewing + '/' + kind, { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (users) {
+          if (!users.length) {
+            body.innerHTML = Render.empty(kind === 'followers' ? 'لا متابعين بعد' : 'لا يتابع أحداً', 'ph-users');
+            return;
+          }
+          body.innerHTML = users.map(function (u) {
+            return '<div class="follower-item" data-action="open-user-profile" data-user="' + u.id + '">' +
+              '<img class="avatar" src="' + esc(u.avatar || '') + '" alt="" loading="lazy">' +
+              '<div class="follower-item-info">' +
+                '<div class="follower-item-name">' + esc(u.name) + '</div>' +
+                '<div class="follower-item-handle">' + esc(u.handle) + '</div>' +
+              '</div>' +
+              '<i class="ph ph-caret-left" style="color:var(--fg-3)"></i>' +
+            '</div>';
+          }).join('');
+        })
+        .catch(function () { body.innerHTML = Render.empty('تعذّر التحميل', 'ph-warning-circle'); });
+    },
+
+    closeFollowers: function () {
+      Layer.close('followersDrawer');
+      var scrim = byId('followersScrim');
+      if (scrim) scrim.dataset.open = 'false';
+    },
+
+    openChangePassword: function () {
+      var oldPw = prompt('كلمة المرور الحالية:');
+      if (!oldPw) return;
+      var newPw = prompt('كلمة المرور الجديدة (6 أحرف على الأقل):');
+      if (!newPw || newPw.length < 6) { toast('كلمة المرور قصيرة', 'warning'); return; }
+      fetch('/api/me/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ old_password: oldPw, new_password: newPw })
+      })
+        .then(function (r) { if (!r.ok) throw new Error(); toast('تم تغيير كلمة المرور', 'success'); })
+        .catch(function () { toast('فشل التغيير', 'error'); });
+    }
+  };
+
+  /* ═══════ EXPLORE ═══════ */
   var Explore = {
     openCollection: function (kind) { toast('فتح: ' + kind, 'ph-compass'); App.loadFeed('explore'); }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     INSTALL (PWA)
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ INSTALL ═══════ */
   var Install = {
     _deferred: null,
     prompt: function () {
@@ -1422,9 +1798,7 @@
     dismiss: function () { var b = byId('installBanner'); if (b) b.hidden = true; }
   };
 
-  /* ═══════════════════════════════════════════════════════════
-     EVENT DELEGATION
-     ═══════════════════════════════════════════════════════════ */
+  /* ═══════ DELEGATION ═══════ */
   var Delegation = {
     'open-auth': function (t) { Auth.open(t.dataset.mode || 'login'); },
     'close-auth': function () { Auth.close(); },
@@ -1447,9 +1821,20 @@
     'open-chat': function (t) { Chat.open(Number(t.dataset.chat)); },
     'chat-list': function () { Chat.showList(); },
     'chat-new': function () { Chat.newChat(); },
-    'open-profile': function (t) { App.openProfile(Number(t.dataset.user)); },
-    'edit-profile': function () { Auth.openEditProfile(); },
-    'close-edit-profile': function () { Auth.closeEditProfile(); },
+    'open-profile': function (t) { Profile.open(Number(t.dataset.user)); },
+    'open-user-profile': function (t) { Profile.open(Number(t.dataset.user)); },
+    'edit-profile': function () { Profile.openEdit(); },
+    'close-edit-profile': function () { Profile.closeEdit(); },
+    'share-profile': function () { Profile.shareProfile(); },
+    'copy-handle': function () { Profile.copyHandle(); },
+    'edit-avatar': function () { Profile.pickAvatar(); },
+    'edit-cover': function () { Profile.pickCover(); },
+    'toggle-follow': function (t) { Profile.toggleFollow(t, Number(t.dataset.user)); },
+    'message-user': function (t) { Profile.messageUser(Number(t.dataset.user)); },
+    'open-followers': function () { Profile.openFollowers('followers'); },
+    'open-following': function () { Profile.openFollowers('following'); },
+    'open-change-password': function () { Profile.openChangePassword(); },
+    'open-privacy': function () { window.open('/privacy', '_blank'); },
     'logout': function () { Auth.logout(); },
     'switch-mode': function (t) { Auth.switchMode(t.dataset.mode); },
     'open-collection': function (t) { Explore.openCollection(t.dataset.kind); },
@@ -1468,7 +1853,6 @@
     catch (err) { console.error('[action "' + action + '"]', err); }
   }, false);
 
-  /* ─────────────── Form submission ─────────────── */
   document.addEventListener('submit', function (e) {
     if (e.defaultPrevented) return;
     var f = e.target;
@@ -1478,10 +1862,39 @@
     else if (fid === 'registerForm') { e.preventDefault(); Auth.register(e); }
     else if (fid === 'composerForm') { e.preventDefault(); Composer.publish(e); }
     else if (fid === 'commentForm') { e.preventDefault(); Comments.send(e); }
+    else if (fid === 'editProfileForm') { e.preventDefault(); Profile.save(e); }
     else if (f.classList && f.classList.contains('chat-composer')) { e.preventDefault(); Chat.send(e); }
   }, false);
 
-  /* ─────────────── Theme from storage ─────────────── */
+  /* Profile tabs */
+  document.addEventListener('click', function (e) {
+    var tab = e.target.closest('#profileTabs .tab');
+    if (!tab) return;
+    e.preventDefault();
+    Profile.loadPanel(tab.dataset.ptab);
+  }, false);
+
+  /* Cover presets + file inputs */
+  document.addEventListener('DOMContentLoaded', function () {
+    var avInput = byId('avatarFileInput');
+    if (avInput) avInput.addEventListener('change', function (e) { Profile._handleAvatarFile(e.target.files[0]); });
+    var covInput = byId('coverFileInput');
+    if (covInput) covInput.addEventListener('change', function (e) { Profile._handleCoverFile(e.target.files[0]); });
+    var bio = byId('epBio');
+    if (bio) bio.addEventListener('input', Profile._updateBioCount);
+    var coverPresets = byId('coverPresets');
+    if (coverPresets) coverPresets.addEventListener('click', function (e) {
+      var btn = e.target.closest('.cover-preset');
+      if (!btn) return;
+      $$('.cover-preset').forEach(function (p) { p.setAttribute('aria-pressed', 'false'); });
+      btn.setAttribute('aria-pressed', 'true');
+      var cover = byId('editCoverPreview');
+      if (cover) { cover.dataset.cover = btn.dataset.cover; cover.style.backgroundImage = ''; }
+      Profile._pickedCover = null;
+    });
+  });
+
+  /* Theme from storage */
   try {
     var savedTheme = localStorage.getItem('kh_theme');
     if (savedTheme) {
@@ -1491,7 +1904,7 @@
     }
   } catch (_) {}
 
-  /* ─────────────── Expose ─────────────── */
+  /* Expose */
   window.U = U;
   window.Store = { get: function (k, d) { try { return JSON.parse(localStorage.getItem('kh_' + k)) || d; } catch (_) { return d; } }, set: function (k, v) { try { localStorage.setItem('kh_' + k, JSON.stringify(v)); } catch (_) {} } };
   window.Auth = Auth;
@@ -1501,28 +1914,6 @@
   window.Chat = Chat;
   window.Drawers = Drawers;
   window.Comments = Comments;
+  window.Profile = Profile;
   window.Explore = Explore;
-  window.Install = Install;
-  window.Layer = Layer;
-  window.Render = Render;
-  window.Infinite = Infinite;
-  window.PTR = PTR;
-  window.ScrollMemory = ScrollMemory;
-  window.NewPostsPill = NewPostsPill;
-
-  /* ─────────────── Boot ─────────────── */
-  function boot() {
-    try {
-      App.init();
-      console.log('[خَيال] ✓ ready');
-    } catch (err) {
-      console.error('[خَيال] boot failed:', err);
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
-})();
+  window.
