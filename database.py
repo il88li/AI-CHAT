@@ -1,63 +1,200 @@
 """
-خَيال — طبقة قاعدة البيانات
-PostgreSQL (Aiven) عبر SQLAlchemy.
+خَيال — طبقة قاعدة البيانات (محسّنة للتطوير من الهاتف والإنتاج)
+تدعم:
+- PostgreSQL (psycopg2) و MySQL (pymysql)
+- pg8000 كبديل لا يحتاج تجميع C
+- اكتشاف VPC تلقائياً
+- اختبار الاتصال قبل الاستخدام
+- SSL صحيح لـ Aiven
 """
 import os
 import re
+import sys
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
 
+# ═══════════════════════════════════════════════════════════
+# كشف البيئة
+# ═══════════════════════════════════════════════════════════
+def is_running_on_render() -> bool:
+    """هل نعمل على Render؟"""
+    return bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"))
+
+
+def is_running_locally() -> bool:
+    """هل نعمل محلياً (هاتف أو كمبيوتر)؟"""
+    return not is_running_on_render()
+
+
+# ═══════════════════════════════════════════════════════════
+# تنقية وتصحيح الرابط
+# ═══════════════════════════════════════════════════════════
+def _sanitize_uri(uri: str) -> str:
+    """ينظّف الرابط من الأسطر الجديدة والمسافات."""
+    if not uri:
+        return ""
+    return uri.replace("\n", "").replace("\r", "").replace("\t", "").strip()
+
+
+def _normalize_scheme(uri: str) -> str:
+    """يُصلح صيغة PostgreSQL/MySQL بأي شكل."""
+    uri = re.sub(r"^postgre(?:sql)?://", "postgresql://", uri, flags=re.IGNORECASE)
+    uri = re.sub(r"^mysql://", "mysql+pymysql://", uri, flags=re.IGNORECASE)
+    return uri
+
+
+def _mask_password(uri: str) -> str:
+    """يخفي كلمة المرور للعرض في السجل."""
+    try:
+        parsed = urlparse(uri)
+        if parsed.password:
+            netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
+            return urlunparse(parsed._replace(netloc=netloc))
+    except Exception:
+        pass
+    return uri[:60] + "…"
+
+
+def _ensure_ssl(uri: str) -> str:
+    """يضيف SSL إن كان مفقوداً."""
+    if not uri.startswith("postgresql"):
+        return uri
+    if "sslmode=" in uri:
+        return uri
+    sep = "&" if "?" in uri else "?"
+    return f"{uri}{sep}sslmode=require"
+
+
+def _swap_host_to_public(uri: str) -> str:
+    """
+    يستبدل hostname الداخلي بـ public- على Aiven.
+    pg-xxx.aivencloud.com → public-pg-xxx.aivencloud.com
+    """
+    try:
+        parsed = urlparse(uri)
+        host = parsed.hostname or ""
+        if host.startswith("pg-") and host.endswith(".aivencloud.com"):
+            new_host = "public-" + host
+            # احتفظ بالمنفذ إن وُجد
+            port_part = f":{parsed.port}" if parsed.port else ""
+            netloc = parsed.netloc
+            if parsed.password:
+                netloc = netloc.replace(f"@{host}", f"@{new_host}").replace(
+                    f"@{host}{port_part}", f"@{new_host}{port_part}"
+                )
+            else:
+                netloc = netloc.replace(host, new_host, 1)
+            return urlunparse(parsed._replace(netloc=netloc))
+    except Exception as e:
+        print(f"⚠️ فشل التبديل إلى public: {e}", file=sys.stderr)
+    return uri
+
+
+# ═══════════════════════════════════════════════════════════
+# بناء رابط الاتصال
+# ═══════════════════════════════════════════════════════════
 def build_database_uri() -> str:
-    """يبني رابط SQLAlchemy من متغيرات البيئة."""
-    direct = (os.getenv("DATABASE_URL") or "").strip()
-    direct = direct.replace("\n", "").replace("\r", "").replace("\t", "")
+    """
+    يبني رابط SQLAlchemy مع معالجة ذكية لكل الحالات.
+    """
+    direct = _sanitize_uri(os.getenv("DATABASE_URL"))
 
     if direct:
-        direct = re.sub(r"^postgre(?:sql)?://", "postgresql://", direct, flags=re.IGNORECASE)
-        direct = re.sub(r"^mysql://", "mysql+pymysql://", direct, flags=re.IGNORECASE)
-        if direct.startswith("postgresql://") and "sslmode=" not in direct:
-            sep = "&" if "?" in direct else "?"
-            direct = f"{direct}{sep}sslmode=require"
+        direct = _normalize_scheme(direct)
+        direct = _ensure_ssl(direct)
 
-        # إخفاء كلمة المرور من السجل
-        scheme_end = direct.find("://") + 3
-        at_pos = direct.find("@")
-        if at_pos > 0 and scheme_end < at_pos:
-            safe = direct[:scheme_end] + "***:***" + direct[at_pos:]
-        else:
-            safe = direct[:40] + "…"
-        print(f"[DB] DATABASE_URL: {safe}")
+        # إذا كنا محلياً ووجدنا hostname داخلي، حوّله إلى public
+        if is_running_locally():
+            parsed_host = urlparse(direct).hostname or ""
+            if parsed_host.startswith("pg-") and "aivencloud.com" in parsed_host:
+                print(f"📍 نعمل محلياً — تحويل {parsed_host} → public-")
+                direct = _swap_host_to_public(direct)
+
+        print(f"[DB] mode={'render' if is_running_on_render() else 'local'}")
+        print(f"[DB] DATABASE_URL: {_mask_password(direct)}")
         return direct
 
-    host     = (os.getenv("DB_HOST") or "").strip()
-    port     = (os.getenv("DB_PORT") or "").strip()
-    user     = (os.getenv("DB_USER") or "").strip()
-    password = (os.getenv("DB_PASSWORD") or "").strip()
-    name     = (os.getenv("DB_NAME") or "defaultdb").strip()
-    kind     = (os.getenv("DB_TYPE") or "postgres").lower().strip()
-    use_ssl  = (os.getenv("DB_SSL") or "true").lower().strip() == "true"
+    # ═══ بناء من متغيرات منفصلة ═══
+    host     = _sanitize_uri(os.getenv("DB_HOST"))
+    port     = _sanitize_uri(os.getenv("DB_PORT"))
+    user     = _sanitize_uri(os.getenv("DB_USER"))
+    password = _sanitize_uri(os.getenv("DB_PASSWORD"))
+    name     = _sanitize_uri(os.getenv("DB_NAME")) or "defaultdb"
+    kind     = (_sanitize_uri(os.getenv("DB_TYPE")) or "postgres").lower()
+    use_ssl  = (_sanitize_uri(os.getenv("DB_SSL")) or "true").lower() == "true"
 
     if not all([host, user, password]):
         raise RuntimeError(
-            "متغيرات قاعدة البيانات ناقصة. أضف DB_HOST و DB_USER و DB_PASSWORD "
-            "أو حدّد DATABASE_URL مباشرةً."
+            "❌ متغيرات قاعدة البيانات ناقصة.\n"
+            "أضف في البيئة:\n"
+            "  DATABASE_URL=postgresql://...\n"
+            "أو:\n"
+            "  DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT"
         )
 
-    if host.startswith("pg-") and ".aivencloud.com" in host:
-        print(f"⚠️  تحذير: '{host}' يبدو داخل VPC. فعّل Public Access في Aiven.")
-
-    print(f"[DB] host={host!r} port={port!r} user={user!r} db={name!r} kind={kind}")
+    # إذا محلياً و hostname داخلي، حوّله
+    if is_running_locally() and host.startswith("pg-") and "aivencloud.com" in host:
+        print(f"📍 نعمل محلياً — تحويل host إلى public-")
+        host = "public-" + host
 
     if kind == "mysql":
         port = port or "3306"
         ssl_part = "&ssl_ca=ca.pem" if use_ssl else ""
-        return f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4{ssl_part}"
+        uri = f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4{ssl_part}"
     else:
         port = port or "5432"
-        return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}?sslmode=require"
+        uri = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}?sslmode=require"
+
+    print(f"[DB] mode={'render' if is_running_on_render() else 'local'}")
+    print(f"[DB] host={host} port={port} db={name} kind={kind}")
+    return uri
+
+
+# ═══════════════════════════════════════════════════════════
+# اختبار الاتصال
+# ═══════════════════════════════════════════════════════════
+def test_connection(app) -> dict:
+    """
+    يختبر الاتصال بقاعدة البيانات ويعيد تقريراً مفصّلاً.
+    """
+    from sqlalchemy import text
+    report = {
+        "mode": "render" if is_running_on_render() else "local",
+        "uri_masked": _mask_password(app.config.get("SQLALCHEMY_DATABASE_URI", "")),
+        "host": None,
+        "port": None,
+        "connected": False,
+        "error": None,
+        "server_version": None,
+        "latency_ms": None,
+    }
+
+    try:
+        parsed = urlparse(app.config["SQLALCHEMY_DATABASE_URI"])
+        report["host"] = parsed.hostname
+        report["port"] = parsed.port
+    except Exception:
+        pass
+
+    import time
+    try:
+        start = time.time()
+        with app.app_context():
+            result = db.session.execute(text("SELECT version()"))
+            version = result.scalar()
+            report["connected"] = True
+            report["server_version"] = (version or "")[:80]
+            report["latency_ms"] = round((time.time() - start) * 1000, 1)
+    except Exception as e:
+        report["error"] = str(e)
+        report["error_type"] = type(e).__name__
+
+    return report
 
 
 # ═══════════════════════════════════════════════════════════
