@@ -985,37 +985,59 @@
 
   /* ═══════ COMPOSER ═══════ */
   var Composer = {
-    _type: null,
+    _type: 'text',
     open: function () {
       if (!S.me) { Auth.open('login'); return; }
-      Composer._type = null;
+      Composer._type = 'text';
       Composer.reset();
-      Layer.open('composerModal');
+      var view = byId('composerView');
+      if (!view) return;
+      var av = byId('composerFormAvatar');
+      var nm = byId('composerUserName');
+      if (av) av.src = (S.me.avatar || '');
+      if (nm) nm.textContent = S.me.name || '—';
+      view.hidden = false;
+      document.body.style.overflow = 'hidden';
+      setTimeout(function () {
+        var t = byId('cTitle');
+        if (t) t.focus();
+      }, 180);
     },
-    close: function (e) {
-      if (e && e.target !== e.currentTarget) return;
-      Layer.close('composerModal');
+    close: function () {
+      var view = byId('composerView');
+      if (view) view.hidden = true;
+      document.body.style.overflow = '';
       Composer.reset();
     },
     reset: function () {
       var form = byId('composerForm');
-      var types = byId('composerTypes');
       var prev = byId('imgPreview');
-      if (form) { form.reset(); form.classList.remove('is-active'); }
-      if (types) types.hidden = false;
+      var imgF = byId('imageField');
+      if (form) form.reset();
       if (prev) prev.hidden = true;
+      if (imgF) imgF.hidden = true;
+      Composer._type = 'text';
+      $$('.type-pill').forEach(function (p) {
+        p.setAttribute('aria-selected', p.dataset.type === 'text' ? 'true' : 'false');
+      });
+      var promptEl = byId('cPrompt');
+      if (promptEl) promptEl.placeholder = 'اكتب نص المنشور…';
+      var btn = byId('composerSubmit');
+      if (btn) btn.removeAttribute('aria-busy');
     },
     chooseType: function (type) {
       Composer._type = type;
-      var types = byId('composerTypes');
-      var form = byId('composerForm');
       var imgF = byId('imageField');
       var promptEl = byId('cPrompt');
-      if (types) types.hidden = true;
-      if (form) form.classList.add('is-active');
       if (imgF) imgF.hidden = type !== 'prompt';
       if (promptEl) promptEl.placeholder = type === 'prompt' ? 'اكتب البرومبت…' : 'اكتب نص المنشور…';
-      setTimeout(function () { var t = byId('cTitle'); if (t) t.focus(); }, 100);
+      $$('.type-pill').forEach(function (p) {
+        p.setAttribute('aria-selected', p.dataset.type === type ? 'true' : 'false');
+      });
+      setTimeout(function () {
+        var t = byId('cTitle');
+        if (t) t.focus();
+      }, 80);
     },
     previewImage: function (url) {
       var p = byId('imgPreview');
@@ -1623,6 +1645,8 @@
       var bio = byId('epBio'); if (bio) { bio.value = u.bio || ''; Profile._updateBioCount(); }
       var loc = byId('epLocation'); if (loc) loc.value = u.location || '';
       var web = byId('epWebsite'); if (web) web.value = u.website || '';
+      var pronouns = byId('epPronouns'); if (pronouns) pronouns.value = u.pronouns || '';
+      var status = byId('epStatus'); if (status) status.value = u.status || '';
       var av = byId('epAvatarUrl'); if (av) av.value = '';
       var editAv = byId('editAvatarImg'); if (editAv) editAv.src = u.avatar || '';
       var cover = byId('editCoverPreview');
@@ -1630,13 +1654,30 @@
       $$('.cover-preset').forEach(function (p) {
         p.setAttribute('aria-pressed', p.dataset.cover === (u.cover || 'aurora') ? 'true' : 'false');
       });
-      Layer.open('editProfileModal');
-      setTimeout(function () { if (name) name.focus(); }, 200);
+      /* Restore accent + shape if present */
+      var accent = u.accent || '#22D3EE';
+      $$('.accent-swatch').forEach(function (s) {
+        s.setAttribute('aria-pressed', s.dataset.color === accent ? 'true' : 'false');
+      });
+      var shape = u.avatar_shape || 'rounded';
+      $$('.shape-option').forEach(function (s) {
+        s.setAttribute('aria-pressed', s.dataset.shape === shape ? 'true' : 'false');
+      });
+      var style = u.card_style || 'glass';
+      $$('.style-option').forEach(function (s) {
+        s.setAttribute('aria-pressed', s.dataset.style === style ? 'true' : 'false');
+      });
+      var view = byId('editProfileView');
+      if (!view) return;
+      view.hidden = false;
+      document.body.style.overflow = 'hidden';
+      setTimeout(function () { if (name) name.focus(); }, 180);
     },
 
-    closeEdit: function (e) {
-      if (e && e.target !== e.currentTarget) return;
-      Layer.close('editProfileModal');
+    closeEdit: function () {
+      var view = byId('editProfileView');
+      if (view) view.hidden = true;
+      document.body.style.overflow = '';
     },
 
     _updateBioCount: function () {
@@ -1646,8 +1687,10 @@
     },
 
     pickCover: function () {
-      var presets = byId('coverPresetsField');
-      if (presets) presets.hidden = !presets.hidden;
+      var input = byId('coverFileInput');
+      if (!input) return;
+      input.value = '';
+      input.click();
     },
 
     pickAvatar: function () {
@@ -1694,9 +1737,14 @@
       var bio = (byId('epBio') || {}).value || '';
       var location = (byId('epLocation') || {}).value || '';
       var website = (byId('epWebsite') || {}).value || '';
+      var pronouns = (byId('epPronouns') || {}).value || '';
+      var status = (byId('epStatus') || {}).value || '';
       var avatar = (byId('epAvatarUrl') || {}).value || '';
       var coverEl = byId('editCoverPreview');
       var cover = coverEl && coverEl.dataset ? coverEl.dataset.cover : 'aurora';
+      var accentEl = document.querySelector('.accent-swatch[aria-pressed="true"]');
+      var shapeEl = document.querySelector('.shape-option[aria-pressed="true"]');
+      var styleEl = document.querySelector('.style-option[aria-pressed="true"]');
       if (!name.trim()) { toast('الاسم مطلوب', 'warning'); return; }
       if (btn) btn.setAttribute('aria-busy', 'true');
       var payload = {
@@ -1704,7 +1752,12 @@
         bio: bio.trim(),
         location: location.trim(),
         website: website.trim(),
-        cover: cover
+        pronouns: pronouns.trim(),
+        status: status.trim(),
+        cover: cover,
+        accent: accentEl ? accentEl.dataset.color : '#22D3EE',
+        avatar_shape: shapeEl ? shapeEl.dataset.shape : 'rounded',
+        card_style: styleEl ? styleEl.dataset.style : 'glass'
       };
       if (avatar) payload.avatar = avatar;
       if (Profile._pickedCover) payload.cover_image = Profile._pickedCover;
@@ -1805,7 +1858,11 @@
     'switch-tab': function (t) { App.switchTab(t.dataset.tab); },
     'open-composer': function () { Composer.open(); },
     'close-composer': function () { Composer.close(); },
+    'submit-composer': function () { Composer.publish(); },
     'choose-type': function (t) { Composer.chooseType(t.dataset.type); },
+    'save-profile': function () { Profile.save(); },
+    'pick-avatar-file': function () { Profile.pickAvatar(); },
+    'pick-cover-file': function () { Profile.pickCover(); },
     'toggle-theme': function () { App.toggleTheme(); },
     'preview-feed': function () { App.previewFeed(); },
     'go-home': function () { App.goHome(); },
@@ -1874,7 +1931,7 @@
     Profile.loadPanel(tab.dataset.ptab);
   }, false);
 
-  /* Cover presets + file inputs */
+  /* Cover presets + accent/shape/style pickers + file inputs */
   document.addEventListener('DOMContentLoaded', function () {
     var avInput = byId('avatarFileInput');
     if (avInput) avInput.addEventListener('change', function (e) { Profile._handleAvatarFile(e.target.files[0]); });
@@ -1882,6 +1939,7 @@
     if (covInput) covInput.addEventListener('change', function (e) { Profile._handleCoverFile(e.target.files[0]); });
     var bio = byId('epBio');
     if (bio) bio.addEventListener('input', Profile._updateBioCount);
+
     var coverPresets = byId('coverPresets');
     if (coverPresets) coverPresets.addEventListener('click', function (e) {
       var btn = e.target.closest('.cover-preset');
@@ -1892,6 +1950,44 @@
       if (cover) { cover.dataset.cover = btn.dataset.cover; cover.style.backgroundImage = ''; }
       Profile._pickedCover = null;
     });
+
+    var accentPicker = byId('accentPicker');
+    if (accentPicker) accentPicker.addEventListener('click', function (e) {
+      var sw = e.target.closest('.accent-swatch');
+      if (!sw) return;
+      $$('.accent-swatch').forEach(function (s) { s.setAttribute('aria-pressed', 'false'); });
+      sw.setAttribute('aria-pressed', 'true');
+    });
+
+    var shapePicker = byId('avatarShapePicker');
+    if (shapePicker) shapePicker.addEventListener('click', function (e) {
+      var opt = e.target.closest('.shape-option');
+      if (!opt) return;
+      $$('.shape-option').forEach(function (s) { s.setAttribute('aria-pressed', 'false'); });
+      opt.setAttribute('aria-pressed', 'true');
+      var preview = byId('editAvatarPreview');
+      if (preview) {
+        var map = { circle: '50%', rounded: '22px', square: '8px' };
+        preview.style.borderRadius = map[opt.dataset.shape] || '22px';
+      }
+    });
+
+    var stylePicker = byId('cardStylePicker');
+    if (stylePicker) stylePicker.addEventListener('click', function (e) {
+      var opt = e.target.closest('.style-option');
+      if (!opt) return;
+      $$('.style-option').forEach(function (s) { s.setAttribute('aria-pressed', 'false'); });
+      opt.setAttribute('aria-pressed', 'true');
+    });
+  });
+
+  /* Escape closes fixed views */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var composer = byId('composerView');
+    var edit = byId('editProfileView');
+    if (composer && !composer.hidden) { Composer.close(); e.preventDefault(); }
+    else if (edit && !edit.hidden) { Profile.closeEdit(); e.preventDefault(); }
   });
 
   /* Theme from storage */
