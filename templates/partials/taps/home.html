@@ -4,22 +4,17 @@
       <h1>الرئيسية</h1>
       <p>أحدث البرومبتات من المنصة.</p>
     </div>
-    <button
-      class="btn btn-icon btn-secondary"
-      onclick="App.refreshAll(true)"
-      aria-label="تحديث"
-      type="button">
+    <button class="btn btn-icon btn-secondary" onclick="App.refreshAll(true)" aria-label="تحديث" type="button">
       <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>
     </button>
   </div>
 
-  <!-- Composer trigger (Prompt-composer pattern) -->
   <div class="composer-trigger" onclick="Composer.open()" role="button" tabindex="0">
     <img class="avatar" id="composerAvatar" src="" alt="">
     <div class="composer-trigger-input">شارك برومبتاً جديداً…</div>
   </div>
 
-  <div class="cluster-between" style="margin-bottom:var(--sp-4)">
+  <div class="sort-row">
     <div class="sort-tabs" role="tablist" aria-label="ترتيب">
       <button class="sort-tab" role="tab" aria-selected="true" data-sort="recent" onclick="App.setSort('recent')" type="button">
         <i class="ph ph-clock" aria-hidden="true"></i> الأحدث
@@ -32,14 +27,14 @@
 
   <div class="filters" id="filters" role="tablist" aria-label="تصفية"></div>
 
-  <div class="feed" id="homeFeed">
+  <div class="feed" id="homeFeed" aria-busy="true">
     {% for i in range(6) %}
       {% include 'partials/cards/skeleton.html' %}
     {% endfor %}
   </div>
 
   <div id="homeLoader" class="text-center text-muted" style="padding:var(--sp-6);display:none">
-    <i class="ph ph-circle-notch" style="animation:spin .8s linear infinite;display:inline-block"></i>
+    <i class="ph ph-circle-notch" style="animation:spin .8s linear infinite;display:inline-block" aria-hidden="true"></i>
     <span>جارٍ التحميل…</span>
   </div>
 </section>
