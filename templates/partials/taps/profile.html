@@ -1,47 +1,70 @@
 <section class="tab-panel" id="tab-profile" data-tab="profile">
-  <div class="profile-head">
+
+  <div class="profile-card">
     <div class="profile-cover">
-      <div class="cover-pattern"></div>
-      <button class="cover-edit" onclick="Auth.openEditProfile()" aria-label="تعديل الغلاف">
-        <i class="ph ph-camera"></i>
+      <div class="profile-cover-pattern" aria-hidden="true"></div>
+      <button
+        class="profile-cover-edit"
+        onclick="Auth.openEditProfile()"
+        aria-label="تعديل الغلاف"
+        type="button">
+        <i class="ph ph-camera" aria-hidden="true"></i>
       </button>
     </div>
+
     <div class="profile-body">
       <div class="profile-avatar-wrap">
-        <img class="profile-avatar" src="" alt="" id="profileAvatar">
-        <button class="avatar-edit" onclick="Auth.openEditProfile()" aria-label="تعديل الصورة">
-          <i class="ph ph-camera"></i>
+        <img class="profile-avatar" id="profileAvatar" src="" alt="">
+        <button
+          class="profile-avatar-edit"
+          onclick="Auth.openEditProfile()"
+          aria-label="تعديل الصورة"
+          type="button">
+          <i class="ph ph-camera" aria-hidden="true"></i>
         </button>
       </div>
+
       <div class="profile-info">
-        <div class="profile-name">
+        <h1 class="profile-name">
           <span id="profileName"></span>
-          <i class="ph ph-seal-check verified"></i>
-        </div>
+          <i class="ph ph-seal-check" aria-label="حساب موثّق"></i>
+        </h1>
         <div class="profile-handle" id="profileHandle"></div>
         <p class="profile-bio" id="profileBio"></p>
+
         <div class="profile-stats">
-          <div class="stat"><strong id="statPosts">٠</strong><span>برومبت</span></div>
-          <div class="stat"><strong id="statFollowers">٠</strong><span>متابِع</span></div>
-          <div class="stat"><strong id="statFollowing">٠</strong><span>يتابع</span></div>
-          <div class="stat"><strong id="statLikes">٠</strong><span>إعجاب</span></div>
+          <div class="stat"><strong id="statPosts">0</strong><span>برومبت</span></div>
+          <div class="stat"><strong id="statFollowers">0</strong><span>متابِع</span></div>
+          <div class="stat"><strong id="statFollowing">0</strong><span>يتابع</span></div>
+          <div class="stat"><strong id="statLikes">0</strong><span>إعجاب</span></div>
         </div>
-        <div class="profile-btns">
-          <button class="btn btn-primary btn-sm" onclick="Auth.openEditProfile()">
-            <i class="ph ph-pencil-simple"></i> تعديل الملف
+
+        <div class="profile-actions">
+          <button class="btn btn-primary btn-sm" onclick="Auth.openEditProfile()" type="button">
+            <i class="ph ph-pencil-simple" aria-hidden="true"></i>
+            تعديل الملف
           </button>
-          <button class="btn btn-glass btn-sm" onclick="Auth.logout()">
-            <i class="ph ph-sign-out"></i> خروج
+          <button class="btn btn-ghost btn-sm" onclick="Auth.logout()" type="button">
+            <i class="ph ph-sign-out" aria-hidden="true"></i>
+            خروج
           </button>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="tabs" id="profileTabs">
-    <button class="tab active" data-ptab="posts"><i class="ph ph-image-square"></i> برومبتاتي</button>
-    <button class="tab" data-ptab="liked"><i class="ph ph-heart"></i> المُعجَبة</button>
-    <button class="tab" data-ptab="settings"><i class="ph ph-gear"></i> الإعدادات</button>
+  <div class="tabs" role="tablist" aria-label="أقسام الملف">
+    <button class="tab" role="tab" aria-selected="true" data-ptab="posts" type="button">
+      <i class="ph ph-image-square" aria-hidden="true"></i> برومبتاتي
+    </button>
+    <button class="tab" role="tab" aria-selected="false" data-ptab="liked" type="button">
+      <i class="ph ph-heart" aria-hidden="true"></i> المُعجَبة
+    </button>
+    <button class="tab" role="tab" aria-selected="false" data-ptab="settings" type="button">
+      <i class="ph ph-gear" aria-hidden="true"></i> الإعدادات
+    </button>
   </div>
-  <div id="profilePanel"></div>
+
+  <div id="profilePanel" class="feed"></div>
+
 </section>
