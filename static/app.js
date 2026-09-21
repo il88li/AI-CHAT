@@ -1916,4 +1916,26 @@
   window.Comments = Comments;
   window.Profile = Profile;
   window.Explore = Explore;
-  window.
+  window.Install = Install;
+  window.Layer = Layer;
+  window.Render = Render;
+  window.Infinite = Infinite;
+  window.PTR = PTR;
+  window.ScrollMemory = ScrollMemory;
+  window.NewPostsPill = NewPostsPill;
+
+  function boot() {
+    try {
+      App.init();
+      console.log('[خَيال] ✓ ready');
+    } catch (err) {
+      console.error('[خَيال] boot failed:', err);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
