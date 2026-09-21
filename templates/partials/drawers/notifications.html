@@ -1,0 +1,19 @@
+<div class="drawer-scrim" id="notificationsScrim" data-open="false" onclick="Drawers.closeNotifications()" aria-hidden="true"></div>
+
+<aside class="drawer" id="notificationsDrawer" data-open="false"
+       role="dialog" aria-modal="true" aria-labelledby="notifTitle">
+  <div class="drawer-head">
+    <h3 id="notifTitle">الإشعارات</h3>
+    <button class="btn btn-icon btn-ghost btn-sm" onclick="Drawers.closeNotifications()" aria-label="إغلاق" type="button">
+      <i class="ph ph-x" aria-hidden="true"></i>
+    </button>
+  </div>
+
+  <div class="drawer-body" id="notificationsBody">
+    <div class="empty-block">
+      <i class="ph ph-bell" aria-hidden="true"></i>
+      <h4>لا توجد إشعارات</h4>
+      <p>ستظهر هنا التحديثات والتفاعلات.</p>
+    </div>
+  </div>
+</aside>
