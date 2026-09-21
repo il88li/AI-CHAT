@@ -152,10 +152,14 @@ def _after_request(response):
     except Exception:
         pass
 
-    # رؤوس الأمان
+    # رؤوس الأمان (جاهزة لـ Play / PWA)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    if os.getenv("FLASK_ENV") == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
     return response
 
@@ -178,6 +182,11 @@ def offline():
     return render_template("error.html", code=503,
                             title="لا يوجد اتصال",
                             message="يبدو أنك غير متصل بالإنترنت.")
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
 
 
 @app.route("/manifest.json")
