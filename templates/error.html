@@ -3,82 +3,123 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#08080C">
 <title>{{ title }} · خَيال</title>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{
   font-family:"IBM Plex Sans Arabic",system-ui,sans-serif;
-  min-height:100dvh;display:grid;place-items:center;
-  background:#08080C;color:#F5F5F7;padding:24px;
-  text-align:center;overflow:hidden;
+  min-height:100dvh;
+  display:grid;place-items:center;
+  background:#08080C;color:#F5F5F7;
+  padding:24px;text-align:center;
+  overflow:hidden;
 }
-.aurora{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-.aurora::before,.aurora::after{content:'';position:absolute;border-radius:50%;filter:blur(100px);opacity:.35}
-.aurora::before{width:60vw;height:60vw;top:-20vw;inset-inline-end:-10vw;background:radial-gradient(circle,rgba(34,211,238,.5),transparent 60%);animation:floatA 24s ease-in-out infinite}
-.aurora::after{width:55vw;height:55vw;bottom:-25vw;inset-inline-start:-15vw;background:radial-gradient(circle,rgba(139,92,246,.45),transparent 60%);animation:floatB 28s ease-in-out infinite reverse}
-@keyframes floatA{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-6vw,4vw) scale(1.1)}}
-@keyframes floatB{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(5vw,-3vw) scale(1.08)}}
+.aurora{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.aurora::before,.aurora::after{
+  content:'';position:absolute;
+  border-radius:50%;filter:blur(100px);opacity:.35;
+}
+.aurora::before{
+  width:60vw;height:60vw;
+  top:-20vw;inset-inline-end:-10vw;
+  background:radial-gradient(circle,rgba(34,211,238,.5),transparent 60%);
+  animation:a 24s ease-in-out infinite;
+}
+.aurora::after{
+  width:55vw;height:55vw;
+  bottom:-25vw;inset-inline-start:-15vw;
+  background:radial-gradient(circle,rgba(139,92,246,.45),transparent 60%);
+  animation:b 28s ease-in-out infinite reverse;
+}
+@keyframes a{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-6vw,4vw) scale(1.1)}}
+@keyframes b{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(5vw,-3vw) scale(1.08)}}
+
 .card{
   position:relative;z-index:1;
   max-width:520px;width:100%;
   background:rgba(255,255,255,.035);
-  backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
+  backdrop-filter:blur(28px);
+  -webkit-backdrop-filter:blur(28px);
   border:1px solid rgba(255,255,255,.08);
-  border-radius:28px;padding:48px 32px;
+  border-radius:28px;
+  padding:48px 32px;
   box-shadow:0 32px 80px rgba(0,0,0,.5);
 }
-.code{
-  font-size:clamp(60px,15vw,100px);
-  font-weight:800;line-height:1;
-  background:linear-gradient(135deg,#22D3EE,#8B5CF6);
-  -webkit-background-clip:text;background-clip:text;color:transparent;
-  letter-spacing:-.04em;margin-bottom:16px;
-  display:block;
-}
 .icon{
-  width:56px;height:56px;margin:0 auto 20px;
+  width:56px;height:56px;
+  margin:0 auto 20px;
   border-radius:16px;
   background:linear-gradient(135deg,#22D3EE,#8B5CF6);
   display:grid;place-items:center;
   color:#0A0A0F;font-size:26px;
   box-shadow:0 12px 32px rgba(34,211,238,.35);
 }
-h1{font-size:clamp(22px,4vw,28px);font-weight:700;margin-bottom:12px;letter-spacing:-.02em}
-p{color:#A1A1AA;line-height:1.7;margin-bottom:28px;max-width:36ch;margin-inline:auto}
+.code{
+  font-size:clamp(60px,15vw,100px);
+  font-weight:800;line-height:1;
+  background:linear-gradient(135deg,#22D3EE,#8B5CF6);
+  -webkit-background-clip:text;background-clip:text;
+  color:transparent;
+  letter-spacing:-.04em;
+  margin-bottom:16px;
+  display:block;
+}
+h1{font-size:clamp(22px,4vw,28px);font-weight:700;margin-bottom:12px}
+p{
+  color:#A1A1AA;line-height:1.7;
+  margin-bottom:28px;max-width:36ch;margin-inline:auto;
+}
 .actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 a{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  min-height:48px;padding:0 24px;border-radius:9999px;
+  min-height:48px;padding:0 24px;
+  border-radius:9999px;
   font-weight:600;font-size:14px;text-decoration:none;
   transition:all .2s cubic-bezier(.22,1,.36,1);
   min-width:140px;
 }
-a.primary{background:linear-gradient(135deg,#22D3EE,#8B5CF6);color:#0A0A0F;box-shadow:0 8px 24px rgba(34,211,238,.3)}
+a.primary{
+  background:linear-gradient(135deg,#22D3EE,#8B5CF6);
+  color:#0A0A0F;
+  box-shadow:0 8px 24px rgba(34,211,238,.3);
+}
 a.primary:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(34,211,238,.45)}
-a.secondary{background:rgba(255,255,255,.05);color:#F5F5F7;border:1px solid rgba(255,255,255,.1)}
+a.secondary{
+  background:rgba(255,255,255,.05);
+  color:#F5F5F7;
+  border:1px solid rgba(255,255,255,.1);
+}
 a.secondary:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2)}
 a i{font-size:18px}
 </style>
 </head>
 <body>
 <div class="aurora"></div>
+
 <div class="card">
   <div class="icon">
     <i class="ph ph-{% if code == 404 %}compass{% elif code == 401 %}lock{% elif code == 403 %}shield-warning{% elif code == 503 %}wifi-slash{% else %}warning-circle{% endif %}"></i>
   </div>
+
   <span class="code">{{ code }}</span>
   <h1>{{ title }}</h1>
   <p>{{ message }}</p>
+
   <div class="actions">
     <a class="primary" href="/">
-      <i class="ph ph-house"></i> الرئيسية
+      <i class="ph ph-house"></i>
+      الرئيسية
     </a>
     <a class="secondary" href="javascript:history.back()">
-      <i class="ph ph-arrow-right"></i> رجوع
+      <i class="ph ph-arrow-right"></i>
+      رجوع
     </a>
   </div>
 </div>
