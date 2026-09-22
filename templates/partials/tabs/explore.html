@@ -32,6 +32,17 @@
     </button>
   </div>
 
+  <div class="sort-row">
+    <div class="sort-tabs" role="tablist" aria-label="ترتيب">
+      <button class="sort-tab" role="tab" aria-selected="true" data-sort="recent" onclick="App.setSort('recent')" type="button">
+        <i class="ph ph-clock" aria-hidden="true"></i> الأحدث
+      </button>
+      <button class="sort-tab" role="tab" aria-selected="false" data-sort="top" onclick="App.setSort('top')" type="button">
+        <i class="ph ph-fire" aria-hidden="true"></i> الأكثر رواجاً
+      </button>
+    </div>
+  </div>
+
   <div class="filters" id="exploreFilters" role="tablist" aria-label="تصفية الاستكشاف"></div>
 
   <div class="feed" id="exploreFeed" aria-busy="true">
