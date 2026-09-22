@@ -1,8 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v14.1
+   خَيال — app.js v14.2
    Fixes:
-   - Net.init(): periodic online check + initial sync (fixes false offline bar)
-   - Composer.open(): hide avatar when no image (fixes broken img icon)
+   - Net.init(): real server ping (fixes false offline bar on mobile)
+   - Composer.open(): onerror handler for broken avatar images
    - Auth: split-layout with aria-invalid + shake feedback
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
@@ -17,8 +17,9 @@
     SEARCH_DEBOUNCE: 280,
     DRAFT_KEY: 'khayal.composer.draft',
     THEME_KEY: 'khayal.theme',
-    NET_CHECK_MS: 5000,
-    BUILD: '14.1',
+    NET_CHECK_MS: 8000,
+    NET_PING_TIMEOUT: 3000,
+    BUILD: '14.2',
   };
 
   const S = {
@@ -123,6 +124,23 @@
       if (!el) return;
       el.style.height = 'auto';
       el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+    },
+
+    /** Set an image src safely — hide the element on load error. */
+    safeAvatar(imgEl, url) {
+      if (!imgEl) return;
+      const clean = url && String(url).trim();
+      imgEl.onerror = function () {
+        this.removeAttribute('src');
+        this.hidden = true;
+      };
+      if (clean) {
+        imgEl.src = clean;
+        imgEl.hidden = false;
+      } else {
+        imgEl.removeAttribute('src');
+        imgEl.hidden = true;
+      }
     },
 
     async copy(text) {
@@ -307,25 +325,54 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     NETWORK MONITOR
+     NETWORK MONITOR (v14.2 — real server ping)
      ═══════════════════════════════════════════════════════════════ */
   const Net = {
     _interval: null,
+    _lastState: null,
+    _checking: false,
+
+    async _ping() {
+      // Try to reach the server. Use HEAD on /api/health with a short timeout.
+      if (this._checking) return this._lastState;
+      this._checking = true;
+      try {
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), CFG.NET_PING_TIMEOUT);
+        const res = await fetch('/api/health', {
+          method: 'HEAD',
+          cache: 'no-store',
+          signal: ctrl.signal,
+        });
+        clearTimeout(to);
+        this._checking = false;
+        return res.ok;
+      } catch (e) {
+        this._checking = false;
+        return false;
+      }
+    },
 
     init() {
       const bar = document.getElementById('netBar');
       if (!bar) return;
+      const self = this;
 
-      let lastState = null;
+      const update = async () => {
+        const browserOffline = !navigator.onLine;
+        let offline = browserOffline;
 
-      const update = () => {
-        const offline = !navigator.onLine;
+        // Trust the server when the browser claims we're offline
+        if (browserOffline) {
+          const reachable = await self._ping();
+          offline = !reachable;
+        }
 
-        // Only log/toast on actual transition
-        if (lastState !== null && lastState !== offline) {
+        // Only toast on transition
+        if (self._lastState !== null && self._lastState !== offline) {
           if (!offline) Toast.show('عدت متصلاً', 'success');
         }
-        lastState = offline;
+        self._lastState = offline;
 
         bar.setAttribute('data-open', offline ? 'true' : 'false');
       };
@@ -333,7 +380,7 @@
       window.addEventListener('online', update);
       window.addEventListener('offline', update);
 
-      // Periodic sync — يصلح مشكلة عدم إطلاق حدث online بعد التحميل
+      // Periodic sync — catches false negatives from navigator.onLine
       this._interval = setInterval(update, CFG.NET_CHECK_MS);
 
       // Initial check
@@ -395,7 +442,6 @@
       if (title) title.textContent = mode === 'register' ? 'حساب جديد' : 'تسجيل الدخول';
       if (sub) sub.textContent = mode === 'register' ? 'انضم إلى مبدعي خَيال' : 'أهلاً بعودتك إلى خَيال';
 
-      // Clear invalid states when switching modes
       m.querySelectorAll('[aria-invalid="true"]').forEach(el => {
         el.removeAttribute('aria-invalid');
       });
@@ -434,7 +480,6 @@
       const password = (pwEl || {}).value || '';
       const remember = !!(form.querySelector('#rememberMe') || {}).checked;
 
-      // Clear previous invalid states
       if (idEl) idEl.removeAttribute('aria-invalid');
       if (pwEl) pwEl.removeAttribute('aria-invalid');
 
@@ -454,7 +499,6 @@
         window.__ME__ = user;
         this.afterLogin(user);
       } catch (err) {
-        // Highlight both fields on any login failure (avoids username enumeration)
         if (idEl) idEl.setAttribute('aria-invalid', 'true');
         if (pwEl) pwEl.setAttribute('aria-invalid', 'true');
         if (window.Sounds) Sounds.play('error');
@@ -482,7 +526,6 @@
         password: (pwEl || {}).value || '',
       };
 
-      // Clear previous invalid states
       [nameEl, userEl, emailEl, pwEl].forEach(el => {
         if (el) el.removeAttribute('aria-invalid');
       });
@@ -511,7 +554,6 @@
         this.afterLogin(user);
         Toast.show('أهلاً بك في خَيال', 'success');
       } catch (err) {
-        // Highlight username + email — common conflict fields
         if (userEl) userEl.setAttribute('aria-invalid', 'true');
         if (emailEl) emailEl.setAttribute('aria-invalid', 'true');
         if (window.Sounds) Sounds.play('error');
@@ -542,7 +584,7 @@
       if (signIn) signIn.hidden = !!user;
       if (avatarBtn) avatarBtn.hidden = !user;
       if (avatarImg && user) {
-        avatarImg.src = user.avatar || '';
+        U.safeAvatar(avatarImg, user.avatar);
         avatarImg.alt = user.name || '';
       }
       const dock = document.getElementById('dock');
@@ -1058,7 +1100,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     COMPOSER
+     COMPOSER (v14.2 — safe avatar)
      ═══════════════════════════════════════════════════════════════ */
   const Composer = {
     type: 'text',
@@ -1072,17 +1114,9 @@
         return;
       }
 
-      // Avatar — hide if no image (fixes broken img icon)
+      // Avatar — hide on error or missing URL
       const av = document.getElementById('composerFormAvatar');
-      if (av) {
-        if (S.me.avatar && S.me.avatar.trim()) {
-          av.src = S.me.avatar;
-          av.hidden = false;
-        } else {
-          av.removeAttribute('src');
-          av.hidden = true;
-        }
-      }
+      if (av) U.safeAvatar(av, S.me.avatar);
 
       const name = document.getElementById('composerUserName');
       if (name) name.textContent = S.me.name || '—';
@@ -1439,7 +1473,7 @@
 
       const avatar = document.getElementById('profileAvatar');
       if (avatar) {
-        avatar.src = u.avatar || '';
+        U.safeAvatar(avatar, u.avatar);
         avatar.alt = u.name || '';
         avatar.dataset.frame = u.avatar_shape || 'ring';
       }
@@ -1666,7 +1700,6 @@
       }
       const self = this;
 
-      // Debounced flash — يمنع reflow قسري في كل keystroke
       this._flashHero = U.debounce(function () {
         const hero = document.getElementById('settingsHeroProfile');
         if (!hero) return;
@@ -1680,7 +1713,6 @@
         });
       }, 120);
 
-      // Warn on page unload if there are unsaved changes
       window.addEventListener('beforeunload', function (e) {
         if (self.dirty) {
           e.preventDefault();
@@ -1688,24 +1720,20 @@
         }
       });
 
-      // Close button
       this.view.querySelector('[data-action="close-settings"]')
         ?.addEventListener('click', function () { self.close(); });
       this.view.querySelector('[data-action="save-settings"]')
         ?.addEventListener('click', function () { self.save(); });
 
-      // Reset button
       const resetBtn = document.getElementById('settingsResetBtn');
       if (resetBtn) {
         resetBtn.addEventListener('click', function () { self.resetToSaved(); });
       }
 
-      // Tabs
       this.view.querySelectorAll('.settings-tab').forEach(function (btn) {
         btn.addEventListener('click', function () { self.switchSection(btn.dataset.section); });
       });
 
-      // Cover picker
       const coverPicker = document.getElementById('settingsCoverPresets');
       if (coverPicker) {
         coverPicker.addEventListener('click', function (e) {
@@ -1722,7 +1750,6 @@
         });
       }
 
-      // Frame picker
       const framePicker = document.getElementById('settingsFramePicker');
       if (framePicker) {
         framePicker.addEventListener('click', function (e) {
@@ -1739,7 +1766,6 @@
         });
       }
 
-      // Accent picker
       const accentPicker = document.getElementById('settingsAccentPicker');
       if (accentPicker) {
         accentPicker.addEventListener('click', function (e) {
@@ -1758,7 +1784,6 @@
         });
       }
 
-      // Card style picker
       const stylePicker = document.getElementById('settingsCardStylePicker');
       if (stylePicker) {
         stylePicker.addEventListener('click', function (e) {
@@ -1775,7 +1800,6 @@
         });
       }
 
-      // Pronouns picker
       const pronounPicker = document.getElementById('settingsPronounPicker');
       const pronounHidden = document.getElementById('setPronouns');
       if (pronounPicker && pronounHidden) {
@@ -1794,7 +1818,6 @@
         });
       }
 
-      // Name input
       const nameEl = document.getElementById('setName');
       if (nameEl) {
         nameEl.addEventListener('input', function () {
@@ -1804,7 +1827,6 @@
         });
       }
 
-      // Bio input
       const bioEl = document.getElementById('setBio');
       if (bioEl) {
         bioEl.addEventListener('input', function () {
@@ -1815,7 +1837,6 @@
         });
       }
 
-      // Website input
       const webEl = document.getElementById('setWebsite');
       if (webEl) {
         webEl.addEventListener('input', function () {
@@ -1824,7 +1845,6 @@
         });
       }
 
-      // Sounds toggle — immediate localStorage, not dirty
       const soundToggle = document.getElementById('soundsToggle');
       if (soundToggle) {
         soundToggle.addEventListener('click', function () {
@@ -1850,7 +1870,6 @@
         });
       });
 
-      // Notification + Privacy switches — persist to API
       this.view.querySelectorAll('.switch:not(#soundsToggle)').forEach(function (sw) {
         sw.addEventListener('click', function () {
           const next = sw.getAttribute('aria-checked') !== 'true';
@@ -1872,12 +1891,10 @@
         });
       });
 
-      // Stats button → jump to posts tab
       this.view.querySelectorAll('[data-stat="posts"]').forEach(function (btn) {
         btn.addEventListener('click', function () { self.switchSection('posts'); });
       });
 
-      // Change password
       const chg = document.getElementById('changePasswordBtn');
       if (chg) {
         chg.addEventListener('click', function () {
@@ -1901,7 +1918,6 @@
         });
       }
 
-      // Logout
       const logout = document.getElementById('logoutBtn');
       if (logout) {
         logout.addEventListener('click', function () {
@@ -2061,7 +2077,6 @@
           : _defaultPreferences(),
       };
 
-      // Fill form fields
       const set = function (id, v) {
         const e = document.getElementById(id);
         if (e) e.value = v;
@@ -2072,7 +2087,6 @@
       const bc = document.getElementById('setBioCount');
       if (bc) bc.textContent = (this.state.bio || '').length;
 
-      // Pronouns
       const pp = document.getElementById('settingsPronounPicker');
       const ph = document.getElementById('setPronouns');
       if (pp && ph) {
@@ -2084,19 +2098,16 @@
         ph.value = match ? (match.dataset.pronoun || '') : '';
       }
 
-      // Cover
       const cp = document.getElementById('settingsCoverPresets');
       if (cp) cp.querySelectorAll('.cover-preset').forEach(function (b) {
         b.setAttribute('aria-pressed', b.dataset.cover === this.state.cover ? 'true' : 'false');
       }, this);
 
-      // Frame
       const fp = document.getElementById('settingsFramePicker');
       if (fp) fp.querySelectorAll('.frame-option').forEach(function (b) {
         b.setAttribute('aria-pressed', b.dataset.frame === this.state.avatar_frame ? 'true' : 'false');
       }, this);
 
-      // Accent
       const ap = document.getElementById('settingsAccentPicker');
       if (ap) ap.querySelectorAll('.accent-swatch').forEach(function (b) {
         b.setAttribute('aria-pressed', b.dataset.color === this.state.accent_color ? 'true' : 'false');
@@ -2104,13 +2115,11 @@
       const ah = document.getElementById('accentHint');
       if (ah) ah.textContent = this.state.accent_color;
 
-      // Card style
       const sp = document.getElementById('settingsCardStylePicker');
       if (sp) sp.querySelectorAll('.style-option').forEach(function (b) {
         b.setAttribute('aria-pressed', b.dataset.style === this.state.card_style ? 'true' : 'false');
       }, this);
 
-      // Sounds toggles
       const st = document.getElementById('soundsToggle');
       if (st && window.Sounds) st.setAttribute('aria-checked', Sounds.isEnabled() ? 'true' : 'false');
       const vs = document.getElementById('volumeSlider');
@@ -2118,7 +2127,6 @@
       const vh = document.getElementById('volumeHint');
       if (vh && window.Sounds) vh.textContent = Math.round(Sounds.getVolume() * 100) + '%';
 
-      // Preferences switches (notif + priv)
       const prefs = this.state.preferences;
       this.view.querySelectorAll('.switch[data-notif]').forEach(function (sw) {
         const key = sw.dataset.notif;
@@ -2131,10 +2139,7 @@
         sw.setAttribute('aria-checked', val !== false ? 'true' : 'false');
       });
 
-      // Hero
       this.renderHero(u);
-
-      // Reset dirty
       this.clearDirty();
     },
 
@@ -2144,7 +2149,7 @@
 
       const avatar = document.getElementById('settingsHeroAvatar');
       if (avatar) {
-        avatar.src = u.avatar || '';
+        U.safeAvatar(avatar, u.avatar);
         avatar.alt = u.name || '';
         avatar.dataset.frame = u.avatar_shape || 'ring';
       }
@@ -2233,7 +2238,9 @@
       const heroAvatar = document.getElementById('settingsHeroAvatar');
       if (heroAvatar) {
         heroAvatar.dataset.frame = this.state.avatar_frame;
-        if (this.state.avatar && !heroAvatar.src) heroAvatar.src = this.state.avatar;
+        if (this.state.avatar && !heroAvatar.src) {
+          U.safeAvatar(heroAvatar, this.state.avatar);
+        }
       }
 
       const hero = document.getElementById('settingsHeroProfile');
