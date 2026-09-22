@@ -1,8 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    08-tabs.css — نظام موحّد لكل التبويبات ذات الخيارات المتعددة
    Pill-in-pill · يطابق نمط "الأحدث / الأكثر رواجاً"
-   Loads after 06-ant.css — wins on cascade order
-   v16.1
+   v16.2 — إصلاحات: border-bottom, sticky, sr-only
    ═══════════════════════════════════════════════════════════════ */
 
 /* ─── 1. CONTAINER — pill-in-pill ─── */
@@ -24,12 +23,11 @@
   max-width: 100%;
 }
 
-/* التمرير الأفقي للتبويبات الكثيرة على الجوال */
+/* التمرير الأفقي — بلا border-bottom على الشكل المستدير */
 .settings-tabs.ant-tabs-wrap,
 .profile-tabs.ant-tabs-wrap {
   overflow-x: auto;
   overflow-y: hidden;
-  border-bottom: 1px solid var(--border-1);
   margin-bottom: 0;
 }
 
@@ -66,12 +64,9 @@
   cursor: pointer;
   scroll-snap-align: start;
   box-shadow: none !important;
-  transition:
-    color var(--dur-2) var(--ease-out),
-    background var(--dur-2) var(--ease-out);
+  transition: color var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out);
 }
 
-/* الأيقونات */
 .sort-tab > i,
 .auth-tab > i,
 .type-pill > i,
@@ -81,11 +76,9 @@
   transition: color var(--dur-2) var(--ease-out);
 }
 
-/* إلغاء الـ underline المورّث من Ant */
+/* إلغاء underline المورّث من Ant */
 .settings-tab.ant-tab::after,
-.profile-tabs .tab.ant-tab::after {
-  display: none !important;
-}
+.profile-tabs .tab.ant-tab::after { display: none !important; }
 
 /* ─── 3. HOVER ─── */
 .sort-tab:hover,
@@ -100,9 +93,7 @@
 .auth-tab:hover > i,
 .type-pill:hover > i,
 .settings-tab.ant-tab:hover > i,
-.profile-tabs .tab.ant-tab:hover > i {
-  color: var(--c-brand);
-}
+.profile-tabs .tab.ant-tab:hover > i { color: var(--c-brand); }
 
 /* ─── 4. ACTIVE ─── */
 .sort-tab[aria-selected="true"],
@@ -121,9 +112,7 @@
 .type-pill[aria-selected="true"] > i,
 .settings-tab.ant-tab.is-active > i,
 .settings-tab.ant-tab[aria-selected="true"] > i,
-.profile-tabs .tab.ant-tab[aria-selected="true"] > i {
-  color: var(--c-brand);
-}
+.profile-tabs .tab.ant-tab[aria-selected="true"] > i { color: var(--c-brand); }
 
 /* ─── 5. FOCUS ─── */
 .sort-tab:focus-visible,
@@ -135,7 +124,7 @@
   box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--c-brand) !important;
 }
 
-/* ─── 6. TYPE-SWITCH — grid variant (composer) ─── */
+/* ─── 6. TYPE-SWITCH — grid variant ─── */
 .type-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -146,10 +135,7 @@
   border-radius: var(--r-full);
   box-shadow: var(--sh-tabs);
 }
-.type-switch .type-pill {
-  height: 34px;
-  border-radius: var(--r-full);
-}
+.type-switch .type-pill { height: 34px; border-radius: var(--r-full); }
 
 /* ─── 7. STICKY WRAPPER ─── */
 .tabs-sticky {
@@ -165,7 +151,19 @@
   border-bottom: 1px solid var(--border-1);
   margin-bottom: 12px;
 }
-.tabs-sticky:has([hidden]) { display: none; }
+
+/* ─── 7.1 إبطال sticky الداخلي القديم (06-ant §13.2 و §14.4) ─── */
+.ant-settings .settings-page .settings-tabs-wrap.ant-tabs-wrap {
+  position: static;
+  top: auto;
+  z-index: auto;
+  padding: 3px;
+  background: var(--surface-1);
+  border-bottom: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  margin-bottom: 0;
+}
 
 /* ─── 8. RESPONSIVE ─── */
 @media (max-width:560px){
@@ -183,15 +181,11 @@
   .auth-tab > i,
   .type-pill > i,
   .settings-tab.ant-tab > i,
-  .profile-tabs .tab.ant-tab > i {
-    font-size: 14px;
-  }
+  .profile-tabs .tab.ant-tab > i { font-size: 14px; }
 }
 
+/* ≤400px — أيقونات فقط مع نص للـ SR */
 @media (max-width:400px){
-  /* Icon-only mode للتبويبات الكثيرة */
-  .settings-tab.ant-tab > span,
-  .profile-tabs .tab.ant-tab > span { display: none; }
   .settings-tab.ant-tab,
   .profile-tabs .tab.ant-tab {
     padding: 0 9px;
@@ -199,9 +193,22 @@
   }
   .settings-tab.ant-tab > i,
   .profile-tabs .tab.ant-tab > i { font-size: 15px; }
+
+  /* sr-only بدل display:none — يحفظ الاسم لقارئ الشاشة */
+  .settings-tab.ant-tab > span,
+  .profile-tabs .tab.ant-tab > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
-/* ─── 9. REDUCED MOTION ─── */
 @media (prefers-reduced-motion:reduce){
   .sort-tab, .auth-tab, .type-pill,
   .settings-tab.ant-tab, .profile-tabs .tab.ant-tab,
