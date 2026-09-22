@@ -1,86 +1,155 @@
 <section class="tab-panel" id="tab-profile" data-tab="profile">
 
-  <div class="profile-skeleton" id="profileSkeleton">
-    <div class="profile-cover skeleton"></div>
-    <div class="profile-body">
-      <div class="profile-avatar-wrap"><div class="profile-avatar skeleton"></div></div>
-      <div class="profile-info">
-        <div class="skeleton skeleton-line" style="width:180px;height:28px"></div>
-        <div class="skeleton skeleton-line" style="width:120px"></div>
-        <div class="skeleton skeleton-line" style="width:100%;max-width:400px"></div>
-      </div>
+  <!-- ═══ Skeleton ═══ -->
+  <div class="profile-hero-skeleton" id="profileSkeleton" aria-hidden="true">
+    <div class="profile-hero-cover"></div>
+    <div class="profile-hero-avatar-wrap">
+      <div class="profile-hero-avatar"></div>
+    </div>
+    <div class="profile-hero-body">
+      <div class="sk-line lg"></div>
+      <div class="sk-line md"></div>
+      <div class="sk-line full"></div>
     </div>
   </div>
 
-  <div class="profile-card ant-profile-card" id="profileCard" hidden>
-    <div class="profile-cover" id="profileCover" data-cover="aurora">
-      <div class="profile-cover-pattern" aria-hidden="true"></div>
-      <button class="profile-cover-edit" data-action="edit-cover" aria-label="تعديل الغلاف" type="button" id="profileCoverEditBtn">
-        <i class="ph ph-camera" aria-hidden="true"></i>
-      </button>
-      <button class="profile-share" data-action="share-profile" aria-label="مشاركة الملف" type="button">
-        <i class="ph ph-share-network" aria-hidden="true"></i>
+  <!-- ═══ Card ═══ -->
+  <article class="profile-hero" id="profileCard" hidden>
+
+    <!-- Cover -->
+    <div class="profile-hero-cover" id="profileCover" data-cover="aurora">
+      <div class="profile-hero-cover-pattern" aria-hidden="true"></div>
+
+      <!-- Action button — يتغيّر حسب is_owner -->
+      <button
+        class="profile-hero-action"
+        id="profileActionBtn"
+        data-action="profile-action"
+        data-variant="pill"
+        data-state="idle"
+        type="button"
+        aria-label="متابعة">
+        <i class="ph ph-plus" aria-hidden="true"></i>
+        <span>متابعة</span>
       </button>
     </div>
 
-    <div class="profile-body ant-profile-body">
-      <div class="profile-avatar-wrap">
-        <img class="profile-avatar" id="profileAvatar" src="" alt="">
-        <button class="profile-avatar-edit" data-action="edit-avatar" aria-label="تعديل الصورة" type="button" id="profileAvatarEditBtn">
-          <i class="ph ph-camera" aria-hidden="true"></i>
+    <!-- Avatar overlapping -->
+    <div class="profile-hero-avatar-wrap">
+      <img class="profile-hero-avatar" id="profileAvatar" src="" alt="" data-frame="ring">
+    </div>
+
+    <!-- Presence -->
+    <div class="profile-hero-presence" id="profilePresence" data-online="true" hidden>
+      <span class="profile-hero-presence-bars" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </span>
+      <span class="profile-hero-presence-label">متصل</span>
+    </div>
+
+    <!-- Body -->
+    <div class="profile-hero-body">
+
+      <h1 class="profile-hero-name">
+        <span id="profileName">—</span>
+        <i class="ph ph-seal-check" id="profileVerified" aria-label="موثّق" hidden></i>
+      </h1>
+
+      <div class="profile-hero-sub">
+        <span class="profile-hero-handle" id="profileHandle">@—</span>
+        <span class="profile-hero-pronouns" id="profilePronouns" hidden></span>
+      </div>
+
+      <p class="profile-hero-bio" id="profileBio"></p>
+
+      <!-- Stats -->
+      <div class="profile-hero-stats">
+        <button
+          class="profile-hero-stat"
+          type="button"
+          data-action="open-followers"
+          aria-label="عرض المتابعين">
+          <strong id="statFollowers">0</strong>
+          <span>متابِع</span>
+        </button>
+
+        <span class="profile-hero-stat-div" aria-hidden="true"></span>
+
+        <button
+          class="profile-hero-stat"
+          type="button"
+          data-action="open-following"
+          aria-label="عرض من يتابعهم">
+          <strong id="statFollowing">0</strong>
+          <span>يتابع</span>
+        </button>
+
+        <span class="profile-hero-stat-div" aria-hidden="true"></span>
+
+        <div class="profile-hero-stat">
+          <strong id="statPosts">0</strong>
+          <span>برومبت</span>
+        </div>
+
+        <span class="profile-hero-stat-div" aria-hidden="true"></span>
+
+        <div class="profile-hero-stat">
+          <strong id="statLikes">0</strong>
+          <span>إعجاب</span>
+        </div>
+      </div>
+
+      <!-- Social row -->
+      <div class="profile-hero-social">
+
+        <button
+          class="profile-hero-social-btn"
+          type="button"
+          data-action="share-profile"
+          aria-label="مشاركة الملف">
+          <i class="ph ph-share-network" aria-hidden="true"></i>
+        </button>
+
+        <button
+          class="profile-hero-social-btn"
+          type="button"
+          data-action="copy-handle"
+          aria-label="نسخ المعرّف">
+          <i class="ph ph-link" aria-hidden="true"></i>
+        </button>
+
+        <button
+          class="profile-hero-social-btn"
+          type="button"
+          data-action="message"
+          aria-label="إرسال رسالة">
+          <i class="ph ph-chat-circle" aria-hidden="true"></i>
+        </button>
+
+        <!-- للصاحب فقط: زر التعديل يظهر هنا -->
+        <button
+          class="profile-hero-social-btn"
+          type="button"
+          data-action="edit-profile"
+          id="profileEditBtn"
+          aria-label="تعديل الملف"
+          hidden>
+          <i class="ph ph-pencil-simple" aria-hidden="true"></i>
         </button>
       </div>
 
-      <div class="profile-info">
-        <h1 class="profile-name">
-          <span id="profileName">—</span>
-          <i class="ph ph-seal-check" id="profileVerified" aria-label="حساب موثّق" hidden></i>
-        </h1>
-
-        <div class="profile-handle-row">
-          <span class="profile-handle" id="profileHandle">@—</span>
-          <button class="profile-copy-handle" data-action="copy-handle" aria-label="نسخ المعرّف" type="button">
-            <i class="ph ph-copy" aria-hidden="true"></i>
-          </button>
-          <span class="ant-tag" id="profilePronouns" hidden></span>
-        </div>
-
-        <p class="profile-bio" id="profileBio"></p>
-
-        <div class="profile-meta" id="profileMeta" hidden>
-          <span class="profile-meta-item" id="profileWebsite" hidden>
-            <i class="ph ph-link" aria-hidden="true"></i>
-            <a href="#" target="_blank" rel="noopener noreferrer"></a>
-          </span>
-          <span class="profile-meta-item" id="profileJoined" hidden>
-            <i class="ph ph-calendar" aria-hidden="true"></i>
-            <span></span>
-          </span>
-        </div>
-
-        <!-- Ant Statistic row -->
-        <div class="ant-statistic-row ant-statistic-row--profile">
-          <button class="ant-stat-btn" type="button" data-action="open-followers" aria-label="عرض المتابعين">
-            <strong id="statFollowers">0</strong><span>متابِع</span>
-          </button>
-          <span class="ant-statistic-divider" aria-hidden="true"></span>
-          <button class="ant-stat-btn" type="button" data-action="open-following" aria-label="عرض من يتابعهم">
-            <strong id="statFollowing">0</strong><span>يتابع</span>
-          </button>
-          <span class="ant-statistic-divider" aria-hidden="true"></span>
-          <div class="ant-stat-item"><strong id="statPosts">0</strong><span>برومبت</span></div>
-          <span class="ant-statistic-divider" aria-hidden="true"></span>
-          <div class="ant-stat-item"><strong id="statLikes">0</strong><span>إعجاب</span></div>
-        </div>
-
-        <div class="profile-actions" id="profileActions"></div>
-      </div>
     </div>
-  </div>
+  </article>
 
-  <!-- ═══ Tabs — unified pill system ═══ -->
+  <!-- ═══ Tabs — النظام الموحّد ═══ -->
   <div class="tabs-sticky">
-    <nav class="profile-tabs ant-tabs-wrap ant-tabs-wrap--sub" id="profileTabs" role="tablist" aria-label="أقسام الملف" hidden>
+    <nav
+      class="profile-tabs ant-tabs-wrap ant-tabs-wrap--sub"
+      id="profileTabs"
+      role="tablist"
+      aria-label="أقسام الملف"
+      hidden>
       <button class="tab ant-tab" role="tab" aria-selected="true" data-ptab="posts" type="button">
         <i class="ph ph-image-square" aria-hidden="true"></i><span>البرومبتات</span>
       </button>
