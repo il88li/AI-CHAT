@@ -1,7 +1,7 @@
 """
 خَيال — منصة البرومبتات العربية
 Flask + PostgreSQL + تسجيل دخول محلي + استقرار إنتاجي
-v14.0 — Security + Notifications + Reports + Pagination
+v14.1 — Security + Notifications + Reports + Pagination
 - CSRF protection على كل POST/PATCH/DELETE
 - Rate limiting على auth endpoints
 - SECRET_KEY صارم في الإنتاج
@@ -10,6 +10,7 @@ v14.0 — Security + Notifications + Reports + Pagination
 - Reports endpoints
 - Post edit endpoint
 - Pagination على user posts / followers / following
+- Auto-migration لعمود posts.updated_at (v14.1)
 """
 import os
 import re
@@ -267,14 +268,13 @@ def rate_limit(max_hits: int, window_s: int, scope: str):
 # Notifications helper
 # ═══════════════════════════════════════════════════════════
 def _notify(user_id, actor_id, kind, target_type=None,
-            target_id=None, text=None, preferences=None):
+            target_id=None, text=None):
     """Create a notification unless disabled by user preferences or self-action."""
     if not user_id or not actor_id:
         return None
     if user_id == actor_id:
         return None
 
-    # Check target user's notification preferences
     try:
         target = db.session.get(User, user_id)
         if target:
@@ -311,7 +311,7 @@ def _notify(user_id, actor_id, kind, target_type=None,
 def _before_request():
     if request.path.startswith("/api/"):
         g.request_start = time.time()
-    _get_csrf_token()  # ensure token exists
+    _get_csrf_token()
 
 
 @app.after_request
@@ -583,6 +583,16 @@ def admin_db_migrate():
                 conn.execute(text(
                     f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
                 ))
+
+            # ── v14.1: أعمدة جديدة لـ posts ──
+            conn.execute(text(
+                "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
+                "updated_at TIMESTAMP DEFAULT NOW()"
+            ))
+            conn.execute(text(
+                "UPDATE posts SET updated_at = created_at "
+                "WHERE updated_at IS NULL"
+            ))
 
             try:
                 conn.execute(text(
@@ -959,7 +969,6 @@ def api_report_post(pid):
     if reason not in ALLOWED_REPORT_REASONS:
         return jsonify({"error": "سبب غير صالح"}), 400
 
-    # Prevent duplicate pending reports from same user on same target
     existing = Report.query.filter_by(
         reporter_id=u.id, target_type="post",
         target_id=pid, status="pending"
@@ -1546,7 +1555,7 @@ def err_all(e):
 
 
 # ═══════════════════════════════════════════════════════════
-# تهيئة قاعدة البيانات + Auto-migration
+# تهيئة قاعدة البيانات + Auto-migration (v14.1)
 # ═══════════════════════════════════════════════════════════
 def init_db():
     with app.app_context():
@@ -1590,6 +1599,16 @@ def init_db():
                             f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
                         ))
 
+                    # ── v14.1: أعمدة جديدة لـ posts ──
+                    conn.execute(text(
+                        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
+                        "updated_at TIMESTAMP DEFAULT NOW()"
+                    ))
+                    conn.execute(text(
+                        "UPDATE posts SET updated_at = created_at "
+                        "WHERE updated_at IS NULL"
+                    ))
+
                     try:
                         conn.execute(text(
                             "ALTER TABLE users ALTER COLUMN avatar_shape TYPE VARCHAR(30)"
@@ -1614,7 +1633,7 @@ def init_db():
                     conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
                     conn.execute(text("UPDATE users SET preferences = '{}' WHERE preferences IS NULL"))
 
-                print("✅ Auto-migration v14.0: الإشعارات والبلاغات جاهزة.")
+                print("✅ Auto-migration v14.1: updated_at + الإشعارات والبلاغات جاهزة.")
             except Exception as m_err:
                 print(f"⚠️  Auto-migration: {str(m_err)[:150]}")
 
