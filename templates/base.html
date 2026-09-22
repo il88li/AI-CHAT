@@ -38,7 +38,7 @@
 <link rel="stylesheet" href="/static/css/01-tokens.css?v=15.0">
 <link rel="stylesheet" href="/static/css/02-base.css?v=15.0">
 <link rel="stylesheet" href="/static/css/03-components.css?v=15.0">
-<link rel="stylesheet" href="/static/css/04-views.css?v=15.0">
+<link rel="stylesheet" href="/static/css/04-views.css?v=18.0">
 <link rel="stylesheet" href="/static/css/05-responsive.css?v=15.0">
 <link rel="stylesheet" href="/static/css/06-ant.css?v=15.3">
 <link rel="stylesheet" href="/static/css/07-nav.css?v=16.0">
@@ -61,6 +61,7 @@
 {% include 'partials/modals/auth.html' %}
 {% include 'partials/views/composer.html' %}
 {% include 'partials/views/settings.html' %}
+{% include 'partials/views/profile-view.html' %}
 {% include 'partials/drawers/comments.html' %}
 {% include 'partials/drawers/notifications.html' %}
 
@@ -68,10 +69,10 @@
 
 <script>
   window.__ME__ = {{ me | tojson }};
-  window.__BUILD__ = '17.0';
+  window.__BUILD__ = '18.0';
 </script>
 <script src="/static/sounds.js?v=15.0" defer></script>
-<script src="/static/app.js?v=15.0" defer></script>
+<script src="/static/app.js?v=18.0" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
