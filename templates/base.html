@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08080C">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="خَيال">
@@ -33,7 +34,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/@phosphor-icons/web@2.1.1" defer></script>
 
-<link rel="stylesheet" href="/static/style.css?v=14.0">
+<link rel="stylesheet" href="/static/style.css?v=14.3">
 {% block styles %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -58,10 +59,10 @@
 
 <script>
   window.__ME__ = {{ me | tojson }};
-  window.__BUILD__ = '14.0';
+  window.__BUILD__ = '14.3';
 </script>
-<script src="/static/sounds.js" defer></script>
-<script src="/static/app.js?v=14" defer></script>
+<script src="/static/sounds.js?v=14.3" defer></script>
+<script src="/static/app.js?v=14.3" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
