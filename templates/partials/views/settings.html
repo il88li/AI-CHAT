@@ -57,12 +57,24 @@
       </div>
     </section>
 
-    <!-- ═══ Tabs ═══ -->
+    <!-- ═══ Tabs — كل تبويبات البروفايل ═══ -->
     <div class="settings-tabs-wrap">
-      <nav class="settings-tabs" role="tablist" aria-label="أقسام الإعدادات">
+      <nav class="settings-tabs" role="tablist" aria-label="أقسام الملف">
         <button class="settings-tab is-active" role="tab" aria-selected="true" data-section="posts" type="button">
           <i class="ph ph-image-square" aria-hidden="true"></i>
           <span>المنشورات</span>
+        </button>
+        <button class="settings-tab" role="tab" aria-selected="false" data-section="liked" type="button">
+          <i class="ph ph-heart" aria-hidden="true"></i>
+          <span>المُعجَبة</span>
+        </button>
+        <button class="settings-tab" role="tab" aria-selected="false" data-section="saved" type="button">
+          <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
+          <span>المحفوظة</span>
+        </button>
+        <button class="settings-tab" role="tab" aria-selected="false" data-section="about" type="button">
+          <i class="ph ph-info" aria-hidden="true"></i>
+          <span>نبذة</span>
         </button>
         <button class="settings-tab" role="tab" aria-selected="false" data-section="appearance" type="button">
           <i class="ph ph-palette" aria-hidden="true"></i>
@@ -81,6 +93,64 @@
       <!-- POSTS -->
       <section class="settings-panel is-active" data-panel="posts" role="tabpanel">
         <div class="feed" id="settingsUserPosts" aria-busy="true"></div>
+      </section>
+
+      <!-- LIKED -->
+      <section class="settings-panel" data-panel="liked" role="tabpanel">
+        <div class="feed" id="settingsLikedPosts" aria-busy="true"></div>
+      </section>
+
+      <!-- SAVED -->
+      <section class="settings-panel" data-panel="saved" role="tabpanel">
+        <div class="feed" id="settingsSavedPosts" aria-busy="true"></div>
+      </section>
+
+      <!-- ABOUT -->
+      <section class="settings-panel" data-panel="about" role="tabpanel">
+        <div class="about-card" id="settingsAboutCard">
+          <div class="about-row">
+            <div class="about-icon"><i class="ph ph-user" aria-hidden="true"></i></div>
+            <div class="about-body">
+              <span class="about-label">الاسم</span>
+              <strong class="about-value" id="aboutName">—</strong>
+            </div>
+          </div>
+          <div class="about-row">
+            <div class="about-icon"><i class="ph ph-at" aria-hidden="true"></i></div>
+            <div class="about-body">
+              <span class="about-label">المعرّف</span>
+              <strong class="about-value" id="aboutHandle">@—</strong>
+            </div>
+          </div>
+          <div class="about-row" id="aboutPronounsRow" hidden>
+            <div class="about-icon"><i class="ph ph-gender-intersex" aria-hidden="true"></i></div>
+            <div class="about-body">
+              <span class="about-label">الضمائر</span>
+              <strong class="about-value" id="aboutPronouns">—</strong>
+            </div>
+          </div>
+          <div class="about-row" id="aboutBioRow" hidden>
+            <div class="about-icon"><i class="ph ph-chat-text" aria-hidden="true"></i></div>
+            <div class="about-body">
+              <span class="about-label">نبذة</span>
+              <p class="about-value about-bio" id="aboutBio">—</p>
+            </div>
+          </div>
+          <div class="about-row" id="aboutWebsiteRow" hidden>
+            <div class="about-icon"><i class="ph ph-link" aria-hidden="true"></i></div>
+            <div class="about-body">
+              <span class="about-label">الموقع</span>
+              <a class="about-value about-link" id="aboutWebsite" href="#" target="_blank" rel="noopener noreferrer">—</a>
+            </div>
+          </div>
+          <div class="about-row">
+            <div class="about-icon"><i class="ph ph-calendar" aria-hidden="true"></i></div>
+            <div class="about-body">
+              <span class="about-label">انضم</span>
+              <strong class="about-value" id="aboutJoined">—</strong>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- APPEARANCE -->
@@ -218,15 +288,35 @@
 
       </section>
 
-      <!-- ACCOUNT -->
+      <!-- ACCOUNT — تصميم أجمل -->
       <section class="settings-panel" data-panel="account" role="tabpanel">
 
-        <div class="settings-group-title">الأصوات</div>
+        <!-- بطاقة الهوية -->
+        <div class="account-identity-card">
+          <div class="account-identity-avatar">
+            <img id="accountIdentityAvatar" src="" alt="">
+          </div>
+          <div class="account-identity-info">
+            <strong id="accountIdentityName">—</strong>
+            <span id="accountIdentityHandle">@—</span>
+            <span class="account-identity-email" id="accountIdentityEmail">—</span>
+          </div>
+          <div class="account-identity-badge" id="accountIdentityBadge" hidden>
+            <i class="ph ph-seal-check" aria-hidden="true"></i>
+            موثّق
+          </div>
+        </div>
+
+        <!-- الأصوات -->
+        <div class="settings-group-title">
+          <i class="ph ph-speaker-high" aria-hidden="true"></i>
+          الأصوات
+        </div>
         <div class="settings-block">
           <div class="setting-row">
             <div class="setting-row-info">
               <strong>تفعيل الأصوات</strong>
-              <span>نبرات قصيرة تُشعر بالحياة عند الإعجاب والنسخ والإرسال</span>
+              <span>نبرات قصيرة عند الإعجاب والنسخ والإرسال</span>
             </div>
             <button class="switch" id="soundsToggle" role="switch" aria-checked="true" aria-label="تفعيل الأصوات" type="button"></button>
           </div>
@@ -271,12 +361,16 @@
           </div>
         </div>
 
-        <div class="settings-group-title">الإشعارات</div>
+        <!-- الإشعارات -->
+        <div class="settings-group-title">
+          <i class="ph ph-bell" aria-hidden="true"></i>
+          الإشعارات
+        </div>
         <div class="settings-block">
           <div class="setting-row">
             <div class="setting-row-info">
               <strong>إعجابات جديدة</strong>
-              <span>عندما يُعجب أحدهم بأحد برومبتاتك</span>
+              <span>عندما يُعجب أحدهم ببرومبتاتك</span>
             </div>
             <button class="switch" data-notif="likes" role="switch" aria-checked="true" aria-label="إعجابات جديدة" type="button"></button>
           </div>
@@ -299,11 +393,15 @@
               <strong>رسائل الدردشة</strong>
               <span>عند وصول رسالة جديدة</span>
             </div>
-            <button class="switch" data-notif="messages" role="switch" aria-checked="true" aria-label="رسائل الدردشة" type="button"></button>
+            <button class="switch" data-notif="messages" role="switch" aria-checked="true" aria-label="رسائل" type="button"></button>
           </div>
         </div>
 
-        <div class="settings-group-title">الخصوصية</div>
+        <!-- الخصوصية -->
+        <div class="settings-group-title">
+          <i class="ph ph-lock-simple" aria-hidden="true"></i>
+          الخصوصية
+        </div>
         <div class="settings-block">
           <div class="setting-row">
             <div class="setting-row-info">
@@ -328,7 +426,11 @@
           </div>
         </div>
 
-        <div class="settings-group-title">الأمان</div>
+        <!-- الأمان -->
+        <div class="settings-group-title">
+          <i class="ph ph-shield-check" aria-hidden="true"></i>
+          الأمان
+        </div>
         <div class="settings-block">
           <div class="field">
             <label for="setOldPassword">كلمة المرور الحالية</label>
@@ -344,6 +446,7 @@
           </button>
         </div>
 
+        <!-- خروج -->
         <div class="settings-block settings-block--danger">
           <div class="setting-row">
             <div class="setting-row-info">
