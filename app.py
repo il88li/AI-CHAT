@@ -2,7 +2,7 @@
 خَيال — منصة البرومبتات العربية
 Flask + PostgreSQL + تسجيل دخول محلي + استقرار إنتاجي
 محسّن للتطوير من الهاتف والإنتاج على Render
-v13.5 — Settings dashboard + preferences API + reset button
+v13.6 — _payload محسّن (email + stats) · login/register يستخدمانه
 """
 import os
 import sys
@@ -107,7 +107,34 @@ def require_auth(fn):
 
 
 def _payload(u):
-    return u.to_dict() if u else None
+    """
+    Serializes the current user for page render + auth endpoints.
+    v13.6 — يضيف email + posts_count + total_likes + total_copies
+    تُستخدم في: /api/me, /api/auth/login, /api/auth/register, render index
+    """
+    if not u:
+        return None
+    d = u.to_dict()
+    # email — يُرسَل فقط للمستخدم الحالي (لا يتسرب عبر author_data)
+    d["email"] = u.email
+    # إحصائيات المستخدم — تُحسَب مباشرة هنا لتُتاح في /api/me وكل صفحة
+    try:
+        d["posts_count"] = u.posts.count()
+        totals = db.session.query(
+            func.coalesce(func.sum(Post.likes), 0),
+            func.coalesce(func.sum(Post.copies), 0),
+        ).filter(Post.author_id == u.id).first()
+        if totals:
+            d["total_likes"] = int(totals[0])
+            d["total_copies"] = int(totals[1])
+        else:
+            d["total_likes"] = 0
+            d["total_copies"] = 0
+    except Exception:
+        d["posts_count"] = 0
+        d["total_likes"] = 0
+        d["total_copies"] = 0
+    return d
 
 
 def _validate_username(s):
@@ -265,7 +292,7 @@ def api_register():
 
         session.permanent = True
         session["user_id"] = user.id
-        return jsonify(user.to_dict()), 201
+        return jsonify(_payload(user)), 201
     except Exception as e:
         db.session.rollback()
         print(f"❌ خطأ تسجيل: {e}", file=sys.stderr)
@@ -292,7 +319,7 @@ def api_login():
 
         session.permanent = remember
         session["user_id"] = user.id
-        return jsonify(user.to_dict())
+        return jsonify(_payload(user))
     except Exception as e:
         print(f"❌ خطأ دخول: {e}", file=sys.stderr)
         return jsonify({"error": "خطأ في الخادم"}), 500
@@ -396,14 +423,12 @@ def admin_db_migrate():
                 ("avatar_shape", "VARCHAR(30) DEFAULT 'ring'"),
                 ("card_style",   "VARCHAR(12) DEFAULT 'glass'"),
                 ("preferences",  "TEXT DEFAULT '{}'"),
-                # location و status مُتروكان للأرشيف
             ]
             for name, dtype in cols:
                 conn.execute(text(
                     f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
                 ))
 
-            # وسّع avatar_shape
             try:
                 conn.execute(text(
                     "ALTER TABLE users ALTER COLUMN avatar_shape TYPE VARCHAR(30)"
@@ -411,7 +436,6 @@ def admin_db_migrate():
             except Exception:
                 pass
 
-            # هجرة قيم الإطارات القديمة → الجديدة
             conn.execute(text("""
                 UPDATE users SET avatar_shape = CASE
                     WHEN avatar_shape = 'circle'  THEN 'gradient'
@@ -503,6 +527,7 @@ def api_posts():
         d["author_data"] = p.author.to_dict()
         d["liked"] = p.id in liked_ids
         d["saved"] = p.id in saved_ids
+        d["is_owner"] = bool(me and me.id == p.author_id)
         out.append(d)
 
     resp = jsonify(out)
@@ -528,6 +553,9 @@ def api_post(pid):
         d["saved"] = db.session.query(Save).filter_by(
             user_id=me.id, post_id=p.id
         ).first() is not None
+        d["is_owner"] = (me.id == p.author_id)
+    else:
+        d["is_owner"] = False
     return jsonify(d)
 
 
@@ -555,6 +583,7 @@ def api_create_post():
     d["author_data"] = u.to_dict()
     d["liked"] = False
     d["saved"] = False
+    d["is_owner"] = True
     return jsonify(d), 201
 
 
@@ -715,6 +744,11 @@ def api_user_posts(uid):
             d["saved"] = db.session.query(Save).filter_by(
                 user_id=me.id, post_id=p.id
             ).first() is not None
+            d["is_owner"] = (me.id == p.author_id)
+        else:
+            d["liked"] = False
+            d["saved"] = False
+            d["is_owner"] = False
         out.append(d)
     return jsonify(out)
 
@@ -783,14 +817,12 @@ def api_update_me():
             return jsonify({"error": "النبذة طويلة جداً"}), 400
         u.bio = bio
 
-    # website فقط — location و status محذوفان
     if "website" in data:
         web = (data["website"] or "").strip()
         if web and not (web.startswith("http://") or web.startswith("https://")):
             web = "https://" + web
         u.website = web[:120] if web else None
 
-    # pronouns — قائمة بيضاء صارمة
     if "pronouns" in data:
         pr = (data["pronouns"] or "").strip()
         if pr not in ALLOWED_PRONOUNS:
@@ -800,7 +832,6 @@ def api_update_me():
     if "avatar" in data and data["avatar"]:
         u.avatar = data["avatar"].strip()[:500]
 
-    # cover — قائمة بيضاء
     if "cover" in data:
         cv = (data["cover"] or "").strip()
         if cv in ALLOWED_COVERS:
@@ -811,7 +842,6 @@ def api_update_me():
         if re.match(r"^#[0-9A-Fa-f]{6}$", ac):
             u.accent_color = ac
 
-    # avatar_frame (اسم جديد) أو avatar_shape (توافق خلفي)
     frame_val = None
     if "avatar_frame" in data:
         frame_val = (data["avatar_frame"] or "").strip()
@@ -825,7 +855,6 @@ def api_update_me():
         if cs in ALLOWED_CARD_STYLES:
             u.card_style = cs
 
-    # preferences — كائن JSON مع whitelist صارم (v13.5)
     if "preferences" in data:
         prefs = data["preferences"]
         if not isinstance(prefs, dict):
@@ -853,7 +882,7 @@ def api_update_me():
             return jsonify({"error": "preferences غير صالح"}), 400
 
     db.session.commit()
-    return jsonify(u.to_dict())
+    return jsonify(_payload(u))
 
 
 @app.post("/api/me/password")
@@ -1075,9 +1104,6 @@ def init_db():
             db.create_all()
             print("✅ الجداول جاهزة.")
 
-            # ═══════════════════════════════════════════════════════
-            # Auto-migration v13.5 — أعمدة + هجرة قيم الإطارات + preferences
-            # ═══════════════════════════════════════════════════════
             try:
                 with db.engine.begin() as conn:
                     cols = [
@@ -1088,14 +1114,12 @@ def init_db():
                         ("avatar_shape", "VARCHAR(30) DEFAULT 'ring'"),
                         ("card_style",   "VARCHAR(12) DEFAULT 'glass'"),
                         ("preferences",  "TEXT DEFAULT '{}'"),
-                        # location و status مُتروكان للأرشيف
                     ]
                     for name, dtype in cols:
                         conn.execute(text(
                             f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
                         ))
 
-                    # وسّع avatar_shape لدعم أسماء الإطارات الجديدة
                     try:
                         conn.execute(text(
                             "ALTER TABLE users ALTER COLUMN avatar_shape TYPE VARCHAR(30)"
@@ -1103,7 +1127,6 @@ def init_db():
                     except Exception:
                         pass
 
-                    # هجرة الإطارات القديمة
                     conn.execute(text("""
                         UPDATE users SET avatar_shape = CASE
                             WHEN avatar_shape = 'circle'  THEN 'gradient'
@@ -1115,14 +1138,13 @@ def init_db():
                            OR avatar_shape IS NULL
                     """))
 
-                    # قيم افتراضية نظيفة
                     conn.execute(text("UPDATE users SET cover = 'aurora' WHERE cover IS NULL"))
                     conn.execute(text("UPDATE users SET accent_color = '#22D3EE' WHERE accent_color IS NULL"))
                     conn.execute(text("UPDATE users SET avatar_shape = 'ring' WHERE avatar_shape IS NULL"))
                     conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
                     conn.execute(text("UPDATE users SET preferences = '{}' WHERE preferences IS NULL"))
 
-                print("✅ Auto-migration v13.5: الإطارات والأغلفة وpreferences جاهزة.")
+                print("✅ Auto-migration v13.6: الإطارات والأغلفة وpreferences جاهزة.")
             except Exception as m_err:
                 print(f"⚠️  Auto-migration: {str(m_err)[:150]}")
 
