@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <meta name="theme-color" content="#08080C">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="خَيال">
 <meta name="format-detection" content="telephone=no">
 <meta name="description" content="منصة عربية لمشاركة برومبتات الصور بالذكاء الاصطناعي">
+<meta name="color-scheme" content="dark light">
 
 <title>{% block title %}خَيال{% endblock %}</title>
 
@@ -42,6 +43,7 @@
 <link rel="stylesheet" href="/static/css/06-ant.css?v=15.3">
 <link rel="stylesheet" href="/static/css/07-nav.css?v=16.0">
 <link rel="stylesheet" href="/static/css/08-tabs.css?v=16.1">
+<link rel="stylesheet" href="/static/css/09-profile-hero.css?v=17.0">
 {% block styles %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -49,7 +51,7 @@
 <div class="aurora" aria-hidden="true"><div class="aurora-mid"></div></div>
 
 <div class="net-bar" id="netBar" data-open="false" role="status" aria-live="polite">
-  <i class="ph ph-wifi-slash"></i>
+  <i class="ph ph-wifi-slash" aria-hidden="true"></i>
   <span>أنت غير متصل بالإنترنت</span>
 </div>
 
@@ -66,7 +68,7 @@
 
 <script>
   window.__ME__ = {{ me | tojson }};
-  window.__BUILD__ = '16.1';
+  window.__BUILD__ = '17.0';
 </script>
 <script src="/static/sounds.js?v=15.0" defer></script>
 <script src="/static/app.js?v=15.0" defer></script>
