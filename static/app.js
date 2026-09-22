@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v14.0
-   Auth: split-layout modal with aria-invalid + shake feedback
-   Settings: Profile dashboard + preferences API + reset button
+   خَيال — app.js v14.1
+   Fixes:
+   - Net.init(): periodic online check + initial sync (fixes false offline bar)
+   - Composer.open(): hide avatar when no image (fixes broken img icon)
+   - Auth: split-layout with aria-invalid + shake feedback
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -15,7 +17,8 @@
     SEARCH_DEBOUNCE: 280,
     DRAFT_KEY: 'khayal.composer.draft',
     THEME_KEY: 'khayal.theme',
-    BUILD: '14.0',
+    NET_CHECK_MS: 5000,
+    BUILD: '14.1',
   };
 
   const S = {
@@ -307,15 +310,33 @@
      NETWORK MONITOR
      ═══════════════════════════════════════════════════════════════ */
   const Net = {
+    _interval: null,
+
     init() {
       const bar = document.getElementById('netBar');
       if (!bar) return;
+
+      let lastState = null;
+
       const update = () => {
         const offline = !navigator.onLine;
+
+        // Only log/toast on actual transition
+        if (lastState !== null && lastState !== offline) {
+          if (!offline) Toast.show('عدت متصلاً', 'success');
+        }
+        lastState = offline;
+
         bar.setAttribute('data-open', offline ? 'true' : 'false');
       };
-      window.addEventListener('online', () => { update(); Toast.show('عدت متصلاً', 'success'); });
+
+      window.addEventListener('online', update);
       window.addEventListener('offline', update);
+
+      // Periodic sync — يصلح مشكلة عدم إطلاق حدث online بعد التحميل
+      this._interval = setInterval(update, CFG.NET_CHECK_MS);
+
+      // Initial check
       update();
     },
   };
@@ -1051,8 +1072,18 @@
         return;
       }
 
+      // Avatar — hide if no image (fixes broken img icon)
       const av = document.getElementById('composerFormAvatar');
-      if (av) av.src = S.me.avatar || '';
+      if (av) {
+        if (S.me.avatar && S.me.avatar.trim()) {
+          av.src = S.me.avatar;
+          av.hidden = false;
+        } else {
+          av.removeAttribute('src');
+          av.hidden = true;
+        }
+      }
+
       const name = document.getElementById('composerUserName');
       if (name) name.textContent = S.me.name || '—';
 
