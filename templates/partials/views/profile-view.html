@@ -1,0 +1,103 @@
+<div class="view-overlay pv-overlay" id="profileView" hidden role="dialog" aria-modal="true" aria-labelledby="pvNameText">
+
+  <!-- ═══ Skeleton ═══ -->
+  <div class="pv-skeleton" id="pvSkeleton" aria-hidden="true">
+    <div class="pv-hero pv-skeleton-block"></div>
+    <div class="pv-body">
+      <div class="pv-skeleton-line pv-line-lg"></div>
+      <div class="pv-skeleton-line pv-line-md"></div>
+      <div class="pv-skeleton-line pv-line-btn"></div>
+      <div class="pv-skeleton-line pv-line-card"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Real content ═══ -->
+  <div class="pv-scroll" id="pvScroll" hidden>
+
+    <!-- Hero -->
+    <div class="pv-hero" id="pvHero" data-cover="aurora">
+      <div class="pv-hero-pattern" aria-hidden="true"></div>
+
+      <button class="pv-icon-btn pv-close"
+              type="button"
+              data-action="close-profile-view"
+              aria-label="إغلاق">
+        <i class="ph ph-x" aria-hidden="true"></i>
+      </button>
+
+      <button class="pv-icon-btn pv-menu"
+              type="button"
+              data-action="profile-view-menu"
+              aria-label="المزيد">
+        <i class="ph ph-dots-three" aria-hidden="true"></i>
+      </button>
+
+      <div class="pv-identity">
+        <h1 class="pv-name" id="pvName">
+          <span id="pvNameText">—</span>
+          <i class="ph ph-seal-check" id="pvVerified" aria-label="موثّق" hidden></i>
+        </h1>
+        <div class="pv-handle" id="pvHandle">@—</div>
+        <span class="pv-pronouns" id="pvPronouns" hidden></span>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="pv-body">
+
+      <div class="pv-actions">
+        <button class="btn btn-primary pv-follow-btn"
+                id="pvFollowBtn"
+                type="button"
+                data-action="profile-view-follow"
+                data-state="idle">
+          <i class="ph ph-plus" aria-hidden="true"></i>
+          <span>متابعة</span>
+        </button>
+
+        <button class="btn btn-icon btn-secondary pv-share-btn"
+                type="button"
+                data-action="profile-view-share"
+                aria-label="مشاركة الملف">
+          <i class="ph ph-share-network" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div class="pv-stats">
+        <button class="pv-stat" type="button" data-action="profile-view-following" aria-label="يتابع">
+          <strong id="pvStatFollowing">0</strong>
+          <span>يتابع</span>
+        </button>
+        <span class="pv-stat-div" aria-hidden="true"></span>
+        <button class="pv-stat" type="button" data-action="profile-view-followers" aria-label="المتابعون">
+          <strong id="pvStatFollowers">0</strong>
+          <span>متابِع</span>
+        </button>
+        <span class="pv-stat-div" aria-hidden="true"></span>
+        <div class="pv-stat">
+          <strong id="pvStatPosts">0</strong>
+          <span>منشور</span>
+        </div>
+      </div>
+
+      <div class="pv-bio" id="pvBio" hidden></div>
+
+      <div class="pv-meta" id="pvMeta" hidden>
+        <span class="pv-meta-item" id="pvMetaWebsite" hidden>
+          <i class="ph ph-link" aria-hidden="true"></i>
+          <a id="pvMetaWebsiteLink" href="#" target="_blank" rel="noopener noreferrer"></a>
+        </span>
+        <span class="pv-meta-item" id="pvMetaJoined" hidden>
+          <i class="ph ph-calendar" aria-hidden="true"></i>
+          <span id="pvMetaJoinedText"></span>
+        </span>
+      </div>
+
+      <div class="pv-posts-head">
+        <h2 class="pv-posts-title">المنشورات</h2>
+      </div>
+      <div class="pv-posts-grid" id="pvPostsGrid"></div>
+
+    </div>
+  </div>
+</div>
