@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════
-   خَيال — Sound Engine v1.0
+   خَيال — Sound Engine v1.1
    Web Audio API synthesizer · لا ملفات خارجية · لا تأخير
+   إصلاح: AudioContext لا يُنشأ إلا بعد تفاعل مستخدم حقيقي
    ═══════════════════════════════════════════════════════════ */
 (function (global) {
   'use strict';
@@ -15,6 +16,8 @@
     master: null
   };
 
+  var unlocked = false;
+
   /* ─── Restore from localStorage ─── */
   try {
     var s = localStorage.getItem(STORAGE_KEY);
@@ -23,20 +26,41 @@
     if (!isNaN(v)) state.volume = Math.max(0, Math.min(1, v));
   } catch (e) { /* ignore */ }
 
-  /* ─── Lazy AudioContext (browsers require user gesture) ─── */
+  /* ─── Lazy AudioContext — يُنشأ فقط بعد تفاعل مستخدم حقيقي ─── */
   function ensureCtx() {
+    if (!unlocked) return null;          // لا ننشئ أي شيء قبل أول gesture
     if (state.ctx) {
-      if (state.ctx.state === 'suspended') state.ctx.resume();
+      if (state.ctx.state === 'suspended') {
+        state.ctx.resume().catch(function () {});
+      }
       return state.ctx;
     }
-    var AC = global.AudioContext || global.webkitAudioContext;
-    if (!AC) return null;
-    state.ctx = new AC();
-    state.master = state.ctx.createGain();
-    state.master.gain.value = state.enabled ? state.volume : 0;
-    state.master.connect(state.ctx.destination);
-    return state.ctx;
+    try {
+      var AC = global.AudioContext || global.webkitAudioContext;
+      if (!AC) return null;
+      state.ctx = new AC();
+      state.master = state.ctx.createGain();
+      state.master.gain.value = state.enabled ? state.volume : 0;
+      state.master.connect(state.ctx.destination);
+      return state.ctx;
+    } catch (e) {
+      return null;
+    }
   }
+
+  function unlock() {
+    if (unlocked) return;
+    unlocked = true;
+    ensureCtx();
+    document.removeEventListener('pointerdown', unlock, true);
+    document.removeEventListener('keydown', unlock, true);
+    document.removeEventListener('touchstart', unlock, true);
+  }
+
+  // نربط unlock بأول تفاعل حقيقي فقط
+  document.addEventListener('pointerdown', unlock, { capture: true, once: true, passive: true });
+  document.addEventListener('keydown', unlock, { capture: true, once: true, passive: true });
+  document.addEventListener('touchstart', unlock, { capture: true, once: true, passive: true });
 
   /* ─── Core tone builder ─── */
   function tone(opts) {
@@ -219,7 +243,10 @@
     getVolume: function () { return state.volume; },
 
     /* For Safari — call from a click handler the first time */
-    unlock: function () { ensureCtx(); }
+    unlock: function () {
+      unlocked = true;
+      ensureCtx();
+    }
   };
 
   global.Sounds = Sounds;
