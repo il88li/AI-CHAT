@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v19.0
-   v19.0: CSRF · FollowersDrawer · NotificationsLoader · ConfirmModal
-          · ReportModal · Post.edit · Post.delete modal · ProfileView pagination
+   خَيال — app.js v19.0 (stable)
+   CSRF · FollowersDrawer · NotificationsLoader · ConfirmModal · ReportModal
+   · Post.edit · Post.delete modal · Post.report modal · ProfileView overlay
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -41,15 +41,11 @@
 
   /* ═══════════ UTILITIES ═══════════ */
   const U = {
-    qs(sel, root) { return (root || document).querySelector(sel); },
-    qsa(sel, root) { return Array.from((root || document).querySelectorAll(sel)); },
-
     escapeHtml(s) {
       if (s == null) return '';
       return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     },
-
     relativeTime(iso) {
       if (!iso) return '';
       const d = new Date(iso), now = Date.now();
@@ -68,14 +64,12 @@
       if (mo < 12) return mo + ' ش';
       return Math.floor(day / 365) + ' سنة';
     },
-
     formatNumber(n) {
       n = Number(n) || 0;
       if (n < 1000) return String(n);
       if (n < 1000000) return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'ألف';
       return (n / 1000000).toFixed(1) + 'م';
     },
-
     debounce(fn, ms) {
       let t;
       return function () {
@@ -84,13 +78,11 @@
         t = setTimeout(() => fn.apply(ctx, args), ms);
       };
     },
-
     autoGrow(el) {
       if (!el) return;
       el.style.height = 'auto';
       el.style.height = Math.min(el.scrollHeight, 200) + 'px';
     },
-
     safeAvatar(imgEl, url) {
       if (!imgEl) return;
       const clean = url && String(url).trim();
@@ -98,7 +90,9 @@
       if (clean) { imgEl.src = clean; imgEl.hidden = false; }
       else { imgEl.removeAttribute('src'); imgEl.hidden = true; }
     },
-
+    isUrl(s) {
+      return typeof s === 'string' && /^https?:\/\/[^\s<>"']+$/i.test(s.trim());
+    },
     async copy(text) {
       try {
         if (navigator.clipboard && window.isSecureContext) {
@@ -120,25 +114,18 @@
   function getCsrfToken() {
     const meta = document.querySelector('meta[name="csrf-token"]');
     if (meta && meta.content) return meta.content;
-    if (window.__CSRF__) return window.__CSRF__;
-    return null;
+    return window.__CSRF__ || null;
   }
 
   /* ═══════════ API ═══════════ */
   const API = {
     async call(method, path, body, opts) {
-      const init = {
-        method,
-        credentials: 'same-origin',
-        headers: { 'Accept': 'application/json' },
-      };
-
+      const init = { method, credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
       const m = (method || 'GET').toUpperCase();
       if (m !== 'GET' && m !== 'HEAD') {
-        const token = getCsrfToken();
-        if (token) init.headers['X-CSRF-Token'] = token;
+        const t = getCsrfToken();
+        if (t) init.headers['X-CSRF-Token'] = t;
       }
-
       if (body !== undefined && body !== null) {
         init.headers['Content-Type'] = 'application/json';
         init.body = JSON.stringify(body);
@@ -146,19 +133,17 @@
       if (opts && opts.signal) init.signal = opts.signal;
 
       let res;
-      try {
-        res = await fetch(path, init);
-      } catch (err) {
+      try { res = await fetch(path, init); }
+      catch (err) {
         if (err.name === 'AbortError') throw err;
         throw new Error('تعذّر الاتصال بالخادم');
       }
 
-      // Refresh CSRF token if server returns new one
-      const newToken = res.headers.get('X-CSRF-Token');
-      if (newToken) {
+      const nt = res.headers.get('X-CSRF-Token');
+      if (nt) {
         const meta = document.querySelector('meta[name="csrf-token"]');
-        if (meta) meta.content = newToken;
-        window.__CSRF__ = newToken;
+        if (meta) meta.content = nt;
+        window.__CSRF__ = nt;
       }
 
       let data = null;
@@ -169,14 +154,11 @@
 
       if (!res.ok) {
         const msg = (data && (data.error || data.message)) || `خطأ ${res.status}`;
-        const err = new Error(msg);
-        err.status = res.status;
-        err.data = data;
+        const err = new Error(msg); err.status = res.status; err.data = data;
         throw err;
       }
       return data;
     },
-
     get(p, o) { return API.call('GET', p, null, o); },
     post(p, b) { return API.call('POST', p, b); },
     patch(p, b) { return API.call('PATCH', p, b); },
@@ -222,8 +204,7 @@
       t.querySelector('span').textContent = msg;
       wrap.appendChild(t);
       setTimeout(() => {
-        t.style.opacity = '0';
-        t.style.transform = 'translateY(12px)';
+        t.style.opacity = '0'; t.style.transform = 'translateY(12px)';
         setTimeout(() => t.remove(), 260);
       }, ms || CFG.TOAST_MS);
     },
@@ -232,7 +213,6 @@
   /* ═══════════ CONFIRM MODAL ═══════════ */
   const ConfirmModal = {
     _resolve: null,
-
     show(opts) {
       opts = opts || {};
       const title = opts.title || 'تأكيد';
@@ -261,22 +241,19 @@
         const finish = (v) => {
           scrim.setAttribute('data-open', 'false');
           setTimeout(() => scrim.remove(), 280);
-          const r = this._resolve;
-          this._resolve = null;
+          const r = this._resolve; this._resolve = null;
           if (r) r(v);
         };
-
         scrim.addEventListener('click', (e) => {
           const btn = e.target.closest('[data-choice]');
           if (btn) { finish(btn.dataset.choice === 'confirm'); return; }
           if (e.target === scrim) finish(false);
         });
-
         document.body.appendChild(scrim);
         requestAnimationFrame(() => scrim.setAttribute('data-open', 'true'));
         setTimeout(() => {
-          const primary = scrim.querySelector('[data-choice="confirm"]');
-          if (primary) primary.focus({ preventScroll: true });
+          const p = scrim.querySelector('[data-choice="confirm"]');
+          if (p) p.focus({ preventScroll: true });
         }, 140);
       });
     },
@@ -285,7 +262,6 @@
   /* ═══════════ REPORT MODAL ═══════════ */
   const ReportModal = {
     _resolve: null,
-
     show(postId) {
       const reasons = [
         ['spam', 'بريد مزعج أو محتوى متكرر'],
@@ -297,7 +273,6 @@
         ['copyright', 'انتهاك حقوق النشر'],
         ['other', 'سبب آخر'],
       ];
-
       return new Promise((resolve) => {
         this._resolve = resolve;
         const scrim = document.createElement('div');
@@ -331,15 +306,11 @@
         const finish = (v) => {
           scrim.setAttribute('data-open', 'false');
           setTimeout(() => scrim.remove(), 280);
-          const r = this._resolve;
-          this._resolve = null;
+          const r = this._resolve; this._resolve = null;
           if (r) r(v);
         };
-
         scrim.addEventListener('click', (e) => {
-          if (e.target.closest('[data-choice="cancel"]') || e.target === scrim) {
-            finish(false); return;
-          }
+          if (e.target.closest('[data-choice="cancel"]') || e.target === scrim) { finish(false); return; }
           const submit = e.target.closest('[data-choice="submit"]');
           if (submit) {
             e.preventDefault();
@@ -348,7 +319,6 @@
             finish({ reason, note });
           }
         });
-
         document.body.appendChild(scrim);
         requestAnimationFrame(() => scrim.setAttribute('data-open', 'true'));
       });
@@ -363,8 +333,7 @@
       if (!banner) return;
       try { this.dismissed = localStorage.getItem('khayal.install.dismissed') === '1'; } catch (e) {}
       window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        this.deferred = e;
+        e.preventDefault(); this.deferred = e;
         if (!this.dismissed) banner.hidden = false;
         setTimeout(() => banner.setAttribute('data-open', 'true'), 60);
       });
@@ -399,9 +368,7 @@
         const ctrl = new AbortController();
         const to = setTimeout(() => ctrl.abort(), CFG.NET_PING_TIMEOUT);
         const res = await fetch('/api/health', { method: 'HEAD', cache: 'no-store', signal: ctrl.signal });
-        clearTimeout(to);
-        this._checking = false;
-        return res.ok;
+        clearTimeout(to); this._checking = false; return res.ok;
       } catch (e) { this._checking = false; return false; }
     },
     init() {
@@ -411,13 +378,8 @@
       const update = async () => {
         const browserOffline = !navigator.onLine;
         let offline = browserOffline;
-        if (browserOffline) {
-          const reachable = await self._ping();
-          offline = !reachable;
-        }
-        if (self._lastState !== null && self._lastState !== offline && !offline) {
-          Toast.show('عدت متصلاً', 'success');
-        }
+        if (browserOffline) offline = !(await self._ping());
+        if (self._lastState !== null && self._lastState !== offline && !offline) Toast.show('عدت متصلاً', 'success');
         self._lastState = offline;
         bar.setAttribute('data-open', offline ? 'true' : 'false');
       };
@@ -440,8 +402,8 @@
       m.setAttribute('data-open', 'true');
       document.documentElement.style.overflow = 'hidden';
       setTimeout(() => {
-        const first = m.querySelector('.auth-form.is-active input');
-        if (first) first.focus({ preventScroll: true });
+        const f = m.querySelector('.auth-form.is-active input');
+        if (f) f.focus({ preventScroll: true });
       }, 200);
       if (window.Sounds) Sounds.play('open');
     },
@@ -592,11 +554,21 @@
 
   /* ═══════════ POST ═══════════ */
   const Post = {
+    _extractImages(p) {
+      if (Array.isArray(p.images) && p.images.length) {
+        const clean = p.images.filter(U.isUrl);
+        if (clean.length) return clean;
+      }
+      if (p.image && U.isUrl(p.image)) return [p.image];
+      return [];
+    },
+
     renderCard(p) {
       const a = p.author_data || {};
       const liked = !!p.liked;
       const saved = !!p.saved;
-      const image = p.image || 'https://placehold.co/800x600/0E0E14/22D3EE?text=خَيال';
+      const images = this._extractImages(p);
+      const image = images[0] || 'https://placehold.co/800x600/0E0E14/22D3EE?text=خَيال';
       const tags = Array.isArray(p.tags) ? p.tags : [];
       const model = p.model || '';
       const isOwner = !!p.is_owner;
@@ -614,7 +586,8 @@
       card.innerHTML = `
         <div class="prompt-media">
           <img src="${U.escapeHtml(image)}" alt="${U.escapeHtml(p.title || '')}"
-               loading="lazy" data-state="loading" data-action="open-author-media">
+               loading="lazy" data-state="loading"
+               data-action="open-author-media">
           ${model ? `<span class="prompt-model"><i class="ph ph-sparkle" aria-hidden="true"></i>${U.escapeHtml(model)}</span>` : ''}
           <div class="prompt-floats">
             <button class="float-btn" data-action="like" aria-pressed="${liked}" aria-label="إعجاب" type="button">
@@ -628,22 +601,12 @@
                 <i class="ph ph-dots-three" aria-hidden="true"></i>
               </button>
               <div class="prompt-menu" role="menu" hidden>
-                <button role="menuitem" type="button" data-action="share">
-                  <i class="ph ph-share-network" aria-hidden="true"></i><span>مشاركة</span>
-                </button>
-                <button role="menuitem" type="button" data-action="copy">
-                  <i class="ph ph-copy" aria-hidden="true"></i><span>نسخ البرومبت</span>
-                </button>
+                <button role="menuitem" type="button" data-action="share"><i class="ph ph-share-network"></i><span>مشاركة</span></button>
+                <button role="menuitem" type="button" data-action="copy"><i class="ph ph-copy"></i><span>نسخ البرومبت</span></button>
                 ${isOwner ? `
-                <button role="menuitem" type="button" data-action="edit">
-                  <i class="ph ph-pencil-simple" aria-hidden="true"></i><span>تعديل</span>
-                </button>
-                <button role="menuitem" type="button" class="menu-danger" data-action="delete">
-                  <i class="ph ph-trash" aria-hidden="true"></i><span>حذف</span>
-                </button>` : ''}
-                <button role="menuitem" type="button" data-action="report">
-                  <i class="ph ph-flag" aria-hidden="true"></i><span>إبلاغ</span>
-                </button>
+                <button role="menuitem" type="button" data-action="edit"><i class="ph ph-pencil-simple"></i><span>تعديل</span></button>
+                <button role="menuitem" type="button" class="menu-danger" data-action="delete"><i class="ph ph-trash"></i><span>حذف</span></button>` : ''}
+                <button role="menuitem" type="button" data-action="report"><i class="ph ph-flag"></i><span>إبلاغ</span></button>
               </div>
             </div>
           </div>
@@ -662,9 +625,7 @@
           <h3 class="prompt-title">${U.escapeHtml(p.title || '')}</h3>
           <div class="prompt-excerpt" data-action="copy-excerpt">
             ${U.escapeHtml(p.prompt || '')}
-            <button type="button" class="prompt-excerpt-copy" aria-label="نسخ">
-              <i class="ph ph-copy" aria-hidden="true"></i>
-            </button>
+            <button type="button" class="prompt-excerpt-copy" aria-label="نسخ"><i class="ph ph-copy"></i></button>
           </div>
           ${tagsHtml}
         </div>
@@ -686,6 +647,8 @@
       const img = card.querySelector('.prompt-media > img');
       img.addEventListener('load', () => { img.dataset.state = 'loaded'; });
       img.addEventListener('error', () => { img.dataset.state = 'error'; });
+      if (img.complete) img.dataset.state = 'loaded';
+
       card.addEventListener('click', (e) => this.onCardClick(e, card, p));
       return card;
     },
@@ -720,9 +683,8 @@
       try {
         const res = await API.post(`/api/posts/${id}/like`);
         const liked = !!res.liked;
-        const count = res.likes;
         document.querySelectorAll(`[data-post-id="${id}"] [data-action="like"]`).forEach(b => b.setAttribute('aria-pressed', String(liked)));
-        document.querySelectorAll(`[data-post-id="${id}"] [data-count="likes"]`).forEach(el => el.textContent = U.formatNumber(count));
+        document.querySelectorAll(`[data-post-id="${id}"] [data-count="likes"]`).forEach(el => el.textContent = U.formatNumber(res.likes));
         if (window.Sounds) Sounds.play('like');
       } catch (err) {
         document.querySelectorAll(`[data-post-id="${id}"] [data-action="like"]`).forEach(b => b.setAttribute('aria-pressed', String(currently)));
@@ -790,19 +752,12 @@
 
     share(id) {
       const url = `${location.origin}/?p=${id}`;
-      if (navigator.share) {
-        navigator.share({ title: 'برومبت من خَيال', url }).catch(() => {});
-      } else {
-        navigator.clipboard.writeText(url).then(() => Toast.show('تم نسخ الرابط', 'success'))
-          .catch(() => Toast.show('تعذّر النسخ', 'error'));
-      }
+      if (navigator.share) navigator.share({ title: 'برومبت من خَيال', url }).catch(() => {});
+      else navigator.clipboard.writeText(url).then(() => Toast.show('تم نسخ الرابط', 'success')).catch(() => Toast.show('تعذّر النسخ', 'error'));
       this.closeAllMenus();
     },
 
-    edit(id) {
-      this.closeAllMenus();
-      Composer.openEdit(parseInt(id, 10));
-    },
+    edit(id) { this.closeAllMenus(); Composer.openEdit(parseInt(id, 10)); },
 
     async delete(id) {
       this.closeAllMenus();
@@ -810,9 +765,7 @@
       const ok = await ConfirmModal.show({
         title: 'حذف المنشور',
         message: 'سيُحذف المنشور نهائياً. لا يمكن التراجع عن هذا الإجراء.',
-        confirmLabel: 'حذف',
-        cancelLabel: 'بقاء',
-        danger: true,
+        confirmLabel: 'حذف', cancelLabel: 'بقاء', danger: true,
       });
       if (!ok) return;
       try {
@@ -827,10 +780,7 @@
         Toast.show('تم الحذف', 'success');
         if (window.Sounds) Sounds.play('success');
         Object.keys(S.feeds || {}).forEach(k => { if (S.feeds[k]) S.feeds[k].loaded = false; });
-      } catch (err) {
-        Toast.show(err.message || 'تعذّر الحذف', 'error');
-        if (window.Sounds) Sounds.play('error');
-      }
+      } catch (err) { Toast.show(err.message || 'تعذّر الحذف', 'error'); }
     },
 
     async report(id) {
@@ -842,9 +792,7 @@
         await API.post(`/api/posts/${id}/report`, { reason: result.reason, note: result.note });
         Toast.show('تم إرسال البلاغ، شكراً لك', 'success', 2600);
         if (window.Sounds) Sounds.play('success');
-      } catch (err) {
-        Toast.show(err.message || 'تعذّر إرسال البلاغ', 'error');
-      }
+      } catch (err) { Toast.show(err.message || 'تعذّر إرسال البلاغ', 'error'); }
     },
   };
 
@@ -897,9 +845,8 @@
       }
       params.set('limit', String(CFG.PAGE_SIZE));
       if (fs.before) params.set('before_id', String(fs.before));
-      const path = '/api/posts';
       try {
-        const items = await API.get(path + '?' + params.toString(), { signal: fs.controller.signal });
+        const items = await API.get('/api/posts?' + params.toString(), { signal: fs.controller.signal });
         const list = Array.isArray(items) ? items : [];
         if (list.length === 0 && fs.items.length === 0) {
           this.showEmpty(name); fs.hasMore = false; fs.loaded = true; return;
@@ -916,7 +863,7 @@
         if (err.name === 'AbortError') return;
         if (fs.items.length === 0) {
           container.innerHTML = this.emptyHtml('ph-cloud-slash', 'تعذّر التحميل', err.message || 'حاول مرة أخرى');
-        } else { Toast.show(err.message || 'تعذّر تحميل المزيد', 'error'); }
+        } else Toast.show(err.message || 'تعذّر تحميل المزيد', 'error');
       } finally {
         fs.busy = false;
         container.setAttribute('aria-busy', 'false');
@@ -954,12 +901,12 @@
       const form = document.getElementById('commentForm');
       const countEl = document.getElementById('commentCount');
       if (!body) return;
-      body.innerHTML = `<div class="load-more"><div class="spinner"></div></div>`;
+      body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
       if (form) form.style.display = S.me ? 'flex' : 'none';
       try {
         const items = await API.get(`/api/posts/${postId}/comments`);
         if (!items || items.length === 0) {
-          body.innerHTML = `<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا تعليقات بعد</h4><p>كن أول المعلّقين.</p></div>`;
+          body.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا تعليقات بعد</h4><p>كن أول المعلّقين.</p></div>';
           if (countEl) countEl.textContent = '';
           return;
         }
@@ -994,8 +941,7 @@
       input.disabled = true;
       try {
         const c = await API.post(`/api/posts/${this.currentPostId}/comments`, { text });
-        input.value = '';
-        U.autoGrow(input);
+        input.value = ''; U.autoGrow(input);
         if (window.Sounds) Sounds.play('send');
         const body = document.getElementById('commentsBody');
         if (body) {
@@ -1010,10 +956,8 @@
     },
     async delete(id) {
       const ok = await ConfirmModal.show({
-        title: 'حذف التعليق',
-        message: 'سيُحذف التعليق نهائياً.',
-        confirmLabel: 'حذف',
-        danger: true,
+        title: 'حذف التعليق', message: 'سيُحذف التعليق نهائياً.',
+        confirmLabel: 'حذف', danger: true,
       });
       if (!ok) return;
       try {
@@ -1081,29 +1025,22 @@
   /* ═══════════ FOLLOWERS DRAWER ═══════════ */
   const FollowersDrawer = {
     userId: null, type: 'followers', before: null, hasMore: true, busy: false,
-
     open(userId, type) {
       if (!userId) return;
       this.userId = userId;
       this.type = type === 'following' ? 'following' : 'followers';
-      this.before = null;
-      this.hasMore = true;
-      this.busy = false;
-
+      this.before = null; this.hasMore = true; this.busy = false;
       const scrim = document.getElementById('followersScrim');
       const drawer = document.getElementById('followersDrawer');
       const title = document.getElementById('followersTitle');
-      if (!scrim || !drawer) { console.error('[FollowersDrawer] element missing'); return; }
-
+      if (!scrim || !drawer) return;
       if (title) title.textContent = this.type === 'following' ? 'يتابع' : 'المتابعون';
       scrim.setAttribute('data-open', 'true');
       drawer.setAttribute('data-open', 'true');
       document.documentElement.style.overflow = 'hidden';
       if (window.Sounds) Sounds.play('open');
-
       this.load();
     },
-
     close() {
       const s = document.getElementById('followersScrim');
       const d = document.getElementById('followersDrawer');
@@ -1111,25 +1048,18 @@
       if (d) d.setAttribute('data-open', 'false');
       document.documentElement.style.overflow = '';
     },
-
     async load() {
       const body = document.getElementById('followersBody');
-      if (!body || !this.userId) return;
-      if (this.busy) return;
+      if (!body || !this.userId || this.busy) return;
       this.busy = true;
-
       const isFirst = !this.before;
       if (isFirst) body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-
-      const path = `/api/users/${this.userId}/${this.type}` +
-                   `?limit=30${this.before ? '&before_id=' + this.before : ''}`;
-
+      const path = `/api/users/${this.userId}/${this.type}?limit=30${this.before ? '&before_id=' + this.before : ''}`;
       try {
         const data = await API.get(path);
         const items = (data && data.items) || [];
         this.hasMore = !!data.next_before;
         this.before = data.next_before;
-
         if (isFirst) {
           if (!items.length) {
             body.innerHTML = `<div class="empty-block">
@@ -1141,12 +1071,9 @@
           }
           body.innerHTML = '';
         }
-
         const frag = document.createDocumentFragment();
         items.forEach(u => frag.appendChild(this.rowHtml(u)));
         body.appendChild(frag);
-
-        // Load more trigger
         if (this.hasMore) {
           const existing = body.querySelector('[data-load-more]');
           if (existing) existing.remove();
@@ -1161,14 +1088,9 @@
       } catch (err) {
         if (isFirst) {
           body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
-        } else {
-          Toast.show(err.message || 'تعذّر التحميل', 'error');
-        }
-      } finally {
-        this.busy = false;
-      }
+        } else Toast.show(err.message || 'تعذّر التحميل', 'error');
+      } finally { this.busy = false; }
     },
-
     rowHtml(u) {
       const isMe = S.me && S.me.id === u.id;
       return `<div class="follower-row" data-user-id="${u.id}">
@@ -1185,12 +1107,10 @@
         </button>` : ''}
       </div>`;
     },
-
     init() {
       document.addEventListener('click', async (e) => {
         const row = e.target.closest('.follower-row');
         const btn = e.target.closest('[data-follow-user]');
-
         if (btn) {
           e.stopPropagation();
           const uid = parseInt(btn.dataset.followUser, 10);
@@ -1203,12 +1123,10 @@
             btn.classList.toggle('btn-secondary', following);
             btn.textContent = following ? 'أتابعه' : 'متابعة';
             if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
-          } catch (err) {
-            Toast.show(err.message || 'تعذّر', 'error');
-          } finally { btn.removeAttribute('aria-busy'); }
+          } catch (err) { Toast.show(err.message || 'تعذّر', 'error'); }
+          finally { btn.removeAttribute('aria-busy'); }
           return;
         }
-
         if (row) {
           const uid = parseInt(row.dataset.userId, 10);
           if (!uid) return;
@@ -1222,44 +1140,31 @@
   /* ═══════════ NOTIFICATIONS ═══════════ */
   const NotificationsLoader = {
     _interval: null, unread: 0,
-
     start() {
       if (!S.me) return;
       this.refresh();
       this._interval = setInterval(() => this.refresh(), CFG.NOTIF_POLL_MS);
     },
-
     stop() {
       if (this._interval) clearInterval(this._interval);
       this._interval = null;
       this.setBadge(0);
     },
-
     async refresh() {
       if (!S.me) return;
       try {
         const data = await API.get('/api/notifications/unread-count');
         this.setBadge((data && data.count) || 0);
-      } catch (e) { /* silent */ }
+      } catch (e) {}
     },
-
     setBadge(n) {
       this.unread = n;
-      const badges = [
-        document.getElementById('dockNotifBadge'),
-        document.getElementById('navNotifBadge'),
-      ];
-      badges.forEach(b => {
+      [document.getElementById('dockNotifBadge'), document.getElementById('navNotifBadge')].forEach(b => {
         if (!b) return;
-        if (n > 0) {
-          b.textContent = n > 99 ? '99+' : String(n);
-          b.hidden = false;
-        } else {
-          b.hidden = true;
-        }
+        if (n > 0) { b.textContent = n > 99 ? '99+' : String(n); b.hidden = false; }
+        else b.hidden = true;
       });
     },
-
     async load() {
       const body = document.getElementById('notificationsBody');
       if (!body || !S.me) return;
@@ -1268,34 +1173,21 @@
         const data = await API.get('/api/notifications?limit=30');
         const items = (data && data.items) || [];
         this.setBadge((data && data.unread) || 0);
-
         if (!items.length) {
-          body.innerHTML = `<div class="empty-block">
-            <i class="ph ph-bell"></i>
-            <h4>لا إشعارات بعد</h4>
-            <p>ستظهر هنا التفاعلات التي تهمّك.</p>
-          </div>`;
+          body.innerHTML = '<div class="empty-block"><i class="ph ph-bell"></i><h4>لا إشعارات بعد</h4><p>ستظهر هنا التفاعلات التي تهمّك.</p></div>';
           return;
         }
-
         body.innerHTML = items.map(n => this.rowHtml(n)).join('');
-
-        // Mark all as read after load
-        setTimeout(() => {
-          API.post('/api/notifications/read-all').then(() => this.setBadge(0)).catch(() => {});
-        }, 800);
+        setTimeout(() => { API.post('/api/notifications/read-all').then(() => this.setBadge(0)).catch(() => {}); }, 800);
       } catch (err) {
         body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
       }
     },
-
     rowHtml(n) {
       const a = n.actor || {};
       const icons = { like: 'ph-heart-fill', comment: 'ph-chat-circle-fill', follow: 'ph-user-plus-fill', message: 'ph-chat-teardrop-fill' };
-      const colors = { like: 'like', comment: 'comment', follow: 'follow', message: 'message' };
       const icon = icons[n.kind] || 'ph-bell';
-      const color = colors[n.kind] || 'info';
-
+      const color = n.kind || 'info';
       return `<button class="notif-row ${n.read ? 'is-read' : 'is-unread'}" data-notif-id="${n.id}" data-kind="${n.kind}" data-target-id="${n.target_id || ''}" data-actor-id="${a.id || ''}" type="button">
         <span class="notif-avatar-wrap">
           <img class="notif-avatar" src="${U.escapeHtml(a.avatar || '')}" alt="" loading="lazy">
@@ -1308,7 +1200,6 @@
         ${!n.read ? '<span class="notif-dot" aria-hidden="true"></span>' : ''}
       </button>`;
     },
-
     init() {
       document.addEventListener('click', (e) => {
         const row = e.target.closest('.notif-row');
@@ -1316,19 +1207,14 @@
         const kind = row.dataset.kind;
         const targetId = parseInt(row.dataset.targetId, 10);
         const actorId = parseInt(row.dataset.actorId, 10);
-
         Drawers.closeNotifications();
-
-        if (kind === 'follow' && actorId) {
-          setTimeout(() => ProfileView.open(actorId), 220);
-        } else if ((kind === 'like' || kind === 'comment') && targetId) {
+        if (kind === 'follow' && actorId) setTimeout(() => ProfileView.open(actorId), 220);
+        else if ((kind === 'like' || kind === 'comment') && targetId) {
           setTimeout(() => {
             const el = document.querySelector(`[data-post-id="${targetId}"]`);
             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }, 260);
-        } else if (kind === 'message' && actorId) {
-          Chat.openWith(actorId);
-        }
+        } else if (kind === 'message' && actorId) Chat.openWith(actorId);
       });
     },
   };
@@ -1359,26 +1245,21 @@
       if (!postId) return;
       const view = document.getElementById('composerView');
       if (!view) return;
-
       try {
         const post = await API.get(`/api/posts/${postId}`);
         if (!post.is_owner) { Toast.show('لا تملك صلاحية التعديل', 'error'); return; }
-
         this.editingId = postId;
         this._fillForm(post);
         this._setEditUI(true);
-
         const av = document.getElementById('composerFormAvatar');
         if (av) U.safeAvatar(av, S.me.avatar);
         const name = document.getElementById('composerUserName');
         if (name) name.textContent = S.me.name || '—';
-
         view.hidden = false;
         document.body.classList.add('view-open');
+        document.body.classList.add('composer-editing');
         if (window.Sounds) Sounds.play('open');
-      } catch (err) {
-        Toast.show(err.message || 'تعذّر تحميل المنشور', 'error');
-      }
+      } catch (err) { Toast.show(err.message || 'تعذّر تحميل المنشور', 'error'); }
     },
 
     _fillForm(post) {
@@ -1404,11 +1285,12 @@
     },
 
     _resetFormUI() {
-      const el = (id) => document.getElementById(id);
-      if (el('composerForm')) el('composerForm').reset();
+      const form = document.getElementById('composerForm');
+      if (form) form.reset();
       this.clearPreview();
       this.chooseType('text');
       this._setEditUI(false);
+      document.body.classList.remove('composer-editing');
     },
 
     close() {
@@ -1417,6 +1299,7 @@
       if (!this.editingId) this.saveDraft();
       view.hidden = true;
       document.body.classList.remove('view-open');
+      document.body.classList.remove('composer-editing');
       this.editingId = null;
       if (window.Sounds) Sounds.play('close');
     },
@@ -1547,7 +1430,7 @@
         const chats = await API.get('/api/chats');
         this.allChats = chats || [];
         if (!this.allChats.length) {
-          list.innerHTML = `<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا محادثات</h4><p>ابدأ محادثة جديدة من ملف أي مستخدم.</p></div>`;
+          list.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا محادثات</h4><p>ابدأ محادثة جديدة من ملف أي مستخدم.</p></div>';
           return;
         }
         list.innerHTML = this.allChats.map(c => this.rowHtml(c)).join('');
@@ -1574,9 +1457,7 @@
       </button>`;
     },
     bindRows() {
-      document.querySelectorAll('.chat-item').forEach(row => {
-        row.addEventListener('click', () => this.openThread(parseInt(row.dataset.chatId, 10)));
-      });
+      document.querySelectorAll('.chat-item').forEach(row => row.addEventListener('click', () => this.openThread(parseInt(row.dataset.chatId, 10))));
     },
     async openThread(chatId) {
       if (!S.me) return;
@@ -1591,24 +1472,17 @@
       document.body.classList.add('chat-fullscreen');
       if (body) body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
       if (composer) composer.style.display = 'flex';
-      document.querySelectorAll('.chat-item').forEach(r => {
-        r.setAttribute('aria-current', r.dataset.chatId === String(chatId) ? 'true' : 'false');
-      });
+      document.querySelectorAll('.chat-item').forEach(r => r.setAttribute('aria-current', r.dataset.chatId === String(chatId) ? 'true' : 'false'));
       try {
         const msgs = await API.get(`/api/chats/${chatId}/messages`);
-        if (!msgs || !msgs.length) {
-          body.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>ابدأ المحادثة</h4><p>أرسل أول رسالة.</p></div>';
-        } else {
-          body.innerHTML = msgs.map(m => this.msgHtml(m)).join('');
-          body.scrollTop = body.scrollHeight;
-        }
+        if (!msgs || !msgs.length) body.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>ابدأ المحادثة</h4><p>أرسل أول رسالة.</p></div>';
+        else { body.innerHTML = msgs.map(m => this.msgHtml(m)).join(''); body.scrollTop = body.scrollHeight; }
       } catch (err) {
         body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
       }
     },
     msgHtml(m) {
-      const cls = m.from === 'me' ? 'msg-me' : 'msg-them';
-      return `<div class="msg ${cls}">${U.escapeHtml(m.text)}<span class="msg-time">${U.escapeHtml(m.time || '')}</span></div>`;
+      return `<div class="msg ${m.from === 'me' ? 'msg-me' : 'msg-them'}">${U.escapeHtml(m.text)}<span class="msg-time">${U.escapeHtml(m.time || '')}</span></div>`;
     },
     async send(ev) {
       ev.preventDefault();
@@ -1619,8 +1493,7 @@
       const text = input.value.trim();
       if (!text) return;
       input.value = ''; U.autoGrow(input);
-      const empty = body.querySelector('.empty-block');
-      if (empty) empty.remove();
+      const empty = body.querySelector('.empty-block'); if (empty) empty.remove();
       body.insertAdjacentHTML('beforeend', this.msgHtml({ from: 'me', text, time: 'الآن' }));
       body.scrollTop = body.scrollHeight;
       if (window.Sounds) Sounds.play('send');
@@ -1651,7 +1524,7 @@
     },
   };
 
-  /* ═══════════ PROFILE VIEW ═══════════ */
+  /* ═══════════ PROFILE VIEW (Overlay) ═══════════ */
   const ProfileView = {
     current: null,
     _before: null, _hasMore: true, _busy: false, _scrollBound: false,
@@ -1695,7 +1568,6 @@
       const isMe = S.me && S.me.id === u.id;
       const hero = document.getElementById('pvHero');
       if (hero) hero.dataset.cover = u.cover || 'aurora';
-
       const nameText = document.getElementById('pvNameText');
       if (nameText) nameText.textContent = u.name || '—';
       const verified = document.getElementById('pvVerified');
@@ -1703,10 +1575,7 @@
       const handle = document.getElementById('pvHandle');
       if (handle) handle.textContent = u.handle || '@—';
       const pronouns = document.getElementById('pvPronouns');
-      if (pronouns) {
-        if (u.pronouns) { pronouns.textContent = u.pronouns; pronouns.hidden = false; }
-        else pronouns.hidden = true;
-      }
+      if (pronouns) { if (u.pronouns) { pronouns.textContent = u.pronouns; pronouns.hidden = false; } else pronouns.hidden = true; }
 
       const followBtn = document.getElementById('pvFollowBtn');
       if (followBtn) {
@@ -1729,10 +1598,7 @@
       setNum('pvStatPosts', u.posts_count || 0);
 
       const bio = document.getElementById('pvBio');
-      if (bio) {
-        if (u.bio && u.bio.trim()) { bio.textContent = u.bio.trim(); bio.hidden = false; }
-        else bio.hidden = true;
-      }
+      if (bio) { if (u.bio && u.bio.trim()) { bio.textContent = u.bio.trim(); bio.hidden = false; } else bio.hidden = true; }
 
       const meta = document.getElementById('pvMeta');
       const webWrap = document.getElementById('pvMetaWebsite');
@@ -1752,7 +1618,6 @@
       } else if (joinedWrap) joinedWrap.hidden = true;
       if (meta) meta.hidden = !hasMeta;
 
-      // Reset pagination
       this._before = null; this._hasMore = true; this._busy = false;
       this._loadPosts(u.id);
     },
@@ -1764,35 +1629,26 @@
       if (!scroll) return;
       scroll.addEventListener('scroll', () => {
         if (!this.current || this._busy || !this._hasMore) return;
-        const nearBottom = scroll.scrollTop + scroll.clientHeight > scroll.scrollHeight - 400;
-        if (nearBottom) this._loadPosts(this.current.id, true);
+        if (scroll.scrollTop + scroll.clientHeight > scroll.scrollHeight - 400) {
+          this._loadPosts(this.current.id, true);
+        }
       }, { passive: true });
     },
 
     async _loadPosts(userId, isLoadMore) {
       const grid = document.getElementById('pvPostsGrid');
-      if (!grid) return;
-      if (this._busy) return;
+      if (!grid || this._busy) return;
       if (isLoadMore && !this._hasMore) return;
       this._busy = true;
-
-      if (!isLoadMore) {
-        grid.innerHTML = '<div class="pv-empty"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite"></i><h4>جارٍ التحميل…</h4></div>';
-      } else {
-        const lm = grid.querySelector('.pv-load-more');
-        if (lm) lm.innerHTML = '<div class="spinner"></div>';
-      }
-
+      if (!isLoadMore) grid.innerHTML = '<div class="pv-empty"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite"></i><h4>جارٍ التحميل…</h4></div>';
       const params = new URLSearchParams();
       params.set('limit', '20');
       if (isLoadMore && this._before) params.set('before_id', String(this._before));
-
       try {
         const items = await API.get(`/api/users/${userId}/posts?${params.toString()}`);
         const list = Array.isArray(items) ? items : [];
         this._hasMore = list.length === 20;
         if (list.length) this._before = list[list.length - 1].id;
-
         if (!isLoadMore) {
           if (!list.length) {
             grid.innerHTML = '<div class="pv-empty"><i class="ph ph-image-square"></i><h4>لا منشورات بعد</h4><p>لم ينشر هذا المستخدم بعد.</p></div>';
@@ -1803,11 +1659,9 @@
           const lm = grid.querySelector('.pv-load-more');
           if (lm) lm.remove();
         }
-
         const frag = document.createDocumentFragment();
         list.forEach(p => frag.appendChild(this._postCardHtml(p)));
         grid.appendChild(frag);
-
         if (this._hasMore) {
           const lm = document.createElement('div');
           lm.className = 'pv-load-more';
@@ -1815,21 +1669,20 @@
           grid.appendChild(lm);
         }
       } catch (err) {
-        if (!isLoadMore) {
-          grid.innerHTML = `<div class="pv-empty"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message || 'حاول مرة أخرى')}</p></div>`;
-        }
+        if (!isLoadMore) grid.innerHTML = `<div class="pv-empty"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message || 'حاول مرة أخرى')}</p></div>`;
       } finally { this._busy = false; }
     },
 
     _postCardHtml(p) {
-      const img = p.image || 'https://placehold.co/400x400/0E0E14/22D3EE?text=خَيال';
+      const images = Post._extractImages(p);
+      const first = images[0] || 'https://placehold.co/400x400/0E0E14/22D3EE?text=خَيال';
       const likes = U.formatNumber(p.likes || 0);
       const btn = document.createElement('button');
       btn.className = 'pv-post';
       btn.type = 'button';
       btn.dataset.postId = p.id;
       btn.innerHTML =
-        '<img src="' + U.escapeHtml(img) + '" alt="" loading="lazy">' +
+        '<img src="' + U.escapeHtml(first) + '" alt="" loading="lazy">' +
         '<span class="pv-post-badge"><i class="ph ph-heart-fill"></i>' + likes + '</span>';
       btn.addEventListener('click', () => {
         const pid = btn.dataset.postId;
@@ -1847,11 +1700,7 @@
 
     async _handleFollow(btn) {
       if (!S.me) { Auth.open('login'); return; }
-      if (btn.dataset.state === 'owner') {
-        this.close();
-        if (window.Settings) Settings.open();
-        return;
-      }
+      if (btn.dataset.state === 'owner') { this.close(); if (window.Settings) Settings.open(); return; }
       const uid = parseInt(btn.dataset.userId, 10);
       if (!uid) return;
       btn.setAttribute('aria-busy', 'true');
@@ -1871,22 +1720,123 @@
     },
 
     _handleShare() {
-      const u = this.current;
-      if (!u) return;
+      const u = this.current; if (!u) return;
       const url = window.location.origin + '/u/' + (u.username || '');
-      if (navigator.share) {
-        navigator.share({ title: u.name || 'خَيال', url }).catch(() => {});
-      } else {
-        U.copy(url).then(ok => Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600));
-      }
+      if (navigator.share) navigator.share({ title: u.name || 'خَيال', url }).catch(() => {});
+      else U.copy(url).then(ok => Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600));
     },
 
     _handleMenu() { Toast.show('قريباً', 'info'); },
+    _openFollowers(type) { if (this.current) Drawers.openFollowers(this.current.id, type); },
+  };
 
-    _openFollowers(type) {
-      if (!this.current) return;
-      Drawers.openFollowers(this.current.id, type);
+  /* ═══════════ PROFILE (tab-based, for settings view) ═══════════ */
+  const Profile = {
+    current: null, _tabsBound: false,
+    async load(userId) {
+      const id = userId || (S.me && S.me.id);
+      if (!id) return;
+      S.viewingUser = { id };
+      S.tab = 'profile';
+      App.activateTab('profile');
+      Feed.reset('profile');
+      const skeleton = document.getElementById('profileSkeleton');
+      const card = document.getElementById('profileCard');
+      const tabs = document.getElementById('profileTabs');
+      const panel = document.getElementById('profilePanel');
+      if (skeleton) skeleton.hidden = false;
+      if (card) card.hidden = true;
+      if (tabs) tabs.hidden = true;
+      const tw = tabs ? tabs.closest('.tabs-sticky') : null;
+      if (tw) tw.hidden = true;
+      if (panel) panel.innerHTML = '';
+      try {
+        const u = await API.get(`/api/users/${id}`);
+        this.current = u;
+        this.render(u);
+      } catch (err) { Toast.show(err.message || 'تعذّر تحميل الملف', 'error'); }
+      finally { if (skeleton) skeleton.hidden = true; }
     },
+    render(u) {
+      const isMe = S.me && S.me.id === u.id;
+      const card = document.getElementById('profileCard');
+      const tabs = document.getElementById('profileTabs');
+      if (!card) return;
+      card.hidden = false;
+      card.setAttribute('data-style', u.card_style || 'glass');
+      card.style.setProperty('--_accent', u.accent_color || '#22D3EE');
+      const cover = document.getElementById('profileCover');
+      if (cover) cover.dataset.cover = u.cover || 'aurora';
+      const avatar = document.getElementById('profileAvatar');
+      if (avatar) { U.safeAvatar(avatar, u.avatar); avatar.alt = u.name || ''; avatar.dataset.frame = u.avatar_shape || 'ring'; }
+      const name = document.getElementById('profileName');
+      if (name) name.textContent = u.name || '—';
+      const verified = document.getElementById('profileVerified');
+      if (verified) verified.hidden = !u.verified;
+      const handle = document.getElementById('profileHandle');
+      if (handle) handle.textContent = u.handle || '@—';
+      const pronouns = document.getElementById('profilePronouns');
+      if (pronouns) { if (u.pronouns) { pronouns.textContent = u.pronouns; pronouns.hidden = false; } else pronouns.hidden = true; }
+      const bio = document.getElementById('profileBio');
+      if (bio) bio.textContent = u.bio || '';
+      const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
+      setStat('statFollowers', u.followers || 0);
+      setStat('statFollowing', u.following || 0);
+      setStat('statPosts', u.posts_count || 0);
+      setStat('statLikes', u.total_likes || 0);
+      const actions = document.getElementById('profileActions');
+      if (actions) {
+        if (isMe) {
+          actions.innerHTML = '<button class="btn btn-secondary" data-action="open-settings" type="button"><i class="ph ph-pencil-simple"></i><span>تعديل الملف</span></button>';
+        } else {
+          actions.innerHTML = '<button class="btn btn-secondary" data-action="message" data-user-id="' + u.id + '" type="button"><i class="ph ph-chat-circle"></i><span>رسالة</span></button>';
+        }
+      }
+      if (tabs) {
+        tabs.hidden = false;
+        const tw = tabs.closest('.tabs-sticky'); if (tw) tw.hidden = false;
+        const st = document.getElementById('profileSavedTab');
+        const sett = document.getElementById('profileSettingsTab');
+        if (st) st.hidden = !isMe;
+        if (sett) sett.hidden = !isMe;
+        tabs.querySelectorAll('.tab[data-ptab]').forEach(t => t.setAttribute('aria-selected', t.dataset.ptab === 'posts' ? 'true' : 'false'));
+      }
+      Feed.reset('profile');
+      Feed.load('profile');
+      this.bindActions();
+      this.bindTabs();
+    },
+    bindTabs() {
+      if (this._tabsBound) return;
+      this._tabsBound = true;
+      const self = this;
+      document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(tab => {
+        tab.addEventListener('click', () => self.switchTab(tab.dataset.ptab));
+      });
+    },
+    switchTab(name) {
+      document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(t => t.setAttribute('aria-selected', t.dataset.ptab === name ? 'true' : 'false'));
+      if (name === 'settings') {
+        if (window.Settings) Settings.open();
+        document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(t => t.setAttribute('aria-selected', t.dataset.ptab === 'posts' ? 'true' : 'false'));
+        return;
+      }
+      if (name === 'posts') { Feed.reset('profile'); Feed.load('profile'); return; }
+      const panel = document.getElementById('profilePanel');
+      if (!panel) return;
+      panel.innerHTML = '<div class="empty-block"><i class="ph ph-hourglass"></i><h4>قريباً</h4><p>هذا القسم قيد التطوير.</p></div>';
+    },
+    bindActions() {
+      const card = document.getElementById('profileCard');
+      if (!card) return;
+      card.querySelectorAll('[data-action="message"]').forEach(btn => {
+        btn.addEventListener('click', () => Chat.openWith(parseInt(btn.dataset.userId, 10)));
+      });
+      card.querySelectorAll('[data-action="open-settings"]').forEach(btn => {
+        btn.addEventListener('click', () => Settings.open());
+      });
+    },
+    save(ev) { if (ev) ev.preventDefault(); if (window.Settings) Settings.save(); },
   };
 
   /* ═══════════ EXPLORE ═══════════ */
@@ -1923,16 +1873,14 @@
         const hero = document.getElementById('settingsHeroProfile');
         if (!hero) return;
         hero.classList.remove('is-updating');
-        requestAnimationFrame(function () {
+        requestAnimationFrame(() => {
           hero.classList.add('is-updating');
           clearTimeout(self._flashTimer);
-          self._flashTimer = setTimeout(function () { hero.classList.remove('is-updating'); }, 600);
+          self._flashTimer = setTimeout(() => hero.classList.remove('is-updating'), 600);
         });
       }, 120);
 
-      window.addEventListener('beforeunload', function (e) {
-        if (self.dirty) { e.preventDefault(); e.returnValue = ''; }
-      });
+      window.addEventListener('beforeunload', (e) => { if (self.dirty) { e.preventDefault(); e.returnValue = ''; } });
 
       this.view.querySelector('[data-action="close-settings"]')?.addEventListener('click', () => self.close());
       this.view.querySelector('[data-action="save-settings"]')?.addEventListener('click', () => self.save());
@@ -1940,12 +1888,10 @@
       const resetBtn = document.getElementById('settingsResetBtn');
       if (resetBtn) resetBtn.addEventListener('click', () => self.resetToSaved());
 
-      this.view.querySelectorAll('.settings-tab').forEach(function (btn) {
-        btn.addEventListener('click', () => self.switchSection(btn.dataset.section));
-      });
+      this.view.querySelectorAll('.settings-tab').forEach(btn => btn.addEventListener('click', () => self.switchSection(btn.dataset.section)));
 
       const coverPicker = document.getElementById('settingsCoverPresets');
-      if (coverPicker) coverPicker.addEventListener('click', function (e) {
+      if (coverPicker) coverPicker.addEventListener('click', (e) => {
         const b = e.target.closest('.cover-preset'); if (!b) return;
         coverPicker.querySelectorAll('.cover-preset').forEach(x => x.setAttribute('aria-pressed', 'false'));
         b.setAttribute('aria-pressed', 'true');
@@ -1955,7 +1901,7 @@
       });
 
       const framePicker = document.getElementById('settingsFramePicker');
-      if (framePicker) framePicker.addEventListener('click', function (e) {
+      if (framePicker) framePicker.addEventListener('click', (e) => {
         const b = e.target.closest('.frame-option'); if (!b) return;
         framePicker.querySelectorAll('.frame-option').forEach(x => x.setAttribute('aria-pressed', 'false'));
         b.setAttribute('aria-pressed', 'true');
@@ -1965,7 +1911,7 @@
       });
 
       const accentPicker = document.getElementById('settingsAccentPicker');
-      if (accentPicker) accentPicker.addEventListener('click', function (e) {
+      if (accentPicker) accentPicker.addEventListener('click', (e) => {
         const b = e.target.closest('.accent-swatch'); if (!b) return;
         accentPicker.querySelectorAll('.accent-swatch').forEach(x => x.setAttribute('aria-pressed', 'false'));
         b.setAttribute('aria-pressed', 'true');
@@ -1977,7 +1923,7 @@
       });
 
       const stylePicker = document.getElementById('settingsCardStylePicker');
-      if (stylePicker) stylePicker.addEventListener('click', function (e) {
+      if (stylePicker) stylePicker.addEventListener('click', (e) => {
         const b = e.target.closest('.style-option'); if (!b) return;
         stylePicker.querySelectorAll('.style-option').forEach(x => x.setAttribute('aria-pressed', 'false'));
         b.setAttribute('aria-pressed', 'true');
@@ -1988,7 +1934,7 @@
 
       const pronounPicker = document.getElementById('settingsPronounPicker');
       const pronounHidden = document.getElementById('setPronouns');
-      if (pronounPicker && pronounHidden) pronounPicker.addEventListener('click', function (e) {
+      if (pronounPicker && pronounHidden) pronounPicker.addEventListener('click', (e) => {
         const b = e.target.closest('.pronoun-option'); if (!b) return;
         pronounPicker.querySelectorAll('.pronoun-option').forEach(x => x.setAttribute('aria-checked', 'false'));
         b.setAttribute('aria-checked', 'true');
@@ -1999,24 +1945,18 @@
       });
 
       const nameEl = document.getElementById('setName');
-      if (nameEl) nameEl.addEventListener('input', function () {
-        self.state.name = nameEl.value; self.markDirty(); self.updatePreview({ flash: false });
-      });
-
+      if (nameEl) nameEl.addEventListener('input', () => { self.state.name = nameEl.value; self.markDirty(); self.updatePreview({ flash: false }); });
       const bioEl = document.getElementById('setBio');
-      if (bioEl) bioEl.addEventListener('input', function () {
+      if (bioEl) bioEl.addEventListener('input', () => {
         const c = document.getElementById('setBioCount');
         if (c) c.textContent = bioEl.value.length;
         self.markDirty(); self.updatePreview({ flash: false });
       });
-
       const webEl = document.getElementById('setWebsite');
-      if (webEl) webEl.addEventListener('input', function () {
-        self.state.website = webEl.value; self.markDirty();
-      });
+      if (webEl) webEl.addEventListener('input', () => { self.state.website = webEl.value; self.markDirty(); });
 
       const soundToggle = document.getElementById('soundsToggle');
-      if (soundToggle) soundToggle.addEventListener('click', function () {
+      if (soundToggle) soundToggle.addEventListener('click', () => {
         const next = soundToggle.getAttribute('aria-checked') !== 'true';
         soundToggle.setAttribute('aria-checked', next ? 'true' : 'false');
         if (window.Sounds) Sounds.setEnabled(next);
@@ -2024,22 +1964,22 @@
 
       const vol = document.getElementById('volumeSlider');
       const volHint = document.getElementById('volumeHint');
-      if (vol) vol.addEventListener('input', function () {
+      if (vol) vol.addEventListener('input', () => {
         const v = parseInt(vol.value, 10) / 100;
         if (window.Sounds) Sounds.setVolume(v);
         if (volHint) volHint.textContent = vol.value + '%';
       });
 
-      this.view.querySelectorAll('.sound-card').forEach(function (card) {
-        card.addEventListener('click', function () {
+      this.view.querySelectorAll('.sound-card').forEach(card => {
+        card.addEventListener('click', () => {
           if (window.Sounds) Sounds.play(card.dataset.sound);
           card.classList.add('is-playing');
-          setTimeout(function () { card.classList.remove('is-playing'); }, 420);
+          setTimeout(() => card.classList.remove('is-playing'), 420);
         });
       });
 
-      this.view.querySelectorAll('.switch:not(#soundsToggle)').forEach(function (sw) {
-        sw.addEventListener('click', function () {
+      this.view.querySelectorAll('.switch:not(#soundsToggle)').forEach(sw => {
+        sw.addEventListener('click', () => {
           const next = sw.getAttribute('aria-checked') !== 'true';
           sw.setAttribute('aria-checked', next ? 'true' : 'false');
           if (!self.state.preferences) self.state.preferences = _defaultPreferences();
@@ -2052,12 +1992,12 @@
         });
       });
 
-      this.view.querySelectorAll('[data-stat="posts"]').forEach(function (btn) {
+      this.view.querySelectorAll('[data-stat="posts"]').forEach(btn => {
         btn.addEventListener('click', () => self.switchSection('posts'));
       });
 
       const chg = document.getElementById('changePasswordBtn');
-      if (chg) chg.addEventListener('click', function () {
+      if (chg) chg.addEventListener('click', () => {
         const oldPw = (document.getElementById('setOldPassword') || {}).value || '';
         const newPw = (document.getElementById('setNewPassword') || {}).value || '';
         if (!oldPw || !newPw) {
@@ -2065,25 +2005,24 @@
           return Toast.show('املأ الحقلين', 'warning');
         }
         API.post('/api/me/password', { old_password: oldPw, new_password: newPw })
-          .then(function () {
+          .then(() => {
             if (window.Sounds) Sounds.play('success');
             Toast.show('تم تحديث كلمة المرور', 'success');
             document.getElementById('setOldPassword').value = '';
             document.getElementById('setNewPassword').value = '';
           })
-          .catch(function (err) {
+          .catch(err => {
             if (window.Sounds) Sounds.play('error');
             Toast.show(err.message || 'فشل التحديث', 'error');
           });
       });
 
       const logout = document.getElementById('logoutBtn');
-      if (logout) logout.addEventListener('click', async function () {
+      if (logout) logout.addEventListener('click', async () => {
         const ok = await ConfirmModal.show({
           title: 'تسجيل الخروج',
           message: 'سيتم الخروج من هذا الجهاز فقط.',
-          confirmLabel: 'خروج',
-          danger: true,
+          confirmLabel: 'خروج', danger: true,
         });
         if (!ok) return;
         self.dirty = false;
@@ -2175,10 +2114,8 @@
     hydrate() {
       const u = (S.me && S.me.id && S.me) || window.__ME__ || {};
       this.state = {
-        cover: u.cover || 'aurora',
-        avatar_frame: u.avatar_shape || 'ring',
-        accent_color: u.accent_color || '#22D3EE',
-        card_style: u.card_style || 'glass',
+        cover: u.cover || 'aurora', avatar_frame: u.avatar_shape || 'ring',
+        accent_color: u.accent_color || '#22D3EE', card_style: u.card_style || 'glass',
         name: u.name || '', handle: u.handle || '', avatar: u.avatar || '',
         bio: u.bio || '', website: u.website || '', pronouns: u.pronouns || '',
         preferences: u.preferences ? JSON.parse(JSON.stringify(u.preferences)) : _defaultPreferences(),
@@ -2359,190 +2296,6 @@
     },
   };
 
-  /* ═══════════ PROFILE (تبويب "حسابي" القديم) ═══════════ */
-  const Profile = {
-    current: null, _tabsBound: false,
-    async load(userId) {
-      const id = userId || (S.me && S.me.id);
-      if (!id) return;
-      S.viewingUser = { id };
-      S.tab = 'profile';
-      App.activateTab('profile');
-      Feed.reset('profile');
-      const skeleton = document.getElementById('profileSkeleton');
-      const card = document.getElementById('profileCard');
-      const tabs = document.getElementById('profileTabs');
-      const panel = document.getElementById('profilePanel');
-      if (skeleton) skeleton.hidden = false;
-      if (card) card.hidden = true;
-      if (tabs) tabs.hidden = true;
-      const tw = tabs ? tabs.closest('.tabs-sticky') : null;
-      if (tw) tw.hidden = true;
-      if (panel) panel.innerHTML = '';
-      try {
-        const u = await API.get(`/api/users/${id}`);
-        this.current = u;
-        this.render(u);
-      } catch (err) { Toast.show(err.message || 'تعذّر تحميل الملف', 'error'); }
-      finally { if (skeleton) skeleton.hidden = true; }
-    },
-    render(u) {
-      const isMe = S.me && S.me.id === u.id;
-      const card = document.getElementById('profileCard');
-      const tabs = document.getElementById('profileTabs');
-      if (!card) return;
-      card.hidden = false;
-      card.setAttribute('data-style', u.card_style || 'glass');
-      card.style.setProperty('--_accent', u.accent_color || '#22D3EE');
-      const cover = document.getElementById('profileCover');
-      if (cover) cover.dataset.cover = u.cover || 'aurora';
-      const avatar = document.getElementById('profileAvatar');
-      if (avatar) { U.safeAvatar(avatar, u.avatar); avatar.alt = u.name || ''; avatar.dataset.frame = u.avatar_shape || 'ring'; }
-      const name = document.getElementById('profileName');
-      if (name) name.textContent = u.name || '—';
-      const verified = document.getElementById('profileVerified');
-      if (verified) verified.hidden = !u.verified;
-      const handle = document.getElementById('profileHandle');
-      if (handle) handle.textContent = u.handle || '@—';
-      const pronouns = document.getElementById('profilePronouns');
-      if (pronouns) { if (u.pronouns) { pronouns.textContent = u.pronouns; pronouns.hidden = false; } else pronouns.hidden = true; }
-      const bio = document.getElementById('profileBio');
-      if (bio) bio.textContent = u.bio || '';
-      const meta = document.getElementById('profileMeta');
-      const website = document.getElementById('profileWebsite');
-      const link = website ? website.querySelector('a') : null;
-      if (u.website && link) {
-        link.href = u.website;
-        link.textContent = u.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        website.hidden = false;
-      } else if (website) website.hidden = true;
-      const joined = document.getElementById('profileJoined');
-      if (joined && u.created_at) {
-        const d = new Date(u.created_at);
-        joined.querySelector('span').textContent = 'انضم ' + d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' });
-        joined.hidden = false;
-      } else if (joined) joined.hidden = true;
-      if (meta && (website.hidden === false || joined.hidden === false)) meta.hidden = false;
-      else if (meta) meta.hidden = true;
-      const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
-      setStat('statFollowers', u.followers || 0);
-      setStat('statFollowing', u.following || 0);
-      setStat('statPosts', u.posts_count || 0);
-      setStat('statLikes', u.total_likes || 0);
-
-      const actions = document.getElementById('profileActions');
-      if (actions) {
-        if (isMe) {
-          actions.innerHTML = '<button class="btn btn-secondary" data-action="open-settings" type="button"><i class="ph ph-pencil-simple"></i><span>تعديل الملف</span></button>' +
-            '<button class="btn btn-ghost btn-icon" data-action="share-profile" aria-label="مشاركة" type="button"><i class="ph ph-share-network"></i></button>';
-        } else {
-          actions.innerHTML = '<button class="btn ' + (u.is_following ? 'btn-secondary' : 'btn-primary') + '" data-action="follow" data-user-id="' + u.id + '" type="button"><i class="ph ' + (u.is_following ? 'ph-check' : 'ph-user-plus') + '"></i><span>' + (u.is_following ? 'تتابعه' : 'متابعة') + '</span></button>' +
-            '<button class="btn btn-secondary" data-action="message" data-user-id="' + u.id + '" type="button"><i class="ph ph-chat-circle"></i><span>رسالة</span></button>';
-        }
-      }
-      const coverEdit = document.getElementById('profileCoverEditBtn');
-      const avatarEdit = document.getElementById('profileAvatarEditBtn');
-      if (coverEdit) { coverEdit.hidden = !isMe; if (isMe) coverEdit.setAttribute('data-action', 'open-settings'); }
-      if (avatarEdit) { avatarEdit.hidden = !isMe; if (isMe) avatarEdit.setAttribute('data-action', 'open-settings'); }
-      if (tabs) {
-        tabs.hidden = false;
-        const tw = tabs.closest('.tabs-sticky'); if (tw) tw.hidden = false;
-        const st = document.getElementById('profileSavedTab');
-        const sett = document.getElementById('profileSettingsTab');
-        if (st) st.hidden = !isMe;
-        if (sett) sett.hidden = !isMe;
-        tabs.querySelectorAll('.tab[data-ptab]').forEach(t => t.setAttribute('aria-selected', t.dataset.ptab === 'posts' ? 'true' : 'false'));
-      }
-      Feed.reset('profile');
-      Feed.load('profile');
-      this.bindActions();
-      this.bindTabs();
-    },
-    bindTabs() {
-      if (this._tabsBound) return;
-      this._tabsBound = true;
-      const self = this;
-      document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(tab => {
-        tab.addEventListener('click', () => self.switchTab(tab.dataset.ptab));
-      });
-    },
-    switchTab(name) {
-      const self = this;
-      document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(t => t.setAttribute('aria-selected', t.dataset.ptab === name ? 'true' : 'false'));
-      if (name === 'settings') {
-        if (window.Settings) Settings.open();
-        document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(t => t.setAttribute('aria-selected', t.dataset.ptab === 'posts' ? 'true' : 'false'));
-        return;
-      }
-      if (name === 'posts') { Feed.reset('profile'); Feed.load('profile'); return; }
-      const panel = document.getElementById('profilePanel');
-      if (!panel) return;
-      if (name === 'about') {
-        const u = self.current; if (!u) return;
-        panel.innerHTML = '<div class="ant-descriptions">' + self.aboutRowsHtml(u) + '</div>';
-        return;
-      }
-      panel.innerHTML = '<div class="empty-block"><i class="ph ph-hourglass"></i><h4>قريباً</h4><p>هذا القسم قيد التطوير.</p></div>';
-    },
-    aboutRowsHtml(u) {
-      const rows = [];
-      rows.push(['الاسم', U.escapeHtml(u.name || '—')]);
-      rows.push(['المعرّف', U.escapeHtml(u.handle || '@—')]);
-      if (u.pronouns) rows.push(['الضمائر', U.escapeHtml(u.pronouns)]);
-      if (u.bio) rows.push(['نبذة', U.escapeHtml(u.bio)]);
-      if (u.website) {
-        const clean = U.escapeHtml(u.website);
-        const label = U.escapeHtml(u.website.replace(/^https?:\/\//, '').replace(/\/$/, ''));
-        rows.push(['الموقع', '<a href="' + clean + '" target="_blank" rel="noopener noreferrer" class="about-link">' + label + '</a>']);
-      }
-      if (u.created_at) {
-        const d = new Date(u.created_at);
-        rows.push(['انضم', d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' })]);
-      }
-      return rows.map(r =>
-        '<div class="ant-descriptions-item">' +
-          '<div class="ant-descriptions-label">' + r[0] + '</div>' +
-          '<div class="ant-descriptions-value">' + r[1] + '</div>' +
-        '</div>'
-      ).join('');
-    },
-    bindActions() {
-      const card = document.getElementById('profileCard');
-      if (!card) return;
-      card.querySelectorAll('[data-action="follow"]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const uid = parseInt(btn.dataset.userId, 10);
-          btn.setAttribute('aria-busy', 'true');
-          try {
-            const res = await API.post(`/api/users/${uid}/follow`);
-            const following = res.following;
-            btn.classList.toggle('btn-primary', !following);
-            btn.classList.toggle('btn-secondary', following);
-            btn.querySelector('i').className = following ? 'ph ph-check' : 'ph ph-user-plus';
-            btn.querySelector('span').textContent = following ? 'تتابعه' : 'متابعة';
-            if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
-          } catch (err) { Toast.show(err.message, 'error'); }
-          finally { btn.removeAttribute('aria-busy'); }
-        });
-      });
-      card.querySelectorAll('[data-action="message"]').forEach(btn => {
-        btn.addEventListener('click', () => Chat.openWith(parseInt(btn.dataset.userId, 10)));
-      });
-      card.querySelectorAll('[data-action="open-settings"]').forEach(btn => {
-        btn.addEventListener('click', () => Settings.open());
-      });
-      card.querySelectorAll('[data-action="share-profile"]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const url = window.location.origin + '/u/' + (this.current && this.current.username);
-          const ok = await U.copy(url);
-          Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600);
-        });
-      });
-    },
-    async refresh() { if (this.current) await this.load(this.current.id); },
-    save(ev) { if (ev) ev.preventDefault(); if (window.Settings) Settings.save(); },
-  };
-
   /* ═══════════ PTR ═══════════ */
   const PTR = {
     init() {
@@ -2646,11 +2399,6 @@
         if (action === 'choose-type') { e.preventDefault(); Composer.chooseType(btn.dataset.type); return; }
         if (action === 'chat-list') { e.preventDefault(); Chat.backToList(); return; }
         if (action === 'chat-new') { e.preventDefault(); Toast.show('ابدأ محادثة من ملف أي مستخدم', 'info'); return; }
-        if (action === 'share-profile') {
-          const url = window.location.origin + '/u/' + (Profile.current && Profile.current.username);
-          U.copy(url).then(ok => Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error'));
-          return;
-        }
         if (action === 'open-settings') { e.preventDefault(); Settings.open(); return; }
         if (action === 'edit-profile') { e.preventDefault(); Settings.open(); return; }
         if (action === 'pick-avatar-file') { e.preventDefault(); const i = document.getElementById('avatarFileInput'); if (i) i.click(); return; }
