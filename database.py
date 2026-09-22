@@ -1,10 +1,9 @@
 """
-خَيال — طبقة قاعدة البيانات v13.5
-- PostgreSQL + MySQL + SSL لـ Aiven
-- إطارات صور شخصية (8 أنواع) + أغلفة موسّعة (12 نمطاً)
-- pronouns محصور بقائمة محددة مسبقاً
-- preferences (JSON) للإشعارات والخصوصية
-- location و status محفوظان للأرشيف فقط (لا يُستخدمان في الواجهة)
+خَيال — طبقة قاعدة البيانات v14.0
+- PostgreSQL + MySQL + SSL
+- إطارات صور (8) + أغلفة (12) + preferences
+- Notification: نظام إشعارات كامل (like/comment/follow/message)
+- Report: بلاغات المستخدمين
 """
 import os
 import re
@@ -151,10 +150,12 @@ ALLOWED_PRONOUNS = {"", "هو", "هي", "هم", "هن"}
 
 ALLOWED_CARD_STYLES = {"glass", "solid", "gradient"}
 
+ALLOWED_REPORT_REASONS = {
+    "", "spam", "harassment", "hate", "violence",
+    "nudity", "misinformation", "copyright", "other",
+}
 
-# ═══════════════════════════════════════════════════════════
-# Preferences helpers (v13.5)
-# ═══════════════════════════════════════════════════════════
+
 def _default_preferences() -> dict:
     return {
         "notif": {
@@ -172,7 +173,6 @@ def _default_preferences() -> dict:
 
 
 def _parse_preferences(raw):
-    """Parse stored preferences JSON, merge with defaults, drop unknown keys."""
     defaults = _default_preferences()
     if not raw:
         return defaults
@@ -204,31 +204,25 @@ class User(db.Model):
     handle = db.Column(db.String(64), unique=True, index=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
 
-    # Basic
     avatar = db.Column(db.String(512), nullable=True)
     bio = db.Column(db.Text, nullable=True, default="")
 
-    # Profile metadata (v13)
     website = db.Column(db.String(120), nullable=True)
     pronouns = db.Column(db.String(20), nullable=True)
-    # أرشيف فقط — لا تظهر في الواجهة بعد v13
     location = db.Column(db.String(60), nullable=True)
     status = db.Column(db.String(100), nullable=True)
 
-    # Visual customization (v13)
     cover = db.Column(db.String(40), nullable=True, default="aurora")
     accent_color = db.Column(db.String(7), nullable=True, default="#22D3EE")
-    avatar_shape = db.Column(db.String(30), nullable=True, default="ring")  # frame type
+    avatar_shape = db.Column(db.String(30), nullable=True, default="ring")
     card_style = db.Column(db.String(12), nullable=True, default="glass")
 
-    # Preferences (JSON) — notifications + privacy (v13.5)
     preferences = db.Column(db.Text, nullable=True, default="{}")
 
-    # Stats
     verified = db.Column(db.Boolean, default=False)
     followers = db.Column(db.Integer, default=0)
     following = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
     posts = db.relationship("Post", backref="author", lazy="dynamic",
                             cascade="all, delete-orphan")
@@ -274,6 +268,7 @@ class Post(db.Model):
     copies = db.Column(db.Integer, default=0)
     saves = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     comments = db.relationship("Comment", backref="post", lazy="dynamic",
                                cascade="all, delete-orphan")
@@ -293,6 +288,7 @@ class Post(db.Model):
             "likes": self.likes, "copies": self.copies, "saves": self.saves,
             "comments": self.comments.count(),
             "time": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 
@@ -333,7 +329,11 @@ class Save(db.Model):
 
 class Follow(db.Model):
     __tablename__ = "follows"
-    __table_args__ = (db.UniqueConstraint("follower_id", "following_id", name="uq_follow"),)
+    __table_args__ = (
+        db.UniqueConstraint("follower_id", "following_id", name="uq_follow"),
+        db.Index("ix_follow_following", "following_id"),
+        db.Index("ix_follow_follower", "follower_id"),
+    )
     id = db.Column(db.Integer, primary_key=True)
     follower_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     following_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
@@ -359,5 +359,80 @@ class Message(db.Model):
     sender_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
                           nullable=False)
     text = db.Column(db.Text, nullable=False)
-    read = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    read = db.Column(db.Boolean, default=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+# ═══════════════════════════════════════════════════════════
+# الإشعارات
+# ═══════════════════════════════════════════════════════════
+
+class Notification(db.Model):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        db.Index("ix_notif_user_read", "user_id", "read"),
+        db.Index("ix_notif_created", "created_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    actor_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                         nullable=False)
+    kind = db.Column(db.String(20), nullable=False)          # like / comment / follow / message
+    target_type = db.Column(db.String(20), nullable=True)    # post / user / chat
+    target_id = db.Column(db.Integer, nullable=True)
+    text = db.Column(db.String(255), nullable=True)
+    read = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    actor = db.relationship("User", foreign_keys=[actor_id], lazy="joined")
+
+    def to_dict(self):
+        a = self.actor.to_dict() if self.actor else None
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "text": self.text or "",
+            "read": self.read,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "actor": a,
+        }
+
+
+# ═══════════════════════════════════════════════════════════
+# البلاغات
+# ═══════════════════════════════════════════════════════════
+
+class Report(db.Model):
+    __tablename__ = "reports"
+    __table_args__ = (
+        db.Index("ix_report_status", "status"),
+        db.Index("ix_report_target", "target_type", "target_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    reporter_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                            nullable=False, index=True)
+    target_type = db.Column(db.String(20), nullable=False)   # post / comment / user
+    target_id = db.Column(db.Integer, nullable=False)
+    reason = db.Column(db.String(60), nullable=True)
+    note = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), default="pending", nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    reporter = db.relationship("User", foreign_keys=[reporter_id], lazy="joined")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "reporter_id": self.reporter_id,
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "reason": self.reason or "",
+            "note": self.note or "",
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
