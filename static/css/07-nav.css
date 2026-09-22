@@ -1,52 +1,25 @@
 /* ═══════════════════════════════════════════════════════════════
    07-nav.css — Navigation audit + refinement
    Top Nav · Dock · Cross-cutting
-   v16.0 — لا تغيير على --nav-h / --dock-h (layout cascade)
+   v16.2 — dock-create height fix · cleanup
    ═══════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════
    1. TOP NAV — refinement
    ═══════════════════════════════════════════════════ */
 
-/* 1.1 Compact spacing + RTL balance */
 .nav{
-  /* طبقة أنعم من pill الكامل */
   border-radius:var(--ant-r-lg);
-  /* تعزيز الـ blur */
   -webkit-backdrop-filter:blur(24px) saturate(1.6);
   backdrop-filter:blur(24px) saturate(1.6);
-  /* فصل بصري أنقى */
   border-color:var(--border-2);
 }
-
-/* 1.2 شعار أكثر إحكاماً */
-.nav-brand{
-  gap:6px;
-  font-size:var(--fs-4);
-  letter-spacing:-.015em;
-}
-.brand-mark{
-  width:28px;
-  height:28px;
-  border-radius:8px;
-  font-size:15px;
-}
-
-/* 1.3 الـ actions — فجوة أوضح */
+.nav-brand{gap:6px;font-size:var(--fs-4);letter-spacing:-.015em}
+.brand-mark{width:28px;height:28px;border-radius:8px;font-size:15px}
 .nav-actions{gap:2px}
+.nav-actions .btn-icon{width:38px;height:38px;color:var(--fg-2)}
+.nav-actions .btn-icon:hover{color:var(--fg-1);background:var(--surface-2)}
 
-/* 1.4 زر الأيقونة — hit target ≥40px مع أناقة */
-.nav-actions .btn-icon{
-  width:38px;
-  height:38px;
-  color:var(--fg-2);
-}
-.nav-actions .btn-icon:hover{
-  color:var(--fg-1);
-  background:var(--surface-2);
-}
-
-/* 1.5 بحث — RTL + focus واضح */
 .search{
   height:36px;
   background:var(--surface-2);
@@ -58,50 +31,27 @@
   border-color:var(--ant-primary);
   box-shadow:0 0 0 3px color-mix(in srgb,var(--ant-primary) 18%,transparent);
 }
-.search>i{
-  color:var(--fg-3);
-  font-size:15px;
-}
-.search:focus-within>i{
-  color:var(--ant-primary);
-}
-
-/* 1.6 نتائج البحث — طبقة أعلى من dock */
+.search>i{color:var(--fg-3);font-size:15px}
+.search:focus-within>i{color:var(--ant-primary)}
 .search-results{
   border-radius:var(--ant-r-lg);
   border-color:var(--border-2);
   z-index:calc(var(--z-dropdown) + 10);
 }
 
-/* 1.7 زر الدخول — أكثر إحكاماً */
-#signInBtn{
-  height:32px;
-  padding-inline:12px;
-  gap:6px;
-  font-size:12.5px;
-}
+#signInBtn{height:32px;padding-inline:12px;gap:6px;font-size:12.5px}
 #signInBtn>i{font-size:14px}
+#avatarBtn>img{width:30px;height:30px;border-width:2px}
 
-/* 1.8 avatar في الـ nav — ناعم */
-#avatarBtn>img{
-  width:30px;
-  height:30px;
-  border-width:2px;
-}
-
-/* 1.9 حالة scrolled — ظل أقوى قليلاً */
 .nav.is-scrolled{
   border-color:var(--border-2);
-  box-shadow:
-    0 1px 0 rgba(0,0,0,.04),
-    0 8px 24px rgba(0,0,0,.18);
+  box-shadow:0 1px 0 rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.18);
 }
 
 /* ═══════════════════════════════════════════════════
    2. DOCK — refinement
    ═══════════════════════════════════════════════════ */
 
-/* 2.1 الحاوية — زوايا أنعم + ظل أنقى */
 .dock{
   border-radius:var(--ant-r-lg);
   border-color:var(--border-2);
@@ -113,7 +63,6 @@
     0 20px 48px rgba(0,0,0,.14);
 }
 
-/* 2.2 العنصر — تنسيق داخلي أنقى */
 .dock-item{
   min-width:52px;
   height:48px;
@@ -122,14 +71,8 @@
   gap:3px;
 }
 .dock-item>i{font-size:20px}
-.dock-item-label{
-  font-size:10px;
-  font-weight:500;
-  line-height:1;
-  letter-spacing:0;
-}
+.dock-item-label{font-size:10px;font-weight:500;line-height:1;letter-spacing:0}
 
-/* 2.3 Active state — خط سفلي + خلفية خفيفة */
 .dock-item[aria-current="page"]{
   color:var(--ant-primary);
   background:var(--ant-primary-bg);
@@ -153,28 +96,35 @@
   font-weight:600;
 }
 
-/* 2.4 Hover — إيماءة أوضح */
-.dock-item:hover{
-  color:var(--fg-1);
-  background:var(--surface-2);
-}
-.dock-item:hover>i{
-  transform:translateY(-1px);
-}
+.dock-item:hover{color:var(--fg-1);background:var(--surface-2)}
+.dock-item:hover>i{transform:translateY(-1px)}
 
-/* 2.5 زر الإنشاء — مركز ثقل بصري */
+/* زر الإنشاء — إصلاح: height صريح */
 .dock-create{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
   min-width:52px;
   height:48px;
+  padding:0;
+  background:transparent;
+  border:none;
+  cursor:pointer;
 }
 .dock-create>span{
+  display:grid;
+  place-items:center;
   width:40px;
   height:40px;
+  border-radius:50%;
+  background:var(--grad-brand);
+  color:var(--ink);
   box-shadow:
     0 4px 12px rgba(34,211,238,.35),
     0 12px 32px rgba(34,211,238,.22);
+  transition:transform var(--dur-2) var(--ease-spring),box-shadow var(--dur-2) var(--ease-out);
 }
-.dock-create>span>i{font-size:20px}
+.dock-create>span>i{font-size:20px;font-weight:var(--fw-black)}
 .dock-create:hover>span{
   transform:translateY(-2px) scale(1.06);
   box-shadow:
@@ -182,15 +132,12 @@
     0 16px 40px rgba(34,211,238,.3);
 }
 
-/* 2.6 Badge — موضع مثالي */
 .dock-item .badge{
   top:0;
   inset-inline-end:8px;
   border:2px solid var(--bg-0);
   box-shadow:0 0 0 1px var(--border-2);
 }
-
-/* 2.7 Chat badge dot */
 .dock-item .badge.badge-dot{
   top:8px;
   inset-inline-end:12px;
@@ -200,39 +147,23 @@
 }
 
 /* ═══════════════════════════════════════════════════
-   3. RESPONSIVE — Mobile-first fit
+   3. RESPONSIVE
    ═══════════════════════════════════════════════════ */
 
-/* ≤1024 — التطبيق: لا nav-links (JS يتولى) */
 @media (max-width:1024px){
   .nav-links{display:none}
 }
 
-/* ≤560 — البحث أيقوني بحجم ثابت */
 @media (max-width:560px){
-  .search{
-    width:38px;
-    padding-inline:0;
-    justify-content:center;
-    flex-shrink:0;
-  }
+  .search{width:38px;padding-inline:0;justify-content:center;flex-shrink:0}
   .search>input{display:none}
   .search:focus-within{
-    position:absolute;
-    top:0;
-    inset-inline:0;
-    width:auto;
-    padding-inline:12px;
-    background:var(--bg-1);
-    z-index:2;
+    position:absolute;top:0;inset-inline:0;width:auto;
+    padding-inline:12px;background:var(--bg-1);z-index:2;
   }
   .search:focus-within>input{display:block}
 
-  .nav{
-    padding:6px;
-    padding-inline-start:12px;
-    gap:4px;
-  }
+  .nav{padding:6px;padding-inline-start:12px;gap:4px}
   .brand-mark{width:26px;height:26px;font-size:14px}
   .nav-brand{font-size:var(--fs-3);gap:5px}
 
@@ -241,42 +172,29 @@
   #signInBtn>i{font-size:16px}
 }
 
-/* ≤440 — إخفاء نص الشعار، توفير مساحة */
 @media (max-width:440px){
   #brandLabel{display:none}
   .nav{padding-inline-start:10px}
 }
 
-/* ≤400 — dock أصغر، أيقونات فقط */
 @media (max-width:400px){
   .dock{padding:5px;gap:1px}
-  .dock-item{
-    min-width:46px;
-    height:44px;
-    padding:4px;
-  }
+  .dock-item{min-width:46px;height:44px;padding:4px}
   .dock-item>i{font-size:19px}
   .dock-item-label{font-size:9px}
   .dock-create{min-width:46px;height:44px}
   .dock-create>span{width:36px;height:36px}
   .dock-create>span>i{font-size:18px}
-  .dock-item[aria-current="page"]::after{
-    inset-inline:16px;
-    bottom:0;
-  }
+  .dock-item[aria-current="page"]::after{inset-inline:16px;bottom:0}
 }
 
-/* ≤360 — dock أنحف (يمنع overflow) */
 @media (max-width:360px){
   .dock-item{min-width:44px}
   .dock-create{min-width:44px}
   .dock-item-label{display:none}
-  .dock-item[aria-current="page"]::after{
-    inset-inline:14px;
-  }
+  .dock-item[aria-current="page"]::after{inset-inline:14px}
 }
 
-/* ≤320 — الحد الأدنى */
 @media (max-width:320px){
   .dock{padding:4px}
   .dock-item{min-width:42px;height:42px}
@@ -284,10 +202,9 @@
 }
 
 /* ═══════════════════════════════════════════════════
-   4. CROSS-CUTTING — Consistency & safety
+   4. CROSS-CUTTING
    ═══════════════════════════════════════════════════ */
 
-/* 4.1 عند فتح view overlay — كل chrome مخفي */
 body.view-open .nav,
 body.view-open .dock,
 body.view-open .install-banner,
@@ -298,18 +215,14 @@ body.view-open .new-posts-pill{
   transition:opacity var(--dur-2) var(--ease-out);
 }
 
-/* 4.2 Focus visible على كل عناصر التنقل */
 .nav a:focus-visible,
 .nav button:focus-visible,
 .dock button:focus-visible{
   outline:none;
-  box-shadow:
-    0 0 0 2px var(--bg-0),
-    0 0 0 4px var(--ant-primary);
+  box-shadow:0 0 0 2px var(--bg-0),0 0 0 4px var(--ant-primary);
   border-radius:var(--ant-r-sm);
 }
 
-/* 4.3 Reduced motion */
 @media (prefers-reduced-motion:reduce){
   .nav,.dock,.dock-item,.dock-item>i,.dock-create>span,
   .nav-actions .btn-icon,.search{
