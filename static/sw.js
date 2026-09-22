@@ -1,13 +1,20 @@
 /* ═══════════════════════════════════════════════════════════
-   خَيال — Service Worker v7.2
+   خَيال — Service Worker v14.3
    مسؤوليات محدودة: cache للأصول الثابتة فقط، لا API
    ═══════════════════════════════════════════════════════════ */
-const CACHE = 'khayal-v7-2';
+const CACHE = 'khayal-v14-3';
 const STATIC_ASSETS = [
-  '/static/style.css?v=8',
-  '/static/app.js?v=8.0.0',
+  '/static/css/01-tokens.css?v=14.3',
+  '/static/css/02-base.css?v=14.3',
+  '/static/css/03-components.css?v=14.3',
+  '/static/css/04-views.css?v=14.3',
+  '/static/css/05-responsive.css?v=14.3',
+  '/static/app.js?v=14.3',
+  '/static/sounds.js?v=14.3',
   '/static/icon-192.png',
   '/static/icon-512.png',
+  '/static/icon-maskable-192.png',
+  '/static/icon-maskable-512.png',
   '/manifest.json',
 ];
 
@@ -56,7 +63,7 @@ self.addEventListener('fetch', (event) => {
             caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
           }
           return res;
-        });
+        }).catch(() => cached || Response.error());
       })
     );
     return;
