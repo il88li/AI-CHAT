@@ -1,10 +1,10 @@
-<div class="view-overlay settings-overlay" id="settingsView" hidden>
+<div class="view-overlay settings-overlay ant-settings" id="settingsView" hidden>
 
   <header class="view-overlay-head settings-head">
     <button class="btn btn-icon btn-ghost" data-action="close-settings" aria-label="إغلاق" type="button">
       <i class="ph ph-x" aria-hidden="true"></i>
     </button>
-    <h2>ملفي</h2>
+    <h2>الإعدادات</h2>
     <button class="btn btn-primary btn-sm" id="settingsSave" data-action="save-settings" type="button" hidden>
       <i class="ph ph-check" aria-hidden="true"></i>
       <span>حفظ</span>
@@ -13,450 +13,415 @@
 
   <div class="settings-page">
 
-    <!-- ═══ Profile Hero ═══ -->
-    <section class="settings-hero-profile" id="settingsHeroProfile" data-style="glass">
-      <div class="settings-hero-cover" id="settingsHeroCover" data-cover="aurora">
+    <!-- ═══ Identity — Ant Descriptions روح ═══ -->
+    <section class="ant-identity" id="settingsHeroProfile" data-style="glass">
+      <div class="ant-identity-cover" id="settingsHeroCover" data-cover="aurora">
         <div class="profile-cover-pattern" aria-hidden="true"></div>
       </div>
 
-      <div class="settings-hero-content">
-        <div class="settings-hero-avatar-wrap">
-          <img class="settings-hero-avatar" id="settingsHeroAvatar" src="" alt="" data-frame="ring">
+      <div class="ant-identity-main">
+        <div class="ant-identity-avatar-wrap">
+          <img class="ant-identity-avatar" id="settingsHeroAvatar" src="" alt="" data-frame="ring">
         </div>
-
-        <div class="settings-hero-meta">
-          <div class="settings-hero-name-row">
+        <div class="ant-identity-info">
+          <div class="ant-identity-name-row">
             <strong id="settingsHeroName">—</strong>
-            <i class="ph ph-seal-check settings-hero-verified" id="settingsHeroVerified" aria-label="موثّق" hidden></i>
+            <i class="ph ph-seal-check ant-identity-verified" id="settingsHeroVerified" aria-label="موثّق" hidden></i>
           </div>
-          <div class="settings-hero-secondary">
-            <span class="settings-hero-handle" id="settingsHeroHandle">@—</span>
-            <span class="settings-hero-pronouns" id="settingsHeroPronouns" hidden></span>
+          <div class="ant-identity-subrow">
+            <span class="ant-identity-handle" id="settingsHeroHandle">@—</span>
+            <span class="ant-tag" id="settingsHeroPronouns" hidden></span>
           </div>
-          <p class="settings-hero-bio" id="settingsHeroBio" hidden></p>
+          <p class="ant-identity-bio" id="settingsHeroBio" hidden></p>
         </div>
+      </div>
 
-        <div class="settings-hero-stats">
-          <button class="settings-stat" type="button" data-stat="posts" aria-label="البرومبتات">
-            <strong id="settingsStatPosts">0</strong>
-            <span>برومبت</span>
-          </button>
-          <div class="settings-stat">
-            <strong id="settingsStatFollowers">0</strong>
-            <span>متابِع</span>
-          </div>
-          <div class="settings-stat">
-            <strong id="settingsStatFollowing">0</strong>
-            <span>يتابع</span>
-          </div>
-          <div class="settings-stat">
-            <strong id="settingsStatLikes">0</strong>
-            <span>إعجاب</span>
-          </div>
+      <div class="ant-statistic-row">
+        <button class="ant-stat-btn" type="button" data-stat="posts" aria-label="البرومبتات">
+          <strong id="settingsStatPosts">0</strong>
+          <span>برومبت</span>
+        </button>
+        <span class="ant-statistic-divider" aria-hidden="true"></span>
+        <div class="ant-stat-item">
+          <strong id="settingsStatFollowers">0</strong><span>متابِع</span>
+        </div>
+        <span class="ant-statistic-divider" aria-hidden="true"></span>
+        <div class="ant-stat-item">
+          <strong id="settingsStatFollowing">0</strong><span>يتابع</span>
+        </div>
+        <span class="ant-statistic-divider" aria-hidden="true"></span>
+        <div class="ant-stat-item">
+          <strong id="settingsStatLikes">0</strong><span>إعجاب</span>
         </div>
       </div>
     </section>
 
-    <!-- ═══ Tabs — كل تبويبات البروفايل ═══ -->
-    <div class="settings-tabs-wrap">
-      <nav class="settings-tabs" role="tablist" aria-label="أقسام الملف">
-        <button class="settings-tab is-active" role="tab" aria-selected="true" data-section="posts" type="button">
-          <i class="ph ph-image-square" aria-hidden="true"></i>
-          <span>المنشورات</span>
-        </button>
-        <button class="settings-tab" role="tab" aria-selected="false" data-section="liked" type="button">
-          <i class="ph ph-heart" aria-hidden="true"></i>
-          <span>المُعجَبة</span>
-        </button>
-        <button class="settings-tab" role="tab" aria-selected="false" data-section="saved" type="button">
-          <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
-          <span>المحفوظة</span>
-        </button>
-        <button class="settings-tab" role="tab" aria-selected="false" data-section="about" type="button">
-          <i class="ph ph-info" aria-hidden="true"></i>
-          <span>نبذة</span>
-        </button>
-        <button class="settings-tab" role="tab" aria-selected="false" data-section="appearance" type="button">
-          <i class="ph ph-palette" aria-hidden="true"></i>
-          <span>التخصيص</span>
-        </button>
-        <button class="settings-tab" role="tab" aria-selected="false" data-section="account" type="button">
-          <i class="ph ph-gear-six" aria-hidden="true"></i>
-          <span>الحساب</span>
-        </button>
-      </nav>
-    </div>
+    <!-- ═══ Line Tabs ═══ -->
+    <nav class="settings-tabs ant-tabs-wrap" role="tablist" aria-label="أقسام الإعدادات">
+      <button class="settings-tab ant-tab" role="tab" aria-selected="true" data-section="posts" type="button">
+        <i class="ph ph-image-square" aria-hidden="true"></i><span>المنشورات</span>
+      </button>
+      <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="liked" type="button">
+        <i class="ph ph-heart" aria-hidden="true"></i><span>المُعجَبة</span>
+      </button>
+      <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="saved" type="button">
+        <i class="ph ph-bookmark-simple" aria-hidden="true"></i><span>المحفوظة</span>
+      </button>
+      <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="about" type="button">
+        <i class="ph ph-info" aria-hidden="true"></i><span>نبذة</span>
+      </button>
+      <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="appearance" type="button">
+        <i class="ph ph-palette" aria-hidden="true"></i><span>التخصيص</span>
+      </button>
+      <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="account" type="button">
+        <i class="ph ph-gear-six" aria-hidden="true"></i><span>الحساب</span>
+      </button>
+    </nav>
 
-    <!-- ═══ Content ═══ -->
-    <div class="settings-content">
+    <div class="settings-content ant-content">
 
-      <!-- POSTS -->
-      <section class="settings-panel is-active" data-panel="posts" role="tabpanel">
+      <!-- ═══ POSTS ═══ -->
+      <section class="settings-panel ant-panel is-active" data-panel="posts" role="tabpanel">
         <div class="feed" id="settingsUserPosts" aria-busy="true"></div>
       </section>
 
-      <!-- LIKED -->
-      <section class="settings-panel" data-panel="liked" role="tabpanel">
+      <!-- ═══ LIKED ═══ -->
+      <section class="settings-panel ant-panel" data-panel="liked" role="tabpanel">
         <div class="feed" id="settingsLikedPosts" aria-busy="true"></div>
       </section>
 
-      <!-- SAVED -->
-      <section class="settings-panel" data-panel="saved" role="tabpanel">
+      <!-- ═══ SAVED ═══ -->
+      <section class="settings-panel ant-panel" data-panel="saved" role="tabpanel">
         <div class="feed" id="settingsSavedPosts" aria-busy="true"></div>
       </section>
 
-      <!-- ABOUT -->
-      <section class="settings-panel" data-panel="about" role="tabpanel">
-        <div class="about-card" id="settingsAboutCard">
-          <div class="about-row">
-            <div class="about-icon"><i class="ph ph-user" aria-hidden="true"></i></div>
-            <div class="about-body">
-              <span class="about-label">الاسم</span>
-              <strong class="about-value" id="aboutName">—</strong>
+      <!-- ═══ ABOUT — Descriptions ═══ -->
+      <section class="settings-panel ant-panel" data-panel="about" role="tabpanel">
+        <div class="ant-descriptions" id="settingsAboutCard">
+          <div class="ant-descriptions-item">
+            <div class="ant-descriptions-label">الاسم</div>
+            <div class="ant-descriptions-value" id="aboutName">—</div>
+          </div>
+          <div class="ant-descriptions-item">
+            <div class="ant-descriptions-label">المعرّف</div>
+            <div class="ant-descriptions-value" id="aboutHandle">@—</div>
+          </div>
+          <div class="ant-descriptions-item" id="aboutPronounsRow" hidden>
+            <div class="ant-descriptions-label">الضمائر</div>
+            <div class="ant-descriptions-value" id="aboutPronouns">—</div>
+          </div>
+          <div class="ant-descriptions-item" id="aboutBioRow" hidden>
+            <div class="ant-descriptions-label">نبذة</div>
+            <div class="ant-descriptions-value" id="aboutBio">—</div>
+          </div>
+          <div class="ant-descriptions-item" id="aboutWebsiteRow" hidden>
+            <div class="ant-descriptions-label">الموقع</div>
+            <div class="ant-descriptions-value">
+              <a class="about-link" id="aboutWebsite" href="#" target="_blank" rel="noopener noreferrer">—</a>
             </div>
           </div>
-          <div class="about-row">
-            <div class="about-icon"><i class="ph ph-at" aria-hidden="true"></i></div>
-            <div class="about-body">
-              <span class="about-label">المعرّف</span>
-              <strong class="about-value" id="aboutHandle">@—</strong>
-            </div>
-          </div>
-          <div class="about-row" id="aboutPronounsRow" hidden>
-            <div class="about-icon"><i class="ph ph-gender-intersex" aria-hidden="true"></i></div>
-            <div class="about-body">
-              <span class="about-label">الضمائر</span>
-              <strong class="about-value" id="aboutPronouns">—</strong>
-            </div>
-          </div>
-          <div class="about-row" id="aboutBioRow" hidden>
-            <div class="about-icon"><i class="ph ph-chat-text" aria-hidden="true"></i></div>
-            <div class="about-body">
-              <span class="about-label">نبذة</span>
-              <p class="about-value about-bio" id="aboutBio">—</p>
-            </div>
-          </div>
-          <div class="about-row" id="aboutWebsiteRow" hidden>
-            <div class="about-icon"><i class="ph ph-link" aria-hidden="true"></i></div>
-            <div class="about-body">
-              <span class="about-label">الموقع</span>
-              <a class="about-value about-link" id="aboutWebsite" href="#" target="_blank" rel="noopener noreferrer">—</a>
-            </div>
-          </div>
-          <div class="about-row">
-            <div class="about-icon"><i class="ph ph-calendar" aria-hidden="true"></i></div>
-            <div class="about-body">
-              <span class="about-label">انضم</span>
-              <strong class="about-value" id="aboutJoined">—</strong>
-            </div>
+          <div class="ant-descriptions-item">
+            <div class="ant-descriptions-label">تاريخ الانضمام</div>
+            <div class="ant-descriptions-value" id="aboutJoined">—</div>
           </div>
         </div>
       </section>
 
-      <!-- APPEARANCE -->
-      <section class="settings-panel" data-panel="appearance" role="tabpanel">
+      <!-- ═══ APPEARANCE ═══ -->
+      <section class="settings-panel ant-panel" data-panel="appearance" role="tabpanel">
 
-        <div class="settings-block">
-          <div class="settings-block-head">
-            <h4>نمط الغلاف</h4>
-            <span class="settings-block-hint">12 نمطاً</span>
+        <div class="ant-card">
+          <div class="ant-card-head">
+            <i class="ph ph-image" aria-hidden="true"></i>
+            <span>نمط الغلاف</span>
+            <span class="ant-card-extra">12 نمطاً</span>
           </div>
-          <div class="cover-presets--wide" id="settingsCoverPresets" role="radiogroup" aria-label="نمط الغلاف">
-            <button type="button" class="cover-preset" data-cover="aurora"   aria-label="أورورا"      title="أورورا"      aria-pressed="false" style="--c1:#22D3EE;--c2:#8B5CF6"></button>
-            <button type="button" class="cover-preset" data-cover="sunset"   aria-label="غروب"        title="غروب"        aria-pressed="false" style="--c1:#FBBF24;--c2:#FB7185"></button>
-            <button type="button" class="cover-preset" data-cover="forest"   aria-label="غابة"        title="غابة"        aria-pressed="false" style="--c1:#34D399;--c2:#22D3EE"></button>
-            <button type="button" class="cover-preset" data-cover="royal"    aria-label="ملكي"        title="ملكي"        aria-pressed="false" style="--c1:#8B5CF6;--c2:#EC4899"></button>
-            <button type="button" class="cover-preset" data-cover="midnight" aria-label="منتصف الليل" title="منتصف الليل" aria-pressed="false" style="--c1:#1E1E2A;--c2:#0A0A0F"></button>
-            <button type="button" class="cover-preset" data-cover="ocean"    aria-label="محيط"        title="محيط"        aria-pressed="false" style="--c1:#0EA5E9;--c2:#22D3EE"></button>
-            <button type="button" class="cover-preset" data-cover="cyber"    aria-label="سايبر"       title="سايبر"       aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="candy"    aria-label="حلوى"        title="حلوى"        aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="mesh"     aria-label="شبكة ناعمة"  title="شبكة ناعمة"  aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="noir"     aria-label="نوار"        title="نوار"        aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="topo"     aria-label="طبوجرافيا"   title="طبوجرافيا"   aria-pressed="false"></button>
-            <button type="button" class="cover-preset" data-cover="dots"     aria-label="نقاط"        title="نقاط"        aria-pressed="false"></button>
-          </div>
-        </div>
-
-        <div class="settings-block">
-          <div class="settings-block-head">
-            <h4>إطار الصورة</h4>
-            <span class="settings-block-hint">8 إطارات</span>
-          </div>
-          <div class="frame-picker" id="settingsFramePicker" role="radiogroup" aria-label="إطار الصورة">
-            <button type="button" class="frame-option" data-frame="none"     aria-pressed="false" aria-label="بلا إطار">
-              <span class="frame-preview frame-preview--none" aria-hidden="true">خ</span>
-              <span class="frame-label">بلا إطار</span>
-            </button>
-            <button type="button" class="frame-option" data-frame="ring"     aria-pressed="true"  aria-label="حلقة">
-              <span class="frame-preview frame-preview--ring" aria-hidden="true">خ</span>
-              <span class="frame-label">حلقة</span>
-            </button>
-            <button type="button" class="frame-option" data-frame="gradient" aria-pressed="false" aria-label="متدرج">
-              <span class="frame-preview frame-preview--gradient" aria-hidden="true">خ</span>
-              <span class="frame-label">متدرج</span>
-            </button>
-            <button type="button" class="frame-option" data-frame="neon"     aria-pressed="false" aria-label="نيون">
-              <span class="frame-preview frame-preview--neon" aria-hidden="true">خ</span>
-              <span class="frame-label">نيون</span>
-            </button>
-            <button type="button" class="frame-option" data-frame="double"   aria-pressed="false" aria-label="مزدوج">
-              <span class="frame-preview frame-preview--double" aria-hidden="true">خ</span>
-              <span class="frame-label">مزدوج</span>
-            </button>
-            <button type="button" class="frame-option" data-frame="polaroid" aria-pressed="false" aria-label="بولارويد">
-              <span class="frame-preview frame-preview--polaroid" aria-hidden="true">خ</span>
-              <span class="frame-label">بولارويد</span>
-            </button>
-            <button type="button" class="frame-option" data-frame="glass"    aria-pressed="false" aria-label="زجاجي">
-              <span class="frame-preview frame-preview--glass" aria-hidden="true">خ</span>
-              <span class="frame-label">زجاجي</span>
-            </button>
-            <button type="button" class="frame-option" data-frame="hex"      aria-pressed="false" aria-label="سُدَاسي">
-              <span class="frame-preview frame-preview--hex" aria-hidden="true">خ</span>
-              <span class="frame-label">سُدَاسي</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="settings-block">
-          <div class="settings-block-head">
-            <h4>اللون المميز</h4>
-            <span class="settings-block-hint" id="accentHint">#22D3EE</span>
-          </div>
-          <div class="accent-picker" id="settingsAccentPicker">
-            <button type="button" class="accent-swatch" data-color="#22D3EE" style="--sw:#22D3EE" aria-pressed="true"  aria-label="سماوي"></button>
-            <button type="button" class="accent-swatch" data-color="#8B5CF6" style="--sw:#8B5CF6" aria-pressed="false" aria-label="بنفسجي"></button>
-            <button type="button" class="accent-swatch" data-color="#FB7185" style="--sw:#FB7185" aria-pressed="false" aria-label="وردي"></button>
-            <button type="button" class="accent-swatch" data-color="#FBBF24" style="--sw:#FBBF24" aria-pressed="false" aria-label="ذهبي"></button>
-            <button type="button" class="accent-swatch" data-color="#34D399" style="--sw:#34D399" aria-pressed="false" aria-label="أخضر"></button>
-            <button type="button" class="accent-swatch" data-color="#60A5FA" style="--sw:#60A5FA" aria-pressed="false" aria-label="أزرق"></button>
-            <button type="button" class="accent-swatch" data-color="#F472B6" style="--sw:#F472B6" aria-pressed="false" aria-label="زهري"></button>
-            <button type="button" class="accent-swatch" data-color="#FAFAFA" style="--sw:#FAFAFA" aria-pressed="false" aria-label="أبيض"></button>
-          </div>
-        </div>
-
-        <div class="settings-block">
-          <div class="settings-block-head"><h4>نمط البطاقة</h4></div>
-          <div class="style-picker" id="settingsCardStylePicker">
-            <button type="button" class="style-option" data-style="glass" aria-pressed="true">
-              <span class="style-preview style-glass"></span>
-              <span>زجاجي</span>
-            </button>
-            <button type="button" class="style-option" data-style="solid" aria-pressed="false">
-              <span class="style-preview style-solid"></span>
-              <span>صلب</span>
-            </button>
-            <button type="button" class="style-option" data-style="gradient" aria-pressed="false">
-              <span class="style-preview style-gradient"></span>
-              <span>متدرج</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="settings-block">
-          <div class="field">
-            <label for="setName">الاسم الكامل</label>
-            <input class="input" id="setName" type="text" required minlength="2" maxlength="80">
-          </div>
-          <div class="field">
-            <label>الضمائر <span class="field-opt">(اختياري)</span></label>
-            <div class="pronoun-picker" id="settingsPronounPicker" role="radiogroup" aria-label="الضمائر">
-              <button type="button" class="pronoun-option" data-pronoun="هو" role="radio" aria-checked="false">هو</button>
-              <button type="button" class="pronoun-option" data-pronoun="هي" role="radio" aria-checked="false">هي</button>
-              <button type="button" class="pronoun-option" data-pronoun="هم" role="radio" aria-checked="false">هم</button>
-              <button type="button" class="pronoun-option" data-pronoun="هن" role="radio" aria-checked="false">هن</button>
-              <button type="button" class="pronoun-option" data-pronoun=""   role="radio" aria-checked="true">لا تفضل</button>
+          <div class="ant-card-body">
+            <div class="cover-presets--wide" id="settingsCoverPresets" role="radiogroup" aria-label="نمط الغلاف">
+              <button type="button" class="cover-preset" data-cover="aurora"   aria-label="أورورا"      title="أورورا"      aria-pressed="false" style="--c1:#22D3EE;--c2:#8B5CF6"></button>
+              <button type="button" class="cover-preset" data-cover="sunset"   aria-label="غروب"        title="غروب"        aria-pressed="false" style="--c1:#FBBF24;--c2:#FB7185"></button>
+              <button type="button" class="cover-preset" data-cover="forest"   aria-label="غابة"        title="غابة"        aria-pressed="false" style="--c1:#34D399;--c2:#22D3EE"></button>
+              <button type="button" class="cover-preset" data-cover="royal"    aria-label="ملكي"        title="ملكي"        aria-pressed="false" style="--c1:#8B5CF6;--c2:#EC4899"></button>
+              <button type="button" class="cover-preset" data-cover="midnight" aria-label="منتصف الليل" title="منتصف الليل" aria-pressed="false" style="--c1:#1E1E2A;--c2:#0A0A0F"></button>
+              <button type="button" class="cover-preset" data-cover="ocean"    aria-label="محيط"        title="محيط"        aria-pressed="false" style="--c1:#0EA5E9;--c2:#22D3EE"></button>
+              <button type="button" class="cover-preset" data-cover="cyber"    aria-label="سايبر"       title="سايبر"       aria-pressed="false"></button>
+              <button type="button" class="cover-preset" data-cover="candy"    aria-label="حلوى"        title="حلوى"        aria-pressed="false"></button>
+              <button type="button" class="cover-preset" data-cover="mesh"     aria-label="شبكة ناعمة"  title="شبكة ناعمة"  aria-pressed="false"></button>
+              <button type="button" class="cover-preset" data-cover="noir"     aria-label="نوار"        title="نوار"        aria-pressed="false"></button>
+              <button type="button" class="cover-preset" data-cover="topo"     aria-label="طبوجرافيا"   title="طبوجرافيا"   aria-pressed="false"></button>
+              <button type="button" class="cover-preset" data-cover="dots"     aria-label="نقاط"        title="نقاط"        aria-pressed="false"></button>
             </div>
-            <input type="hidden" id="setPronouns" value="">
-          </div>
-          <div class="field">
-            <label for="setBio">نبذة</label>
-            <textarea class="textarea" id="setBio" maxlength="300" rows="3"
-                      style="font-family:var(--font-sans);direction:rtl;text-align:right;min-height:80px;font-size:15px"></textarea>
-            <div class="field-hint"><span id="setBioCount">0</span> / 300</div>
-          </div>
-          <div class="field">
-            <label for="setWebsite">الموقع الإلكتروني</label>
-            <input class="input" id="setWebsite" type="url" maxlength="120" placeholder="https://…" inputmode="url">
           </div>
         </div>
 
-        <button class="settings-reset-btn" id="settingsResetBtn" type="button">
+        <div class="ant-card">
+          <div class="ant-card-head">
+            <i class="ph ph-user-circle" aria-hidden="true"></i>
+            <span>إطار الصورة</span>
+            <span class="ant-card-extra">8 إطارات</span>
+          </div>
+          <div class="ant-card-body">
+            <div class="frame-picker" id="settingsFramePicker" role="radiogroup" aria-label="إطار الصورة">
+              <button type="button" class="frame-option" data-frame="none"     aria-pressed="false" aria-label="بلا إطار">
+                <span class="frame-preview frame-preview--none" aria-hidden="true">خ</span><span class="frame-label">بلا إطار</span>
+              </button>
+              <button type="button" class="frame-option" data-frame="ring"     aria-pressed="true"  aria-label="حلقة">
+                <span class="frame-preview frame-preview--ring" aria-hidden="true">خ</span><span class="frame-label">حلقة</span>
+              </button>
+              <button type="button" class="frame-option" data-frame="gradient" aria-pressed="false" aria-label="متدرج">
+                <span class="frame-preview frame-preview--gradient" aria-hidden="true">خ</span><span class="frame-label">متدرج</span>
+              </button>
+              <button type="button" class="frame-option" data-frame="neon"     aria-pressed="false" aria-label="نيون">
+                <span class="frame-preview frame-preview--neon" aria-hidden="true">خ</span><span class="frame-label">نيون</span>
+              </button>
+              <button type="button" class="frame-option" data-frame="double"   aria-pressed="false" aria-label="مزدوج">
+                <span class="frame-preview frame-preview--double" aria-hidden="true">خ</span><span class="frame-label">مزدوج</span>
+              </button>
+              <button type="button" class="frame-option" data-frame="polaroid" aria-pressed="false" aria-label="بولارويد">
+                <span class="frame-preview frame-preview--polaroid" aria-hidden="true">خ</span><span class="frame-label">بولارويد</span>
+              </button>
+              <button type="button" class="frame-option" data-frame="glass"    aria-pressed="false" aria-label="زجاجي">
+                <span class="frame-preview frame-preview--glass" aria-hidden="true">خ</span><span class="frame-label">زجاجي</span>
+              </button>
+              <button type="button" class="frame-option" data-frame="hex"      aria-pressed="false" aria-label="سُدَاسي">
+                <span class="frame-preview frame-preview--hex" aria-hidden="true">خ</span><span class="frame-label">سُدَاسي</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ant-card">
+          <div class="ant-card-head">
+            <i class="ph ph-drop" aria-hidden="true"></i>
+            <span>اللون المميز</span>
+            <span class="ant-card-extra" id="accentHint">#22D3EE</span>
+          </div>
+          <div class="ant-card-body">
+            <div class="accent-picker" id="settingsAccentPicker">
+              <button type="button" class="accent-swatch" data-color="#22D3EE" style="--sw:#22D3EE" aria-pressed="true"  aria-label="سماوي"></button>
+              <button type="button" class="accent-swatch" data-color="#8B5CF6" style="--sw:#8B5CF6" aria-pressed="false" aria-label="بنفسجي"></button>
+              <button type="button" class="accent-swatch" data-color="#FB7185" style="--sw:#FB7185" aria-pressed="false" aria-label="وردي"></button>
+              <button type="button" class="accent-swatch" data-color="#FBBF24" style="--sw:#FBBF24" aria-pressed="false" aria-label="ذهبي"></button>
+              <button type="button" class="accent-swatch" data-color="#34D399" style="--sw:#34D399" aria-pressed="false" aria-label="أخضر"></button>
+              <button type="button" class="accent-swatch" data-color="#60A5FA" style="--sw:#60A5FA" aria-pressed="false" aria-label="أزرق"></button>
+              <button type="button" class="accent-swatch" data-color="#F472B6" style="--sw:#F472B6" aria-pressed="false" aria-label="زهري"></button>
+              <button type="button" class="accent-swatch" data-color="#FAFAFA" style="--sw:#FAFAFA" aria-pressed="false" aria-label="أبيض"></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ant-card">
+          <div class="ant-card-head">
+            <i class="ph ph-squares-four" aria-hidden="true"></i>
+            <span>نمط البطاقة</span>
+          </div>
+          <div class="ant-card-body">
+            <div class="style-picker" id="settingsCardStylePicker">
+              <button type="button" class="style-option" data-style="glass" aria-pressed="true">
+                <span class="style-preview style-glass"></span><span>زجاجي</span>
+              </button>
+              <button type="button" class="style-option" data-style="solid" aria-pressed="false">
+                <span class="style-preview style-solid"></span><span>صلب</span>
+              </button>
+              <button type="button" class="style-option" data-style="gradient" aria-pressed="false">
+                <span class="style-preview style-gradient"></span><span>متدرج</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ant-card">
+          <div class="ant-card-head">
+            <i class="ph ph-user" aria-hidden="true"></i>
+            <span>المعلومات</span>
+          </div>
+          <div class="ant-card-body ant-form-stack">
+            <div class="ant-form-item">
+              <label class="ant-form-label" for="setName">الاسم الكامل</label>
+              <input class="input" id="setName" type="text" required minlength="2" maxlength="80">
+            </div>
+
+            <div class="ant-form-item">
+              <span class="ant-form-label">الضمائر <span class="field-opt">(اختياري)</span></span>
+              <div class="pronoun-picker" id="settingsPronounPicker" role="radiogroup" aria-label="الضمائر">
+                <button type="button" class="pronoun-option" data-pronoun="هو" role="radio" aria-checked="false">هو</button>
+                <button type="button" class="pronoun-option" data-pronoun="هي" role="radio" aria-checked="false">هي</button>
+                <button type="button" class="pronoun-option" data-pronoun="هم" role="radio" aria-checked="false">هم</button>
+                <button type="button" class="pronoun-option" data-pronoun="هن" role="radio" aria-checked="false">هن</button>
+                <button type="button" class="pronoun-option" data-pronoun=""   role="radio" aria-checked="true">لا تفضل</button>
+              </div>
+              <input type="hidden" id="setPronouns" value="">
+            </div>
+
+            <div class="ant-form-item">
+              <label class="ant-form-label" for="setBio">نبذة</label>
+              <textarea class="textarea" id="setBio" maxlength="300" rows="3"></textarea>
+              <div class="ant-form-help"><span id="setBioCount">0</span> / 300</div>
+            </div>
+
+            <div class="ant-form-item">
+              <label class="ant-form-label" for="setWebsite">الموقع الإلكتروني</label>
+              <input class="input" id="setWebsite" type="url" maxlength="120" placeholder="https://…" inputmode="url">
+            </div>
+          </div>
+        </div>
+
+        <button class="settings-reset-btn ant-reset" id="settingsResetBtn" type="button">
           <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
           <span>استعادة القيم المحفوظة</span>
         </button>
-
       </section>
 
-      <!-- ACCOUNT — تصميم أجمل -->
-      <section class="settings-panel" data-panel="account" role="tabpanel">
+      <!-- ═══ ACCOUNT ═══ -->
+      <section class="settings-panel ant-panel" data-panel="account" role="tabpanel">
 
-        <!-- بطاقة الهوية -->
-        <div class="account-identity-card">
-          <div class="account-identity-avatar">
-            <img id="accountIdentityAvatar" src="" alt="">
-          </div>
-          <div class="account-identity-info">
-            <strong id="accountIdentityName">—</strong>
-            <span id="accountIdentityHandle">@—</span>
-            <span class="account-identity-email" id="accountIdentityEmail">—</span>
-          </div>
-          <div class="account-identity-badge" id="accountIdentityBadge" hidden>
-            <i class="ph ph-seal-check" aria-hidden="true"></i>
-            موثّق
+        <div class="ant-card">
+          <div class="ant-card-body ant-identity-mini">
+            <img class="ant-identity-mini-avatar" id="accountIdentityAvatar" src="" alt="">
+            <div class="ant-identity-mini-info">
+              <strong id="accountIdentityName">—</strong>
+              <span id="accountIdentityHandle">@—</span>
+              <span class="ant-identity-mini-email" id="accountIdentityEmail">—</span>
+            </div>
+            <span class="ant-tag ant-tag-success" id="accountIdentityBadge" hidden>
+              <i class="ph ph-seal-check" aria-hidden="true"></i> موثّق
+            </span>
           </div>
         </div>
 
-        <!-- الأصوات -->
-        <div class="settings-group-title">
-          <i class="ph ph-speaker-high" aria-hidden="true"></i>
-          الأصوات
+        <div class="ant-card">
+          <div class="ant-card-head">
+            <i class="ph ph-speaker-high" aria-hidden="true"></i>
+            <span>الأصوات</span>
+          </div>
+          <div class="ant-card-body">
+            <div class="ant-row">
+              <div class="ant-row-info">
+                <strong>تفعيل الأصوات</strong>
+                <span>نبرات قصيرة عند الإعجاب والنسخ والإرسال</span>
+              </div>
+              <button class="switch" id="soundsToggle" role="switch" aria-checked="true" aria-label="تفعيل الأصوات" type="button"></button>
+            </div>
+
+            <div class="ant-row ant-row-block">
+              <div class="ant-row-head">
+                <span class="ant-form-label" style="margin:0">مستوى الصوت</span>
+                <span class="ant-card-extra" id="volumeHint">60%</span>
+              </div>
+              <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="60" aria-label="مستوى الصوت">
+            </div>
+
+            <div class="sound-grid">
+              <button class="sound-card" data-sound="like" type="button">
+                <span class="sound-card-icon"><i class="ph ph-heart-fill" aria-hidden="true"></i></span>
+                <span class="sound-card-label">إعجاب</span>
+                <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
+              </button>
+              <button class="sound-card" data-sound="copy" type="button">
+                <span class="sound-card-icon"><i class="ph ph-copy" aria-hidden="true"></i></span>
+                <span class="sound-card-label">نسخ</span>
+                <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
+              </button>
+              <button class="sound-card" data-sound="send" type="button">
+                <span class="sound-card-icon"><i class="ph ph-paper-plane-tilt" aria-hidden="true"></i></span>
+                <span class="sound-card-label">إرسال</span>
+                <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
+              </button>
+              <button class="sound-card" data-sound="success" type="button">
+                <span class="sound-card-icon"><i class="ph ph-check-circle" aria-hidden="true"></i></span>
+                <span class="sound-card-label">نجاح</span>
+                <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
+              </button>
+              <button class="sound-card" data-sound="error" type="button">
+                <span class="sound-card-icon"><i class="ph ph-warning-circle" aria-hidden="true"></i></span>
+                <span class="sound-card-label">خطأ</span>
+                <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
+              </button>
+              <button class="sound-card" data-sound="tab" type="button">
+                <span class="sound-card-icon"><i class="ph ph-cursor-click" aria-hidden="true"></i></span>
+                <span class="sound-card-label">تنقل</span>
+                <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
+              </button>
+            </div>
+          </div>
         </div>
-        <div class="settings-block">
-          <div class="setting-row">
-            <div class="setting-row-info">
-              <strong>تفعيل الأصوات</strong>
-              <span>نبرات قصيرة عند الإعجاب والنسخ والإرسال</span>
-            </div>
-            <button class="switch" id="soundsToggle" role="switch" aria-checked="true" aria-label="تفعيل الأصوات" type="button"></button>
+
+        <div class="ant-card">
+          <div class="ant-card-head">
+            <i class="ph ph-bell" aria-hidden="true"></i>
+            <span>الإشعارات</span>
           </div>
-          <div class="field">
-            <div class="settings-block-head">
-              <label for="volumeSlider">مستوى الصوت</label>
-              <span class="settings-block-hint" id="volumeHint">60%</span>
+          <div class="ant-card-body ant-rows">
+            <div class="ant-row">
+              <div class="ant-row-info"><strong>إعجابات جديدة</strong><span>عندما يُعجب أحدهم ببرومبتاتك</span></div>
+              <button class="switch" data-notif="likes" role="switch" aria-checked="true" aria-label="إعجابات جديدة" type="button"></button>
             </div>
-            <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="60" aria-label="مستوى الصوت">
+            <div class="ant-row">
+              <div class="ant-row-info"><strong>تعليقات</strong><span>عندما يعلّق أحدهم على منشوراتك</span></div>
+              <button class="switch" data-notif="comments" role="switch" aria-checked="true" aria-label="تعليقات" type="button"></button>
+            </div>
+            <div class="ant-row">
+              <div class="ant-row-info"><strong>متابعون جدد</strong><span>عندما يتابعك مستخدم جديد</span></div>
+              <button class="switch" data-notif="follows" role="switch" aria-checked="true" aria-label="متابعون" type="button"></button>
+            </div>
+            <div class="ant-row">
+              <div class="ant-row-info"><strong>رسائل الدردشة</strong><span>عند وصول رسالة جديدة</span></div>
+              <button class="switch" data-notif="messages" role="switch" aria-checked="true" aria-label="رسائل" type="button"></button>
+            </div>
           </div>
-          <div class="sound-grid">
-            <button class="sound-card" data-sound="like" type="button">
-              <span class="sound-card-icon"><i class="ph ph-heart-fill" aria-hidden="true"></i></span>
-              <span class="sound-card-label">إعجاب</span>
-              <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
-            </button>
-            <button class="sound-card" data-sound="copy" type="button">
-              <span class="sound-card-icon"><i class="ph ph-copy" aria-hidden="true"></i></span>
-              <span class="sound-card-label">نسخ</span>
-              <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
-            </button>
-            <button class="sound-card" data-sound="send" type="button">
-              <span class="sound-card-icon"><i class="ph ph-paper-plane-tilt" aria-hidden="true"></i></span>
-              <span class="sound-card-label">إرسال</span>
-              <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
-            </button>
-            <button class="sound-card" data-sound="success" type="button">
-              <span class="sound-card-icon"><i class="ph ph-check-circle" aria-hidden="true"></i></span>
-              <span class="sound-card-label">نجاح</span>
-              <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
-            </button>
-            <button class="sound-card" data-sound="error" type="button">
-              <span class="sound-card-icon"><i class="ph ph-warning-circle" aria-hidden="true"></i></span>
-              <span class="sound-card-label">خطأ</span>
-              <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
-            </button>
-            <button class="sound-card" data-sound="tab" type="button">
-              <span class="sound-card-icon"><i class="ph ph-cursor-click" aria-hidden="true"></i></span>
-              <span class="sound-card-label">تنقل</span>
-              <span class="sound-card-play"><i class="ph ph-play" aria-hidden="true"></i></span>
+        </div>
+
+        <div class="ant-card">
+          <div class="ant-card-head">
+            <i class="ph ph-lock-simple" aria-hidden="true"></i>
+            <span>الخصوصية</span>
+          </div>
+          <div class="ant-card-body ant-rows">
+            <div class="ant-row">
+              <div class="ant-row-info"><strong>ملف شخصي عام</strong><span>السماح للزوار بمشاهدة برومبتاتك</span></div>
+              <button class="switch" data-priv="public_profile" role="switch" aria-checked="true" aria-label="ملف شخصي عام" type="button"></button>
+            </div>
+            <div class="ant-row">
+              <div class="ant-row-info"><strong>السماح بالرسائل</strong><span>استقبال رسائل من أي مستخدم</span></div>
+              <button class="switch" data-priv="allow_messages" role="switch" aria-checked="true" aria-label="السماح بالرسائل" type="button"></button>
+            </div>
+            <div class="ant-row">
+              <div class="ant-row-info"><strong>إظهار الموقع الإلكتروني</strong><span>عرض الرابط في ملفك العام</span></div>
+              <button class="switch" data-priv="show_website" role="switch" aria-checked="true" aria-label="إظهار الموقع" type="button"></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ant-card">
+          <div class="ant-card-head">
+            <i class="ph ph-shield-check" aria-hidden="true"></i>
+            <span>الأمان</span>
+          </div>
+          <div class="ant-card-body ant-form-stack">
+            <div class="ant-form-item">
+              <label class="ant-form-label" for="setOldPassword">كلمة المرور الحالية</label>
+              <input class="input" id="setOldPassword" type="password" autocomplete="current-password">
+            </div>
+            <div class="ant-form-item">
+              <label class="ant-form-label" for="setNewPassword">كلمة المرور الجديدة</label>
+              <input class="input" id="setNewPassword" type="password" autocomplete="new-password" minlength="6">
+            </div>
+            <button class="btn btn-secondary" id="changePasswordBtn" type="button">
+              <i class="ph ph-lock-key" aria-hidden="true"></i>
+              <span>تحديث كلمة المرور</span>
             </button>
           </div>
         </div>
 
-        <!-- الإشعارات -->
-        <div class="settings-group-title">
-          <i class="ph ph-bell" aria-hidden="true"></i>
-          الإشعارات
-        </div>
-        <div class="settings-block">
-          <div class="setting-row">
-            <div class="setting-row-info">
-              <strong>إعجابات جديدة</strong>
-              <span>عندما يُعجب أحدهم ببرومبتاتك</span>
+        <div class="ant-card ant-card-danger">
+          <div class="ant-card-body">
+            <div class="ant-row">
+              <div class="ant-row-info"><strong>تسجيل الخروج</strong><span>الخروج من هذا الجهاز فقط</span></div>
+              <button class="btn btn-danger btn-sm" id="logoutBtn" type="button">
+                <i class="ph ph-sign-out" aria-hidden="true"></i>
+                <span>خروج</span>
+              </button>
             </div>
-            <button class="switch" data-notif="likes" role="switch" aria-checked="true" aria-label="إعجابات جديدة" type="button"></button>
-          </div>
-          <div class="setting-row">
-            <div class="setting-row-info">
-              <strong>تعليقات</strong>
-              <span>عندما يعلّق أحدهم على منشوراتك</span>
-            </div>
-            <button class="switch" data-notif="comments" role="switch" aria-checked="true" aria-label="تعليقات" type="button"></button>
-          </div>
-          <div class="setting-row">
-            <div class="setting-row-info">
-              <strong>متابعون جدد</strong>
-              <span>عندما يتابعك مستخدم جديد</span>
-            </div>
-            <button class="switch" data-notif="follows" role="switch" aria-checked="true" aria-label="متابعون" type="button"></button>
-          </div>
-          <div class="setting-row">
-            <div class="setting-row-info">
-              <strong>رسائل الدردشة</strong>
-              <span>عند وصول رسالة جديدة</span>
-            </div>
-            <button class="switch" data-notif="messages" role="switch" aria-checked="true" aria-label="رسائل" type="button"></button>
-          </div>
-        </div>
-
-        <!-- الخصوصية -->
-        <div class="settings-group-title">
-          <i class="ph ph-lock-simple" aria-hidden="true"></i>
-          الخصوصية
-        </div>
-        <div class="settings-block">
-          <div class="setting-row">
-            <div class="setting-row-info">
-              <strong>ملف شخصي عام</strong>
-              <span>السماح للزوار بمشاهدة برومبتاتك</span>
-            </div>
-            <button class="switch" data-priv="public_profile" role="switch" aria-checked="true" aria-label="ملف شخصي عام" type="button"></button>
-          </div>
-          <div class="setting-row">
-            <div class="setting-row-info">
-              <strong>السماح بالرسائل</strong>
-              <span>استقبال رسائل من أي مستخدم</span>
-            </div>
-            <button class="switch" data-priv="allow_messages" role="switch" aria-checked="true" aria-label="السماح بالرسائل" type="button"></button>
-          </div>
-          <div class="setting-row">
-            <div class="setting-row-info">
-              <strong>إظهار الموقع الإلكتروني</strong>
-              <span>عرض الرابط في ملفك العام</span>
-            </div>
-            <button class="switch" data-priv="show_website" role="switch" aria-checked="true" aria-label="إظهار الموقع" type="button"></button>
-          </div>
-        </div>
-
-        <!-- الأمان -->
-        <div class="settings-group-title">
-          <i class="ph ph-shield-check" aria-hidden="true"></i>
-          الأمان
-        </div>
-        <div class="settings-block">
-          <div class="field">
-            <label for="setOldPassword">كلمة المرور الحالية</label>
-            <input class="input" id="setOldPassword" type="password" autocomplete="current-password">
-          </div>
-          <div class="field">
-            <label for="setNewPassword">كلمة المرور الجديدة</label>
-            <input class="input" id="setNewPassword" type="password" autocomplete="new-password" minlength="6">
-          </div>
-          <button class="btn btn-secondary" id="changePasswordBtn" type="button">
-            <i class="ph ph-lock-key" aria-hidden="true"></i>
-            <span>تحديث كلمة المرور</span>
-          </button>
-        </div>
-
-        <!-- خروج -->
-        <div class="settings-block settings-block--danger">
-          <div class="setting-row">
-            <div class="setting-row-info">
-              <strong>تسجيل الخروج</strong>
-              <span>الخروج من هذا الجهاز فقط</span>
-            </div>
-            <button class="btn btn-danger btn-sm" id="logoutBtn" type="button">
-              <i class="ph ph-sign-out" aria-hidden="true"></i>
-              <span>خروج</span>
-            </button>
           </div>
         </div>
 
