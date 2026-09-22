@@ -1,5 +1,55 @@
-Create a luxury 3D text logo spelling (افق] in a soft fluffy velvet / plush fabric style.
-⚫ rounded, smooth, inflated letterforms
-elegant, premium proportions
-realistic velvet / velour texture with visible micro-fibers
-⚫ dense, tactile fabric surface with depth matte soft-touch finish, no shine Color: rich premium pink, warm and soft Lighting: soft studio lighting, gentle highlights on fibers, smooth shadow falloff Background: transparent background (PNG, alpha channel) Camera & quality: front view, centered, slight macro feel, el, ultra high resolution, photorealistic liquid CGI, clean edges NEGATIVE PROMPT: plastic, rubber, matte, fabric, fur, velvet, metal, flatgradient, low-detail liquid, noise, grain, blur, background color, extra text, logos,marks
+<section class="tab-panel is-active" id="tab-home" data-tab="home">
+
+  <header class="feed-head">
+    <div class="feed-head-text">
+      <h1>الرئيسية</h1>
+      <p>أحدث البرومبتات من المبدعين العرب.</p>
+    </div>
+    <button class="btn btn-icon btn-secondary"
+            type="button"
+            onclick="App.refreshAll(true)"
+            aria-label="تحديث">
+      <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>
+    </button>
+  </header>
+
+  <button class="composer-trigger" type="button" onclick="Composer.open()" aria-label="شارك برومبتاً جديداً">
+    <img class="avatar avatar-sm" id="composerAvatar" src="" alt="">
+    <span class="composer-trigger-text">شارك برومبتاً جديداً…</span>
+    <span class="composer-trigger-icon" aria-hidden="true">
+      <i class="ph ph-plus"></i>
+    </span>
+  </button>
+
+  <div class="feed-toolbar">
+    <div class="sort-tabs" role="tablist" aria-label="ترتيب المنشورات">
+      <button class="sort-tab"
+              role="tab"
+              aria-selected="true"
+              data-sort="recent"
+              onclick="App.setSort('recent')"
+              type="button">
+        <i class="ph ph-clock" aria-hidden="true"></i>
+        <span>الأحدث</span>
+      </button>
+      <button class="sort-tab"
+              role="tab"
+              aria-selected="false"
+              data-sort="top"
+              onclick="App.setSort('top')"
+              type="button">
+        <i class="ph ph-fire" aria-hidden="true"></i>
+        <span>الأكثر رواجاً</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="filters" id="filters" role="tablist" aria-label="تصفية المنشورات"></div>
+
+  <div class="feed" id="homeFeed" aria-busy="true">
+    {% for i in range(6) %}
+      {% include 'partials/cards/skeleton.html' %}
+    {% endfor %}
+  </div>
+
+</section>
