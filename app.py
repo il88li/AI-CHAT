@@ -1,7 +1,7 @@
 """
 خَيال — منصة البرومبتات العربية
 Flask + PostgreSQL + تسجيل دخول محلي + استقرار إنتاجي
-v14.1 — Security + Notifications + Reports + Pagination
+v14.3 — Security + Notifications + Reports + Pagination + User Search + Related
 - CSRF protection على كل POST/PATCH/DELETE
 - Rate limiting على auth endpoints
 - SECRET_KEY صارم في الإنتاج
@@ -10,7 +10,8 @@ v14.1 — Security + Notifications + Reports + Pagination
 - Reports endpoints
 - Post edit endpoint
 - Pagination على user posts / followers / following
-- Auto-migration لعمود posts.updated_at (v14.1)
+- User search endpoint (/api/users/search)
+- Related posts endpoint (/api/posts/<pid>/related)
 """
 import os
 import re
@@ -159,9 +160,7 @@ def _is_local_mode():
 
 
 def _payload(u):
-    """
-    Serializes the current user for page render + auth endpoints.
-    """
+    """Serializes the current user for page render + auth endpoints."""
     if not u:
         return None
     d = u.to_dict()
@@ -584,7 +583,7 @@ def admin_db_migrate():
                     f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
                 ))
 
-            # ── v14.1: أعمدة جديدة لـ posts ──
+            # ── v14.1/v14.2: أعمدة جديدة لـ posts ──
             conn.execute(text(
                 "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
                 "updated_at TIMESTAMP DEFAULT NOW()"
@@ -592,6 +591,10 @@ def admin_db_migrate():
             conn.execute(text(
                 "UPDATE posts SET updated_at = created_at "
                 "WHERE updated_at IS NULL"
+            ))
+            conn.execute(text(
+                "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
+                "images TEXT"
             ))
 
             try:
@@ -722,6 +725,76 @@ def api_post(pid):
     else:
         d["is_owner"] = False
     return jsonify(d)
+
+
+@app.get("/api/posts/<int:pid>/related")
+def api_post_related(pid):
+    """v14.3 — Related posts for Post Detail page."""
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
+
+    limit = min(int(request.args.get("limit", 4)), 8)
+    seen = {pid}
+    out = []
+
+    # 1. Same author
+    same_author = Post.query.filter(
+        Post.author_id == post.author_id,
+        Post.id != pid
+    ).order_by(Post.id.desc()).limit(limit).all()
+    for p in same_author:
+        if p.id not in seen:
+            seen.add(p.id)
+            out.append(p)
+
+    # 2. Same model (if space)
+    if len(out) < limit and post.model:
+        same_model = Post.query.filter(
+            Post.model == post.model,
+            Post.id != pid,
+            ~Post.id.in_(seen)
+        ).order_by(Post.likes.desc()).limit(limit).all()
+        for p in same_model:
+            if p.id not in seen and len(out) < limit:
+                seen.add(p.id)
+                out.append(p)
+
+    # 3. Fallback — trending (if space)
+    if len(out) < limit:
+        fallback = Post.query.filter(
+            Post.id != pid,
+            ~Post.id.in_(seen)
+        ).order_by(Post.likes.desc()).limit(limit).all()
+        for p in fallback:
+            if p.id not in seen and len(out) < limit:
+                seen.add(p.id)
+                out.append(p)
+
+    me = current_user()
+    post_ids = [p.id for p in out]
+    liked_ids = set()
+    saved_ids = set()
+    if me and post_ids:
+        liked_rows = db.session.query(Like.post_id).filter(
+            Like.user_id == me.id, Like.post_id.in_(post_ids)
+        ).all()
+        liked_ids = {r[0] for r in liked_rows}
+        saved_rows = db.session.query(Save.post_id).filter(
+            Save.user_id == me.id, Save.post_id.in_(post_ids)
+        ).all()
+        saved_ids = {r[0] for r in saved_rows}
+
+    result = []
+    for p in out[:limit]:
+        d = p.to_dict()
+        d["author_data"] = p.author.to_dict()
+        d["liked"] = p.id in liked_ids
+        d["saved"] = p.id in saved_ids
+        d["is_owner"] = bool(me and me.id == p.author_id)
+        result.append(d)
+
+    return jsonify(result)
 
 
 @app.post("/api/posts")
@@ -1066,6 +1139,53 @@ def api_user_posts(uid):
     resp = jsonify(out)
     resp.headers["X-Has-More"] = "true" if len(posts) == limit else "false"
     return resp
+
+
+@app.get("/api/users/search")
+def api_users_search():
+    """v14.2 — Search users by name/username/handle."""
+    q = request.args.get("q", "").strip()
+    limit = min(int(request.args.get("limit", 20)), 50)
+    before_id = request.args.get("before_id")
+
+    if not q or len(q) < 2:
+        return jsonify({"items": [], "next_before": None})
+
+    like = f"%{q}%"
+    query = User.query.filter(
+        db.or_(
+            User.name.ilike(like),
+            User.username.ilike(like),
+            User.handle.ilike(like),
+        )
+    )
+
+    if before_id:
+        try:
+            query = query.filter(User.id < int(before_id))
+        except (ValueError, TypeError):
+            pass
+
+    query = query.order_by(User.followers.desc(), User.id.desc())
+    users = query.limit(limit).all()
+
+    me = current_user()
+    out = []
+    for u in users:
+        d = u.to_dict()
+        if me and me.id != u.id:
+            d["is_following"] = Follow.query.filter_by(
+                follower_id=me.id, following_id=u.id
+            ).first() is not None
+        else:
+            d["is_following"] = False
+        out.append(d)
+
+    last_id = users[-1].id if users else None
+    return jsonify({
+        "items": out,
+        "next_before": last_id if len(users) == limit else None,
+    })
 
 
 @app.get("/api/users/<int:uid>/followers")
@@ -1555,7 +1675,7 @@ def err_all(e):
 
 
 # ═══════════════════════════════════════════════════════════
-# تهيئة قاعدة البيانات + Auto-migration (v14.1)
+# تهيئة قاعدة البيانات + Auto-migration (v14.3)
 # ═══════════════════════════════════════════════════════════
 def init_db():
     with app.app_context():
@@ -1599,7 +1719,7 @@ def init_db():
                             f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
                         ))
 
-                    # ── v14.1: أعمدة جديدة لـ posts ──
+                    # ── v14.1/v14.2: أعمدة جديدة لـ posts ──
                     conn.execute(text(
                         "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
                         "updated_at TIMESTAMP DEFAULT NOW()"
@@ -1607,6 +1727,10 @@ def init_db():
                     conn.execute(text(
                         "UPDATE posts SET updated_at = created_at "
                         "WHERE updated_at IS NULL"
+                    ))
+                    conn.execute(text(
+                        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
+                        "images TEXT"
                     ))
 
                     try:
@@ -1633,7 +1757,7 @@ def init_db():
                     conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
                     conn.execute(text("UPDATE users SET preferences = '{}' WHERE preferences IS NULL"))
 
-                print("✅ Auto-migration v14.1: updated_at + الإشعارات والبلاغات جاهزة.")
+                print("✅ Auto-migration v14.3: updated_at + images + الإشعارات والبلاغات جاهزة.")
             except Exception as m_err:
                 print(f"⚠️  Auto-migration: {str(m_err)[:150]}")
 
