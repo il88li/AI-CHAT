@@ -1,79 +1,330 @@
-/* ═══════════════════════════════════════════════════════════════
-   LAYER: tokens — كل المتغيرات
-   لا قواعد هنا سوى تعريف المتغيرات على :root و [data-theme].
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   خَيال — Design Tokens v1.0
+   كل المتغيرات في مكان واحد. لا قيم خارج هذا الملف في أي مكان آخر.
+   ═══════════════════════════════════════════════════════════════════════ */
 @layer tokens {
 
-:root{
-  --font-sans:"Hajeen","IBM Plex Sans Arabic",system-ui,sans-serif;
-  --font-mono:"JetBrains Mono","IBM Plex Mono",ui-monospace,monospace;
-  --fs-1:clamp(11px,.72rem + .15vw,12px);--fs-2:clamp(13px,.82rem + .15vw,14px);
-  --fs-3:clamp(14px,.88rem + .2vw,15.5px);--fs-4:clamp(16px,.95rem + .3vw,18px);
-  --fs-5:clamp(18px,1.05rem + .5vw,22px);--fs-6:clamp(22px,1.25rem + .8vw,28px);
-  --fs-7:clamp(26px,1.5rem + 1.2vw,36px);--fs-8:clamp(32px,1.8rem + 2vw,52px);
-  --fs-9:clamp(40px,2.2rem + 3vw,72px);
-  --lh-tight:1.15;--lh-snug:1.35;--lh-normal:1.6;--lh-relaxed:1.75;
-  --ls-tight:-.02em;--ls-normal:0;--ls-wide:.02em;
-  --fw-regular:400;--fw-medium:500;--fw-semibold:600;--fw-bold:700;--fw-black:800;
-  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;
-  --sp-8:32px;--sp-10:40px;--sp-12:48px;--sp-16:64px;--sp-20:80px;--sp-24:96px;
-  --pad-x:clamp(16px,4vw,32px);--pad-y:clamp(32px,6vw,72px);
-  --container-max:1200px;--reading-max:680px;
-  --r-1:6px;--r-2:10px;--r-3:14px;--r-4:22px;--r-5:32px;--r-full:9999px;
-  --dur-1:120ms;--dur-2:200ms;--dur-3:280ms;--dur-4:420ms;
-  --ease-out:cubic-bezier(.22,1,.36,1);--ease-spring:cubic-bezier(.34,1.56,.64,1);
-  --ease-in:cubic-bezier(.4,0,1,1);--ease-clay:cubic-bezier(.34,1.4,.5,1);
-  --ease-squish:cubic-bezier(.25,1.8,.45,1);
-  --z-base:0;--z-content:1;--z-sticky:50;--z-nav:100;--z-dock:150;
-  --z-dropdown:200;--z-overlay:300;--z-sheet:400;--z-modal:500;--z-toast:600;--z-cmd:700;
-  --nav-h:52px;--dock-h:64px;--touch-min:44px;
-  --safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);
-  --safe-start:env(safe-area-inset-left,0px);--safe-end:env(safe-area-inset-right,0px);
-  --cy:#22D3EE;--vi:#8B5CF6;--ro:#FB7185;--am:#FBBF24;--em:#34D399;
-  --sk:#0EA5E9;--pk:#EC4899;--ink:#0A0A0F;--deep:#1E1E2A;
-  --sh-clay:0 2px 0 rgba(0,0,0,.04),0 6px 16px rgba(0,0,0,.1),0 16px 40px rgba(0,0,0,.08);
-  --sh-clay-up:0 4px 0 rgba(0,0,0,.05),0 12px 28px rgba(0,0,0,.14),0 24px 60px rgba(0,0,0,.12);
-  --sh-tabs:0 1px 2px rgba(0,0,0,.04), 0 0 0 1px rgba(0,0,0,.02) inset;
+/* ═══════════════════════════════════════════════
+   1. FONT FAMILIES
+   ═══════════════════════════════════════════════ */
+:root {
+  --font-arabic: "Hajeen", "IBM Plex Sans Arabic", system-ui, -apple-system, sans-serif;
+  --font-latin:  "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:   "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* الخط الوظيفي الموحّد — يستخدم العربي في RTL، اللاتيني في LTR */
+  --font-sans: var(--font-arabic);
 }
 
-:root,[data-theme="dark"]{
-  color-scheme:dark;
-  --n-0:#08080C;--n-1:#0E0E14;--n-2:#15151D;--n-3:#1D1D27;--n-4:#262633;
-  --n-5:#35354A;--n-6:#56566B;--n-7:#8A8A9C;--n-8:#B8B8C5;--n-9:#E8E8EE;--n-10:#FAFAFC;
-  --bg-0:var(--n-0);--bg-1:var(--n-1);--bg-2:var(--n-2);--bg-elev:var(--n-2);
-  --surface-1:rgba(255,255,255,.035);--surface-2:rgba(255,255,255,.06);--surface-3:rgba(255,255,255,.09);
-  --border-1:rgba(255,255,255,.07);--border-2:rgba(255,255,255,.12);--border-3:rgba(255,255,255,.2);
-  --fg-1:var(--n-10);--fg-2:var(--n-8);--fg-3:var(--n-7);--fg-4:var(--n-6);
-  --c-brand:#22D3EE;--c-brand-2:#8B5CF6;--c-brand-soft:rgba(34,211,238,.12);--c-brand-glow:rgba(34,211,238,.35);
-  --grad-brand:linear-gradient(135deg,#22D3EE 0%,#8B5CF6 100%);
-  --grad-brand-text:linear-gradient(120deg,#67E8F9 0%,#A78BFA 100%);
-  --c-success:#34D399;--c-success-soft:rgba(52,211,153,.12);
-  --c-warning:#FBBF24;--c-warning-soft:rgba(251,191,36,.12);
-  --c-danger:#FB7185;--c-danger-soft:rgba(251,113,133,.12);
-  --c-info:#60A5FA;--c-info-soft:rgba(96,165,250,.12);
-  --sh-1:0 1px 2px rgba(0,0,0,.3);--sh-2:0 4px 12px rgba(0,0,0,.32);
-  --sh-3:0 12px 32px rgba(0,0,0,.42);--sh-4:0 24px 64px rgba(0,0,0,.55);
-  --sh-brand:0 8px 28px rgba(34,211,238,.28);
-  --aurora-1:rgba(34,211,238,.42);--aurora-2:rgba(139,92,246,.38);--aurora-3:rgba(52,211,153,.18);
-  --sh-tabs:0 1px 2px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.03) inset;
+[dir="ltr"] {
+  --font-sans: var(--font-latin);
 }
 
-[data-theme="light"]{
-  color-scheme:light;
-  --n-0:#F7F7FA;--n-1:#FFFFFF;--n-2:#F2F2F7;--n-3:#E8E8EE;--n-4:#DDDDE5;
-  --n-5:#C7C7D2;--n-6:#9A9AAD;--n-7:#6E6E82;--n-8:#4A4A5E;--n-9:#1E1E2A;--n-10:#0A0A0F;
-  --bg-0:var(--n-0);--bg-1:var(--n-1);--bg-2:var(--n-2);--bg-elev:var(--n-1);
-  --surface-1:rgba(0,0,0,.04);--surface-2:rgba(0,0,0,.07);--surface-3:rgba(0,0,0,.11);
-  --border-1:rgba(0,0,0,.09);--border-2:rgba(0,0,0,.14);--border-3:rgba(0,0,0,.22);
-  --fg-1:var(--n-10);--fg-2:var(--n-8);--fg-3:var(--n-7);--fg-4:var(--n-6);
-  --grad-brand-text:linear-gradient(120deg,#0891B2 0%,#7C3AED 100%);
-  --aurora-1:rgba(34,211,238,.28);--aurora-2:rgba(139,92,246,.22);--aurora-3:rgba(52,211,153,.12);
-  --sh-1:0 1px 2px rgba(15,15,25,.06);--sh-2:0 4px 12px rgba(15,15,25,.08);
-  --sh-3:0 12px 32px rgba(15,15,25,.1);--sh-4:0 24px 64px rgba(15,15,25,.14);
-  --sh-brand:0 8px 28px rgba(34,211,238,.22);
-  --sh-clay:0 2px 0 rgba(15,15,25,.03),0 6px 16px rgba(15,15,25,.06),0 16px 40px rgba(15,15,25,.05);
-  --sh-clay-up:0 4px 0 rgba(15,15,25,.04),0 12px 28px rgba(15,15,25,.08),0 24px 60px rgba(15,15,25,.08);
-  --sh-tabs:0 1px 3px rgba(15,15,25,.06), 0 0 0 1px rgba(15,15,25,.02) inset;
+/* ═══════════════════════════════════════════════
+   2. FONT SIZE SCALE — Modular, ratio 1.25
+   ═══════════════════════════════════════════════ */
+:root {
+  --fs-1: 12px;   /* caption, hint, meta */
+  --fs-2: 14px;   /* body small, labels */
+  --fs-3: 16px;   /* body default */
+  --fs-4: 18px;   /* lead, subtitle */
+  --fs-5: 22px;   /* h4, card title */
+  --fs-6: 28px;   /* h3 */
+  --fs-7: 36px;   /* h2 */
+  --fs-8: 52px;   /* h1, hero */
+  --fs-9: 72px;   /* display (landing only) */
+}
+
+/* ═══════════════════════════════════════════════
+   3. LINE HEIGHT
+   ═══════════════════════════════════════════════ */
+:root {
+  --lh-tight:   1.15;   /* headings */
+  --lh-snug:    1.35;   /* UI text, buttons */
+  --lh-normal:  1.5;    /* short body */
+  --lh-relaxed: 1.7;    /* long body, prompts */
+}
+
+/* ═══════════════════════════════════════════════
+   4. LETTER SPACING
+   ═══════════════════════════════════════════════ */
+:root {
+  --ls-tight:   -0.02em;  /* large latin headings */
+  --ls-normal:   0;
+  --ls-wide:     0.02em;  /* uppercase labels */
+  --ls-eyebrow:  0.15em;  /* eyebrow text */
+}
+
+/* ═══════════════════════════════════════════════
+   5. FONT WEIGHT
+   ═══════════════════════════════════════════════ */
+:root {
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+  --fw-black:    800;
+}
+
+/* ═══════════════════════════════════════════════
+   6. SPACING — Base unit 8px, sub-unit 4px
+   ═══════════════════════════════════════════════ */
+:root {
+  --sp-0:  0;
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+  --sp-20: 80px;
+  --sp-24: 96px;
+
+  /* Page padding — يُضبط في 05-responsive.css */
+  --pad-x: 16px;
+  --pad-y: 40px;
+}
+
+/* ═══════════════════════════════════════════════
+   7. BORDER RADIUS
+   ═══════════════════════════════════════════════ */
+:root {
+  --r-1:    6px;
+  --r-2:   10px;
+  --r-3:   14px;
+  --r-4:   22px;
+  --r-5:   32px;
+  --r-full: 9999px;
+}
+
+/* ═══════════════════════════════════════════════
+   8. MOTION — Durations (ms)
+   ═══════════════════════════════════════════════ */
+:root {
+  --dur-1: 120ms;  /* hover, focus, active feedback */
+  --dur-2: 200ms;  /* tag, badge, toast, small */
+  --dur-3: 300ms;  /* modal, drawer, content */
+  --dur-4: 420ms;  /* page transition */
+  --dur-5: 600ms;  /* splash, hero entrance */
+}
+
+/* ═══════════════════════════════════════════════
+   9. MOTION — Easings (4 only)
+   ═══════════════════════════════════════════════ */
+:root {
+  --ease-out:    cubic-bezier(.22, 1, .36, 1);
+  --ease-in:     cubic-bezier(.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-clay:   cubic-bezier(.34, 1.4, .5, 1);
+}
+
+/* ═══════════════════════════════════════════════
+   10. Z-INDEX LAYERS (no random values elsewhere)
+   ═══════════════════════════════════════════════ */
+:root {
+  --z-base:     0;
+  --z-content:  1;
+  --z-sticky:  50;
+  --z-nav:    100;
+  --z-dock:   150;
+  --z-dropdown: 200;
+  --z-overlay:  300;
+  --z-sheet:    400;
+  --z-modal:    500;
+  --z-toast:    600;
+  --z-command:  700;
+  --z-lightbox: 800;
+}
+
+/* ═══════════════════════════════════════════════
+   11. LAYOUT
+   ═══════════════════════════════════════════════ */
+:root {
+  --container-max: 1200px;
+  --reading-max:   680px;
+  --nav-h:          56px;
+  --dock-h:         64px;
+  --touch-min:      44px;
+}
+
+/* ═══════════════════════════════════════════════
+   12. SAFE AREAS (WebView / notch)
+   ═══════════════════════════════════════════════ */
+:root {
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-start:  env(safe-area-inset-left, 0px);
+  --safe-end:    env(safe-area-inset-right, 0px);
+}
+
+/* ═══════════════════════════════════════════════
+   13. BRAND COLORS — raw palette
+   ═══════════════════════════════════════════════ */
+:root {
+  --brand-cyan:    #22D3EE;
+  --brand-violet:  #8B5CF6;
+  --brand-rose:    #FB7185;
+
+  --accent-amber:  #FBBF24;
+  --accent-emerald:#34D399;
+  --accent-sky:    #0EA5E9;
+  --accent-pink:   #EC4899;
+
+  --ink:           #0A0A0F;
+  --deep:          #1E1E2A;
+}
+
+/* ═══════════════════════════════════════════════
+   14. NEUTRALS — raw scale
+   ═══════════════════════════════════════════════ */
+:root {
+  --n-0:  #08080C;
+  --n-1:  #0E0E14;
+  --n-2:  #15151D;
+  --n-3:  #1D1D27;
+  --n-4:  #262633;
+  --n-5:  #35354A;
+  --n-6:  #56566B;
+  --n-7:  #8A8A9C;
+  --n-8:  #B8B8C5;
+  --n-9:  #E8E8EE;
+  --n-10: #FAFAFC;
+}
+
+/* ═══════════════════════════════════════════════
+   15. SEMANTIC COLORS — Dark theme (default)
+   ═══════════════════════════════════════════════ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Backgrounds */
+  --bg-0:    var(--n-0);   /* page background */
+  --bg-1:    var(--n-1);   /* cards */
+  --bg-2:    var(--n-2);   /* elevated surfaces */
+  --bg-elev: var(--n-2);   /* modals, drawers */
+
+  /* Surfaces (semi-transparent, adaptive) */
+  --surface-1: rgba(255, 255, 255, .035);
+  --surface-2: rgba(255, 255, 255, .06);
+  --surface-3: rgba(255, 255, 255, .09);
+
+  /* Borders */
+  --border-1: rgba(255, 255, 255, .07);
+  --border-2: rgba(255, 255, 255, .12);
+  --border-3: rgba(255, 255, 255, .20);
+
+  /* Foreground */
+  --fg-1: var(--n-10);   /* primary text */
+  --fg-2: var(--n-8);    /* secondary */
+  --fg-3: var(--n-7);    /* tertiary, hint */
+  --fg-4: var(--n-6);    /* disabled, meta */
+
+  /* Brand */
+  --c-brand:       var(--brand-cyan);
+  --c-brand-2:     var(--brand-violet);
+  --c-brand-soft:  color-mix(in srgb, var(--c-brand) 12%, transparent);
+  --c-brand-glow:  color-mix(in srgb, var(--c-brand) 35%, transparent);
+
+  /* Semantic */
+  --c-success:       var(--accent-emerald);
+  --c-success-soft:  color-mix(in srgb, var(--c-success) 12%, transparent);
+  --c-warning:       var(--accent-amber);
+  --c-warning-soft:  color-mix(in srgb, var(--c-warning) 12%, transparent);
+  --c-danger:        var(--brand-rose);
+  --c-danger-soft:   color-mix(in srgb, var(--c-danger) 12%, transparent);
+  --c-info:          #60A5FA;
+  --c-info-soft:     color-mix(in srgb, var(--c-info) 12%, transparent);
+
+  /* Gradients */
+  --grad-brand:      linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-violet) 100%);
+  --grad-brand-text: linear-gradient(120deg, #67E8F9 0%, #A78BFA 100%);
+
+  /* Shadows — 4 levels only */
+  --sh-1: 0 1px 2px rgba(0, 0, 0, .30);
+  --sh-2: 0 4px 12px rgba(0, 0, 0, .32);
+  --sh-3: 0 12px 32px rgba(0, 0, 0, .42);
+  --sh-4: 0 24px 64px rgba(0, 0, 0, .55);
+  --sh-brand: 0 8px 28px rgba(34, 211, 238, .28);
+
+  /* Aurora background */
+  --aurora-1: rgba(34, 211, 238, .42);
+  --aurora-2: rgba(139, 92, 246, .38);
+  --aurora-3: rgba(52, 211, 153, .18);
+}
+
+/* ═══════════════════════════════════════════════
+   16. SEMANTIC COLORS — Light theme
+   ═══════════════════════════════════════════════ */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-0:    #F7F7FA;
+  --bg-1:    #FFFFFF;
+  --bg-2:    #F2F2F7;
+  --bg-elev: #FFFFFF;
+
+  --surface-1: rgba(0, 0, 0, .04);
+  --surface-2: rgba(0, 0, 0, .07);
+  --surface-3: rgba(0, 0, 0, .11);
+
+  --border-1: rgba(0, 0, 0, .08);
+  --border-2: rgba(0, 0, 0, .14);
+  --border-3: rgba(0, 0, 0, .22);
+
+  --fg-1: #0A0A0F;
+  --fg-2: #4A4A5E;
+  --fg-3: #6E6E82;
+  --fg-4: #9A9AAD;
+
+  --c-brand:      #0891B2;
+  --c-brand-2:    #7C3AED;
+  --c-brand-soft: rgba(8, 145, 178, .10);
+  --c-brand-glow: rgba(8, 145, 178, .25);
+
+  --grad-brand:      linear-gradient(135deg, #0891B2 0%, #7C3AED 100%);
+  --grad-brand-text: linear-gradient(120deg, #0891B2 0%, #7C3AED 100%);
+
+  --sh-1: 0 1px 2px rgba(15, 15, 25, .06);
+  --sh-2: 0 4px 12px rgba(15, 15, 25, .08);
+  --sh-3: 0 12px 32px rgba(15, 15, 25, .10);
+  --sh-4: 0 24px 64px rgba(15, 15, 25, .14);
+  --sh-brand: 0 8px 28px rgba(8, 145, 178, .22);
+
+  --aurora-1: rgba(34, 211, 238, .22);
+  --aurora-2: rgba(139, 92, 246, .18);
+  --aurora-3: rgba(52, 211, 153, .10);
+}
+
+/* ═══════════════════════════════════════════════
+   17. COMPONENT TOKENS — derivatives
+   ═══════════════════════════════════════════════ */
+:root {
+  /* Focus ring */
+  --focus-ring:
+    0 0 0 2px var(--bg-0),
+    0 0 0 4px var(--c-brand),
+    0 0 0 8px color-mix(in srgb, var(--c-brand) 22%, transparent);
+
+  /* Input */
+  --input-h:       44px;
+  --input-h-sm:    36px;
+  --input-h-lg:    52px;
+
+  /* Button */
+  --btn-h:         40px;
+  --btn-h-sm:      34px;
+  --btn-h-lg:      50px;
+
+  /* Motion shortcuts */
+  --t-fast: var(--dur-1) var(--ease-out);
+  --t-base: var(--dur-2) var(--ease-out);
+  --t-slow: var(--dur-3) var(--ease-out);
+  --t-bounce: var(--dur-2) var(--ease-spring);
 }
 
 } /* end @layer tokens */
