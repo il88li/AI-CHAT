@@ -1,20 +1,20 @@
 <section class="tab-panel" id="tab-liked" data-tab="liked">
-  <div class="page-head">
-    <div class="page-head-info">
+
+  <header class="feed-head">
+    <div class="feed-head-text">
       <h1>المُعجَبة</h1>
       <p>كل ما وضعت عليه قلباً.</p>
     </div>
-    <span class="count-pill" id="likedCount" data-count="0" aria-live="polite" aria-atomic="true">
+    <span class="counter" id="likedCount" data-count="0" aria-live="polite" aria-atomic="true">
       <i class="ph ph-heart-fill" aria-hidden="true"></i>
       <span data-count-label>0</span>
     </span>
+  </header>
+
+  <div class="feed" id="likedFeed" aria-busy="true">
+    {% for i in range(3) %}
+      {% include 'partials/cards/skeleton.html' %}
+    {% endfor %}
   </div>
 
-  <div class="feed" id="likedFeed" aria-busy="false">
-    <div class="empty-block" data-empty-state hidden>
-      <i class="ph ph-heart" aria-hidden="true"></i>
-      <h4>لا توجد إعجابات بعد</h4>
-      <p>ابدأ بتصفح المنصة وضع قلبك على ما يعجبك.</p>
-    </div>
-  </div>
 </section>
