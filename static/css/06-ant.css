@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    06-ant.css — مبادئ Ant Design مطبّقة على نظام tokens الحالي
    RTL · Arabic-first · لا مكتبة خارجية · لا كسر للـ hooks
-   v15.1 — تبويبات مضغوطة + ضبط شامل للهواتف
+   v15.2 — تبويبات مضغوطة + ضبط شامل للهواتف + Override للبلوك القديم
    ═══════════════════════════════════════════════════════════════ */
 
 /* ─── 1. TOKENS ─ Ant-aligned scale ─ */
@@ -680,6 +680,143 @@ button.ant-stat-btn:hover{background:var(--surface-2)}
   .ant-stat-item span,
   .ant-stat-btn span{font-size:10px}
   .ant-statistic-divider{height:18px}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   13. OVERRIDE — إبطال البلوك القديم غير المُدرج في 04-views.css
+   القسم Settings v14.4 + Profile v14.5 (unlayered)
+   السبب: Specificity أعلى للقديم، لأن كليهما unlayered
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── 13.1 تنظيف الـ pill القديم على تبويبات الإعدادات ─── */
+.settings-tab.ant-tab {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  color: var(--ant-text-2);
+}
+.settings-tab.ant-tab:hover {
+  background: var(--ant-primary-bg);
+  color: var(--ant-primary);
+  box-shadow: none;
+}
+.settings-tab.ant-tab.is-active,
+.settings-tab.ant-tab[aria-selected="true"] {
+  background: var(--ant-primary-bg);
+  color: var(--ant-primary);
+  font-weight: 600;
+  border: none;
+  box-shadow: none;
+}
+
+/* ─── 13.2 إبطال الـ sticky القديم على حاوية التبويبات ─── */
+.settings-page .settings-tabs-wrap.ant-tabs-wrap {
+  position: sticky;
+  top: calc(var(--nav-h) + var(--safe-top));
+  z-index: 5;
+  background: color-mix(in srgb, var(--ant-bg-layout) 92%, transparent);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  padding: var(--ant-space-2) var(--ant-space-3) 0;
+  border-bottom: 1px solid var(--ant-border);
+  margin-bottom: var(--ant-space-3);
+}
+
+/* ─── 13.3 تبويبات البروفايل — إبطال نفس الـ pill ─── */
+.profile-tabs.ant-tabs-wrap .ant-tab {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  color: var(--ant-text-2);
+}
+.profile-tabs.ant-tabs-wrap .ant-tab:hover {
+  background: var(--ant-primary-bg);
+  color: var(--ant-primary);
+}
+.profile-tabs.ant-tabs-wrap .ant-tab[aria-selected="true"],
+.profile-tabs.ant-tabs-wrap .ant-tab.is-active {
+  background: var(--ant-primary-bg);
+  color: var(--ant-primary);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+/* ─── 13.4 فرض عمود واحد لبطاقات المنشورات داخل الإعدادات (موبايل) ─── */
+@media (max-width:820px){
+  .settings-page .feed,
+  .ant-content .feed,
+  .ant-panel .feed {
+    grid-template-columns: 1fr;
+    gap: var(--ant-space-3);
+  }
+}
+
+/* ─── 13.5 تنظيف البلوك القديم على hero profile/identity ─── */
+.ant-identity {
+  box-shadow: none;
+}
+.ant-identity .ant-identity-avatar {
+  border-radius: var(--ant-r-lg);
+}
+.ant-identity .ant-identity-avatar[data-frame="ring"] {
+  border-radius: 50%;
+}
+.ant-identity .ant-identity-avatar[data-frame="gradient"] {
+  border-radius: 50%;
+}
+.ant-identity .ant-identity-avatar[data-frame="neon"] {
+  border-radius: 50%;
+}
+.ant-identity .ant-identity-avatar[data-frame="double"] {
+  border-radius: var(--ant-r-lg);
+}
+.ant-identity .ant-identity-avatar[data-frame="polaroid"] {
+  border-radius: 4px;
+}
+.ant-identity .ant-identity-avatar[data-frame="glass"] {
+  border-radius: var(--ant-r-lg);
+}
+.ant-identity .ant-identity-avatar[data-frame="hex"] {
+  border-radius: 0;
+}
+.ant-identity .ant-identity-avatar[data-frame="none"] {
+  border-radius: var(--ant-r-lg);
+}
+
+/* ─── 13.6 profile-card — إبطال الظلال الثقيلة القديمة ─── */
+.ant-profile-card.profile-card,
+.ant-profile-card {
+  box-shadow: none;
+  border-radius: var(--ant-r-lg);
+}
+.ant-profile-card .profile-avatar {
+  border-radius: var(--ant-r-lg);
+}
+.ant-profile-card .profile-avatar[data-frame="ring"],
+.ant-profile-card .profile-avatar[data-frame="gradient"],
+.ant-profile-card .profile-avatar[data-frame="neon"] {
+  border-radius: 50%;
+}
+.ant-profile-card .profile-avatar[data-frame="hex"] {
+  border-radius: 0;
+}
+
+/* ─── 13.7 mobile — تأكيد على عدم وجود overflow أفقي ─── */
+@media (max-width:560px){
+  .ant-settings .settings-page {
+    overflow-x: clip;
+    max-width: 100%;
+  }
+  .ant-tabs-wrap {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
+  .ant-tab {
+    min-height: 30px;
+  }
+  .ant-settings .feed {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ─── Reduced motion ─ */
