@@ -1,0 +1,544 @@
+{% extends "base.html" %}
+{% block title %}Kitchen Sink · خَيال{% endblock %}
+
+{% block styles %}
+<style>
+.ks-section {
+  margin-block: var(--sp-16);
+  padding-block-end: var(--sp-10);
+  border-bottom: 1px solid var(--border-1);
+}
+.ks-section:last-child { border-bottom: none; }
+
+.ks-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  margin-block-end: var(--sp-6);
+}
+.ks-title h2 {
+  font-size: var(--fs-5);
+  font-weight: var(--fw-bold);
+}
+.ks-title span {
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+  color: var(--fg-3);
+}
+
+.ks-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--sp-3);
+}
+.ks-swatch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-3);
+}
+.ks-swatch-color {
+  height: 56px;
+  border-radius: var(--r-2);
+  border: 1px solid var(--border-1);
+}
+.ks-swatch-label {
+  font-size: var(--fs-1);
+  font-weight: var(--fw-semibold);
+  color: var(--fg-1);
+}
+.ks-swatch-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  direction: ltr;
+  text-align: start;
+}
+
+.ks-type-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border-1);
+}
+.ks-type-row:last-child { border-bottom: none; }
+.ks-type-label {
+  flex-shrink: 0;
+  width: 100px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  direction: ltr;
+  text-align: start;
+}
+
+.ks-space-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+}
+.ks-space-label {
+  flex-shrink: 0;
+  width: 80px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  direction: ltr;
+}
+.ks-space-bar {
+  height: 20px;
+  background: var(--c-brand);
+  border-radius: var(--r-1);
+  opacity: .8;
+}
+
+.ks-radius-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+}
+.ks-radius-box {
+  width: 88px;
+  height: 88px;
+  background: var(--grad-brand);
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-2);
+}
+
+.ks-shadow-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-6);
+}
+.ks-shadow-box {
+  height: 120px;
+  background: var(--bg-1);
+  border-radius: var(--r-3);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+  color: var(--fg-3);
+}
+
+.ks-motion-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--sp-4);
+}
+.ks-motion-card {
+  padding: var(--sp-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-3);
+  text-align: center;
+  cursor: pointer;
+  transition: transform var(--dur-3) var(--ease-spring),
+              background var(--dur-2) var(--ease-out);
+}
+.ks-motion-card:hover {
+  transform: translateY(-6px) scale(1.02);
+  background: var(--surface-2);
+}
+.ks-motion-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  margin-block-start: var(--sp-2);
+}
+
+.ks-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+}
+</style>
+{% endblock %}
+
+{% block body %}
+
+<a class="skip-link" href="#main">تخطّى إلى المحتوى</a>
+
+<main id="main" class="container" style="padding-block: var(--sp-16);">
+
+  <header style="margin-block-end: var(--sp-12);">
+    <div style="font-family: var(--font-mono); font-size: var(--fs-1); color: var(--c-brand); letter-spacing: var(--ls-eyebrow); text-transform: uppercase;">
+      Design System · v1.0
+    </div>
+    <h1 style="font-size: var(--fs-8); margin-block: var(--sp-3);">
+      Kitchen Sink
+    </h1>
+    <p style="color: var(--fg-2); font-size: var(--fs-4); max-width: 60ch;">
+      مرجع حيّ لكل توكنز ومكونات وطبقات نظام التصميم. أي تعديل مستقبلي
+      يجب أن يظهر أثره هنا أولاً.
+    </p>
+    <div class="ks-btn-row" style="margin-block-start: var(--sp-6);">
+      <button class="btn btn-secondary" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';">
+        <i class="ph ph-moon" aria-hidden="true"></i>
+        <span>تبديل الوضع</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ═══════════ 1. COLORS ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Brand Colors</h2>
+      <span>--brand-*</span>
+    </div>
+    <div class="ks-swatches">
+      <div class="ks-swatch">
+        <div class="ks-swatch-color" style="background: var(--brand-cyan);"></div>
+        <div class="ks-swatch-label">Cyan</div>
+        <div class="ks-swatch-value">--brand-cyan</div>
+      </div>
+      <div class="ks-swatch">
+        <div class="ks-swatch-color" style="background: var(--brand-violet);"></div>
+        <div class="ks-swatch-label">Violet</div>
+        <div class="ks-swatch-value">--brand-violet</div>
+      </div>
+      <div class="ks-swatch">
+        <div class="ks-swatch-color" style="background: var(--brand-rose);"></div>
+        <div class="ks-swatch-label">Rose</div>
+        <div class="ks-swatch-value">--brand-rose</div>
+      </div>
+      <div class="ks-swatch">
+        <div class="ks-swatch-color" style="background: var(--grad-brand);"></div>
+        <div class="ks-swatch-label">Gradient</div>
+        <div class="ks-swatch-value">--grad-brand</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Semantic Colors</h2>
+      <span>--c-*</span>
+    </div>
+    <div class="ks-swatches">
+      <div class="ks-swatch">
+        <div class="ks-swatch-color" style="background: var(--c-success);"></div>
+        <div class="ks-swatch-label">Success</div>
+        <div class="ks-swatch-value">--c-success</div>
+      </div>
+      <div class="ks-swatch">
+        <div class="ks-swatch-color" style="background: var(--c-warning);"></div>
+        <div class="ks-swatch-label">Warning</div>
+        <div class="ks-swatch-value">--c-warning</div>
+      </div>
+      <div class="ks-swatch">
+        <div class="ks-swatch-color" style="background: var(--c-danger);"></div>
+        <div class="ks-swatch-label">Danger</div>
+        <div class="ks-swatch-value">--c-danger</div>
+      </div>
+      <div class="ks-swatch">
+        <div class="ks-swatch-color" style="background: var(--c-info);"></div>
+        <div class="ks-swatch-label">Info</div>
+        <div class="ks-swatch-value">--c-info</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Neutral Scale</h2>
+      <span>--n-0 … --n-10</span>
+    </div>
+    <div class="ks-swatches">
+      {% for i in range(11) %}
+      <div class="ks-swatch">
+        <div class="ks-swatch-color" style="background: var(--n-{{ i }});"></div>
+        <div class="ks-swatch-label">n-{{ i }}</div>
+        <div class="ks-swatch-value">--n-{{ i }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- ═══════════ 2. TYPOGRAPHY ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Type Scale</h2>
+      <span>--fs-1 … --fs-9</span>
+    </div>
+    <div>
+      <div class="ks-type-row">
+        <span class="ks-type-label">--fs-9</span>
+        <span style="font-size: var(--fs-9); font-weight: var(--fw-black); line-height: 1;">خَيال</span>
+      </div>
+      <div class="ks-type-row">
+        <span class="ks-type-label">--fs-8</span>
+        <span style="font-size: var(--fs-8); font-weight: var(--fw-bold); line-height: 1;">خَيال</span>
+      </div>
+      <div class="ks-type-row">
+        <span class="ks-type-label">--fs-7</span>
+        <span style="font-size: var(--fs-7); font-weight: var(--fw-bold);">خَيال</span>
+      </div>
+      <div class="ks-type-row">
+        <span class="ks-type-label">--fs-6</span>
+        <span style="font-size: var(--fs-6); font-weight: var(--fw-bold);">خَيال</span>
+      </div>
+      <div class="ks-type-row">
+        <span class="ks-type-label">--fs-5</span>
+        <span style="font-size: var(--fs-5); font-weight: var(--fw-semibold);">خَيال</span>
+      </div>
+      <div class="ks-type-row">
+        <span class="ks-type-label">--fs-4</span>
+        <span style="font-size: var(--fs-4);">خَيال — النص الأساسي الكبير</span>
+      </div>
+      <div class="ks-type-row">
+        <span class="ks-type-label">--fs-3</span>
+        <span style="font-size: var(--fs-3);">خَيال — نص الواجهة الافتراضي</span>
+      </div>
+      <div class="ks-type-row">
+        <span class="ks-type-label">--fs-2</span>
+        <span style="font-size: var(--fs-2);">خَيال — نص صغير</span>
+      </div>
+      <div class="ks-type-row">
+        <span class="ks-type-label">--fs-1</span>
+        <span style="font-size: var(--fs-1);">خَيال — تسمية صغيرة</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 3. SPACING ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Spacing Scale</h2>
+      <span>8px base · 4px sub-unit</span>
+    </div>
+    <div>
+      {% for name, val in [('1','4'),('2','8'),('3','12'),('4','16'),('5','20'),('6','24'),('8','32'),('10','40'),('12','48'),('16','64'),('20','80'),('24','96')] %}
+      <div class="ks-space-row">
+        <span class="ks-space-label">--sp-{{ name }}</span>
+        <div class="ks-space-bar" style="width: {{ val }}px;"></div>
+        <span style="font-family: var(--font-mono); font-size: 11px; color: var(--fg-3);">{{ val }}px</span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- ═══════════ 4. RADIUS ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Border Radius</h2>
+      <span>--r-1 … --r-full</span>
+    </div>
+    <div class="ks-radius-row">
+      <div class="ks-radius-box" style="border-radius: var(--r-1);">r-1</div>
+      <div class="ks-radius-box" style="border-radius: var(--r-2);">r-2</div>
+      <div class="ks-radius-box" style="border-radius: var(--r-3);">r-3</div>
+      <div class="ks-radius-box" style="border-radius: var(--r-4);">r-4</div>
+      <div class="ks-radius-box" style="border-radius: var(--r-5);">r-5</div>
+      <div class="ks-radius-box" style="border-radius: var(--r-full);">full</div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 5. SHADOWS ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Elevation</h2>
+      <span>--sh-1 … --sh-4</span>
+    </div>
+    <div class="ks-shadow-row">
+      <div class="ks-shadow-box" style="box-shadow: var(--sh-1);">--sh-1</div>
+      <div class="ks-shadow-box" style="box-shadow: var(--sh-2);">--sh-2</div>
+      <div class="ks-shadow-box" style="box-shadow: var(--sh-3);">--sh-3</div>
+      <div class="ks-shadow-box" style="box-shadow: var(--sh-4);">--sh-4</div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 6. MOTION ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Motion</h2>
+      <span>hover للاختبار</span>
+    </div>
+    <div class="ks-motion-row">
+      <div class="ks-motion-card">
+        <i class="ph ph-lightning" style="font-size: 24px;"></i>
+        <div class="ks-motion-label">--ease-out</div>
+      </div>
+      <div class="ks-motion-card" style="transition-timing-function: var(--ease-spring);">
+        <i class="ph ph-lightning" style="font-size: 24px;"></i>
+        <div class="ks-motion-label">--ease-spring</div>
+      </div>
+      <div class="ks-motion-card" style="transition-timing-function: var(--ease-clay);">
+        <i class="ph ph-lightning" style="font-size: 24px;"></i>
+        <div class="ks-motion-label">--ease-clay</div>
+      </div>
+      <div class="ks-motion-card" style="transition-duration: var(--dur-4);">
+        <i class="ph ph-lightning" style="font-size: 24px;"></i>
+        <div class="ks-motion-label">--dur-4</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 7. BUTTONS ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Buttons</h2>
+      <span>variants × sizes × states</span>
+    </div>
+
+    <h4 style="margin-block-end: var(--sp-3);">Variants</h4>
+    <div class="ks-btn-row">
+      <button class="btn btn-primary" type="button"><i class="ph ph-sparkle"></i> أساسي</button>
+      <button class="btn btn-secondary" type="button"><i class="ph ph-user"></i> ثانوي</button>
+      <button class="btn btn-ghost" type="button"><i class="ph ph-x"></i> شبح</button>
+      <button class="btn btn-danger" type="button"><i class="ph ph-trash"></i> خطر</button>
+    </div>
+
+    <h4 style="margin-block: var(--sp-8) var(--sp-3);">Sizes</h4>
+    <div class="ks-btn-row">
+      <button class="btn btn-primary btn-sm" type="button">صغير</button>
+      <button class="btn btn-primary" type="button">افتراضي</button>
+      <button class="btn btn-primary btn-lg" type="button">كبير</button>
+    </div>
+
+    <h4 style="margin-block: var(--sp-8) var(--sp-3);">States</h4>
+    <div class="ks-btn-row">
+      <button class="btn btn-primary" type="button">افتراضي</button>
+      <button class="btn btn-primary" type="button" disabled>معطّل</button>
+      <button class="btn btn-primary" type="button" aria-busy="true">يُحمَّل</button>
+    </div>
+
+    <h4 style="margin-block: var(--sp-8) var(--sp-3);">Icon buttons</h4>
+    <div class="ks-btn-row">
+      <button class="btn btn-icon btn-primary" type="button" aria-label="إضافة"><i class="ph ph-plus"></i></button>
+      <button class="btn btn-icon btn-secondary" type="button" aria-label="حفظ"><i class="ph ph-bookmark-simple"></i></button>
+      <button class="btn btn-icon btn-ghost" type="button" aria-label="إغلاق"><i class="ph ph-x"></i></button>
+    </div>
+  </section>
+
+  <!-- ═══════════ 8. INPUTS ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Inputs</h2>
+      <span>field · input · textarea</span>
+    </div>
+
+    <div class="stack" style="max-width: 480px;">
+      <div class="field">
+        <label for="ks-1">الاسم الكامل</label>
+        <input id="ks-1" class="input" type="text" placeholder="اكتب اسمك…">
+      </div>
+      <div class="field">
+        <label for="ks-2">البريد الإلكتروني</label>
+        <input id="ks-2" class="input" type="email" placeholder="you@example.com">
+        <div class="field-hint">لن نشاركه مع أي طرف ثالث.</div>
+      </div>
+      <div class="field">
+        <label for="ks-3">حقل خاطئ</label>
+        <input id="ks-3" class="input" type="text" value="قيمة غير صحيحة" aria-invalid="true">
+        <div class="field-hint" style="color: var(--c-danger);">هذه القيمة غير مقبولة.</div>
+      </div>
+      <div class="field">
+        <label for="ks-4">معطّل</label>
+        <input id="ks-4" class="input" type="text" value="لا يمكن التعديل" disabled>
+      </div>
+      <div class="field">
+        <label for="ks-5">النبذة</label>
+        <textarea id="ks-5" class="textarea" rows="4" placeholder="اكتب نبذة…"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 9. CARDS ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Surfaces</h2>
+      <span>card · elevation levels</span>
+    </div>
+    <div class="grid-auto" style="max-width: 720px;">
+      <div class="card" style="padding: var(--sp-5); background: var(--surface-1); border-radius: var(--r-4);">
+        <h4 style="font-size: var(--fs-4);">بطاقة أساسية</h4>
+        <p style="color: var(--fg-2); font-size: var(--fs-2); margin-block-start: var(--sp-2);">
+          سطح شبه شفاف مع حدّ خفيف — الاستخدام الافتراضي.
+        </p>
+      </div>
+      <div class="card" style="padding: var(--sp-5); background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: var(--r-4); box-shadow: var(--sh-2);">
+        <h4 style="font-size: var(--fs-4);">بطاقة مرتفعة</h4>
+        <p style="color: var(--fg-2); font-size: var(--fs-2); margin-block-start: var(--sp-2);">
+          تُستخدم للـ modals و dropdowns.
+        </p>
+      </div>
+      <div class="card" style="padding: var(--sp-5); background: var(--grad-brand); color: var(--ink); border-radius: var(--r-4); box-shadow: var(--sh-brand);">
+        <h4 style="font-size: var(--fs-4); color: var(--ink);">بطاقة مميزة</h4>
+        <p style="font-size: var(--fs-2); margin-block-start: var(--sp-2); opacity: .85;">
+          للعناصر التي تستحق انتباهاً خاصاً.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 10. A11Y UTILITIES ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Utilities</h2>
+      <span>text · sr-only · skip-link</span>
+    </div>
+
+    <div class="stack">
+      <p class="text-truncate" style="max-width: 320px;">
+        نص طويل جداً سيتم قصه بـ ellipsis عند الوصول إلى حد العرض الأقصى للعنصر
+      </p>
+      <p class="text-clamp-2" style="max-width: 400px; color: var(--fg-2);">
+        نص من سطرين كاملين مع قص تلقائي عند السطر الثالث — يُستخدم في البطاقات
+        لضمان ارتفاع موحّد. النص الزائد يُستبدل بثلاث نقاط في نهاية السطر الثاني.
+      </p>
+      <div>
+        <span class="sr-only">هذا النص مخفي عن العين لكن يقرؤه قارئ الشاشة</span>
+        <span style="color: var(--fg-3); font-size: var(--fs-2);">
+          ← يوجد عنصر sr-only في هذه الفقرة (افحصه بـ screen reader)
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 11. Z-INDEX ═══════════ -->
+  <section class="ks-section">
+    <div class="ks-title">
+      <h2>Z-Index Layers</h2>
+      <span>10 layers only</span>
+    </div>
+    <div style="display: grid; gap: var(--sp-2); max-width: 480px; font-family: var(--font-mono); font-size: var(--fs-2);">
+      <div style="display: flex; justify-content: space-between; padding: var(--sp-3); background: var(--surface-1); border-radius: var(--r-2);">
+        <span>--z-nav</span><span style="color: var(--c-brand);">100</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: var(--sp-3); background: var(--surface-1); border-radius: var(--r-2);">
+        <span>--z-dock</span><span style="color: var(--c-brand);">150</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: var(--sp-3); background: var(--surface-1); border-radius: var(--r-2);">
+        <span>--z-dropdown</span><span style="color: var(--c-brand);">200</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: var(--sp-3); background: var(--surface-1); border-radius: var(--r-2);">
+        <span>--z-overlay</span><span style="color: var(--c-brand);">300</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: var(--sp-3); background: var(--surface-1); border-radius: var(--r-2);">
+        <span>--z-sheet</span><span style="color: var(--c-brand);">400</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: var(--sp-3); background: var(--surface-1); border-radius: var(--r-2);">
+        <span>--z-modal</span><span style="color: var(--c-brand);">500</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: var(--sp-3); background: var(--surface-1); border-radius: var(--r-2);">
+        <span>--z-toast</span><span style="color: var(--c-brand);">600</span>
+      </div>
+    </div>
+  </section>
+
+  <footer style="padding-block: var(--sp-8); text-align: center; color: var(--fg-3); font-size: var(--fs-2);">
+    خَيال Design System v1.0 — كل توكنز في مكان واحد.
+  </footer>
+
+</main>
+{% endblock %}
