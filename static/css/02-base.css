@@ -1,0 +1,82 @@
+/* ═══════════════════════════════════════════════════════════════
+   LAYER: base — Reset · Typography · Primitives · Focus · Aurora · Keyframes
+   ═══════════════════════════════════════════════════════════════ */
+@layer base {
+
+/* ─── 1. RESET ─── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none !important}
+html{-webkit-text-size-adjust:100%;overflow-x:clip;overscroll-behavior-y:none;height:100%}
+body{
+  font-family:var(--font-sans);font-size:var(--fs-3);
+  line-height:var(--lh-normal);color:var(--fg-1);background:var(--bg-0);
+  min-height:100dvh;overflow-x:clip;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;-webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;user-select:none;
+  transition:background var(--dur-3) var(--ease-out),color var(--dur-3) var(--ease-out);
+}
+input,textarea,select,[contenteditable]{-webkit-user-select:auto;user-select:auto}
+button,input,textarea,select{font:inherit;color:inherit;max-width:100%;background:none;border:none}
+button{cursor:pointer;transition:transform var(--dur-1) var(--ease-out)}
+button:active:not(:disabled){transform:scale(.94) translateY(1px);transition-duration:60ms}
+button:disabled{cursor:not-allowed}
+a{color:inherit;text-decoration:none}
+img,svg,video{display:block;max-width:100%;height:auto}
+ul,ol{list-style:none}
+:focus{outline:none}
+::selection{background:color-mix(in srgb,var(--c-brand) 30%,transparent);color:var(--fg-1)}
+::placeholder{color:var(--fg-4);opacity:1}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:9999px;border:3px solid transparent;background-clip:padding-box}
+
+/* ─── 2. TYPOGRAPHY ─── */
+h1,h2,h3,h4,h5,h6{font-family:var(--font-sans);font-weight:var(--fw-bold);line-height:var(--lh-tight);letter-spacing:var(--ls-tight);text-wrap:balance}
+h1{font-size:var(--fs-8)}h2{font-size:var(--fs-7)}h3{font-size:var(--fs-6)}h4{font-size:var(--fs-5)}
+p{text-wrap:pretty;max-width:var(--reading-max)}
+code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
+
+/* ─── 3. LAYOUT PRIMITIVES ─── */
+.container{width:100%;max-width:var(--container-max);margin-inline:auto;padding-inline:var(--pad-x)}
+.stack>*+*{margin-block-start:var(--sp-4)}
+.stack-sm>*+*{margin-block-start:var(--sp-2)}
+.stack-lg>*+*{margin-block-start:var(--sp-6)}
+.cluster{display:flex;flex-wrap:wrap;gap:var(--sp-3);align-items:center}
+.cluster-between{display:flex;flex-wrap:wrap;gap:var(--sp-3);align-items:center;justify-content:space-between}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* ─── 4. FOCUS ─── */
+:where(a,button,input,textarea,select,[tabindex]):focus-visible{
+  outline:none;border-radius:var(--r-2);transition:none;
+  box-shadow:0 0 0 2px var(--bg-0),0 0 0 4px var(--c-brand),0 0 0 8px color-mix(in srgb,var(--c-brand) 22%,transparent);
+}
+
+/* ─── 5. AURORA ─── */
+.aurora{position:fixed;inset:0;z-index:var(--z-base);pointer-events:none;overflow:hidden;contain:strict}
+.aurora::before,.aurora::after{content:'';position:absolute;border-radius:50%;filter:blur(90px);opacity:.55;will-change:transform}
+.aurora::before{
+  width:min(60vw,720px);height:min(60vw,720px);top:-20vw;inset-inline-end:-10vw;
+  background:radial-gradient(circle,var(--aurora-1),transparent 65%);animation:aurora-a 22s ease-in-out infinite;
+}
+.aurora::after{
+  width:min(55vw,680px);height:min(55vw,680px);bottom:-22vw;inset-inline-start:-14vw;
+  background:radial-gradient(circle,var(--aurora-2),transparent 65%);animation:aurora-b 26s ease-in-out infinite reverse;
+}
+.aurora-mid{
+  position:absolute;width:min(40vw,520px);height:min(40vw,520px);top:35%;inset-inline-start:30%;
+  border-radius:50%;filter:blur(110px);opacity:.28;
+  background:radial-gradient(circle,var(--aurora-3),transparent 65%);animation:aurora-a 30s ease-in-out infinite;
+}
+
+/* ─── 6. SHARED KEYFRAMES ─── */
+@keyframes aurora-a{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-5vw,3vw) scale(1.08)}}
+@keyframes aurora-b{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(4vw,-3vw) scale(1.06)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes slide-up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fade-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes enter-in{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+} /* end @layer base */
