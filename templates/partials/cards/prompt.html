@@ -36,6 +36,44 @@
         type="button">
         <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
       </button>
+
+      <!-- قائمة التحكم -->
+      <div class="prompt-menu-wrap">
+        <button
+          class="float-btn prompt-menu-btn"
+          data-action="menu"
+          aria-label="المزيد"
+          aria-haspopup="true"
+          aria-expanded="false"
+          onclick="Post.toggleMenu(this, event)"
+          type="button">
+          <i class="ph ph-dots-three" aria-hidden="true"></i>
+        </button>
+        <div class="prompt-menu" role="menu" hidden>
+          <button role="menuitem" type="button" onclick="Post.share({{ post.id }})">
+            <i class="ph ph-share-network" aria-hidden="true"></i>
+            <span>مشاركة</span>
+          </button>
+          <button role="menuitem" type="button" onclick="Post.copy('{{ post.id }}', this)">
+            <i class="ph ph-copy" aria-hidden="true"></i>
+            <span>نسخ البرومبت</span>
+          </button>
+          {% if post.is_owner %}
+          <button role="menuitem" type="button" onclick="Post.edit({{ post.id }})">
+            <i class="ph ph-pencil-simple" aria-hidden="true"></i>
+            <span>تعديل</span>
+          </button>
+          <button role="menuitem" type="button" class="menu-danger" onclick="Post.delete({{ post.id }})">
+            <i class="ph ph-trash" aria-hidden="true"></i>
+            <span>حذف</span>
+          </button>
+          {% endif %}
+          <button role="menuitem" type="button" onclick="Post.report({{ post.id }})">
+            <i class="ph ph-flag" aria-hidden="true"></i>
+            <span>إبلاغ</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
