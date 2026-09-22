@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v19.0 (stable)
+   خَيال — app.js v21.2
    CSRF · FollowersDrawer · NotificationsLoader · ConfirmModal · ReportModal
    · Post.edit · Post.delete modal · Post.report modal · ProfileView overlay
+   · Settings 5-tab (profile / content / notifications / privacy / account)
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -15,7 +16,7 @@
     NET_CHECK_MS: 8000,
     NET_PING_TIMEOUT: 3000,
     NOTIF_POLL_MS: 30000,
-    BUILD: '19.0',
+    BUILD: '21.2',
   };
 
   const S = {
@@ -1730,7 +1731,7 @@
     _openFollowers(type) { if (this.current) Drawers.openFollowers(this.current.id, type); },
   };
 
-  /* ═══════════ PROFILE (tab-based, for settings view) ═══════════ */
+  /* ═══════════ PROFILE (tab-based) ═══════════ */
   const Profile = {
     current: null, _tabsBound: false,
     async load(userId) {
@@ -1860,7 +1861,7 @@
   }
 
   const Settings = {
-    view: null, section: 'posts', postsLoaded: false, dirty: false,
+    view: null, section: 'profile', postsLoaded: false, dirty: false,
     _closingPromise: null, _flashHero: null, _flashTimer: null,
     state: { cover: 'aurora', avatar_frame: 'ring', accent_color: '#22D3EE', card_style: 'glass', name: '', handle: '', avatar: '', bio: '', website: '', pronouns: '', preferences: null },
 
@@ -1992,8 +1993,9 @@
         });
       });
 
+      // ✅ v21.2 — stat "posts" leads to Content tab (was: posts)
       this.view.querySelectorAll('[data-stat="posts"]').forEach(btn => {
-        btn.addEventListener('click', () => self.switchSection('posts'));
+        btn.addEventListener('click', () => self.switchSection('content'));
       });
 
       const chg = document.getElementById('changePasswordBtn');
@@ -2208,15 +2210,30 @@
       } else set('aboutJoined', '—');
     },
 
+    // ✅ v21.2 — expanded renderAccount (includes account info table)
     renderAccount(u) {
       const av = document.getElementById('accountIdentityAvatar');
       if (av) U.safeAvatar(av, u.avatar);
+
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+      // Mini identity card
       set('accountIdentityName', u.name || '—');
       set('accountIdentityHandle', u.handle || '@—');
       set('accountIdentityEmail', u.email || '—');
       const badge = document.getElementById('accountIdentityBadge');
       if (badge) badge.hidden = !u.verified;
+
+      // Info table (new)
+      set('accountInfoName', u.name || '—');
+      set('accountInfoHandle', u.handle || '—');
+      set('accountInfoEmail', u.email || '—');
+      if (u.created_at) {
+        const d = new Date(u.created_at);
+        set('accountInfoJoined', d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' }));
+      } else {
+        set('accountInfoJoined', '—');
+      }
     },
 
     async loadUserPosts() {
@@ -2564,6 +2581,14 @@
       document.querySelectorAll('button[onclick*="Auth.open"]').forEach(b => {
         b.removeAttribute('onclick');
         b.addEventListener('click', () => Auth.open('register'));
+      });
+
+      // v21.0 — landing CTA actions
+      document.querySelectorAll('[data-action="landing-cta-register"]').forEach(b => {
+        b.addEventListener('click', () => Auth.open('register'));
+      });
+      document.querySelectorAll('[data-action="landing-cta-preview"]').forEach(b => {
+        b.addEventListener('click', () => this.previewFeed());
       });
     },
 
