@@ -34,7 +34,12 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/@phosphor-icons/web@2.1.1" defer></script>
 
-<link rel="stylesheet" href="/static/style.css?v=14.3">
+<!-- Design System — طبقات CSS بالترتيب الصحيح -->
+<link rel="stylesheet" href="/static/css/01-tokens.css?v=14.3">
+<link rel="stylesheet" href="/static/css/02-base.css?v=14.3">
+<link rel="stylesheet" href="/static/css/03-components.css?v=14.3">
+<link rel="stylesheet" href="/static/css/04-views.css?v=14.3">
+<link rel="stylesheet" href="/static/css/05-responsive.css?v=14.3">
 {% block styles %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
