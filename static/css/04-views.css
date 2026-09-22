@@ -1,9 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — Views Layer v21.2
+   خَيال — Views Layer v21.3
    Nav · Dock · Tab panels · Hero · Sections · Bento · Collections
    Auth · Composer · Chat · Profile · Settings · Comments drawer
    Install banner · Net bar · View overlay · ProfileView overlay
-   Landing · Feed · Explore · Liked · Saved · Settings 5-tab
+   Landing · Feed · Explore · Liked · Saved · Settings 5-tab · Search
    ═══════════════════════════════════════════════════════════════════════ */
 @layer views {
 
@@ -928,7 +928,6 @@ button.pv-stat:focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg-0),0 0 0
   .pv-hero,.pv-icon-btn,.pv-follow-btn,.pv-post,.pv-post>img,.pv-stat,
   .pv-skeleton-block,.pv-skeleton-line{
     animation:none !important;transition:none !important;transform:none !important;
-
   }
 }
 [data-theme="light"] .pv-icon-btn{background:rgba(255,255,255,.72);color:#0A0A0F;border-color:rgba(0,0,0,.08)}
@@ -940,6 +939,7 @@ button.pv-stat:focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg-0),0 0 0
    v19.0 — Fixes & New Components
    WebView-safe overrides · Followers drawer · Notifications rows
    · Modal small · Report modal · Composer edit mode · Dock badge
+   يُضاف في نهاية 04-views.css (unlayered)
    ═══════════════════════════════════════════════════════════════════════ */
 
 /* ─── 1. WebView-safe overrides (no vh/vw in layout) ─── */
@@ -1320,7 +1320,6 @@ body.composer-editing .view-overlay-head h2::after {
   gap: var(--sp-5);
 }
 
-/* Eyebrow */
 .lp-hero-eyebrow {
   display: inline-flex;
   align-items: center;
@@ -1347,7 +1346,6 @@ body.composer-editing .view-overlay-head h2::after {
   animation: pulse 2s ease-in-out infinite;
 }
 
-/* Title */
 .lp-hero-title {
   margin: 0;
   font-size: clamp(32px, 7%, 72px);
@@ -1374,7 +1372,6 @@ body.composer-editing .view-overlay-head h2::after {
   color: var(--fg-2);
 }
 
-/* Lede */
 .lp-hero-lede {
   max-width: 56ch;
   margin: 0;
@@ -1385,7 +1382,6 @@ body.composer-editing .view-overlay-head h2::after {
   animation: slide-up 1s var(--ease-clay) .2s backwards;
 }
 
-/* CTA */
 .lp-hero-cta {
   display: flex;
   gap: var(--sp-3);
@@ -1404,7 +1400,6 @@ body.composer-editing .view-overlay-head h2::after {
   font-size: var(--fs-3);
 }
 
-/* Trust indicators */
 .lp-hero-trust {
   display: flex;
   align-items: center;
@@ -1445,7 +1440,6 @@ body.composer-editing .view-overlay-head h2::after {
   background: var(--border-2);
 }
 
-/* Preview grid */
 .lp-hero-preview {
   position: relative;
   width: 100%;
@@ -1509,10 +1503,7 @@ body.composer-editing .view-overlay-head h2::after {
   .lp-preview-a { grid-column: span 3; grid-row: span 2; }
   .lp-preview-b { grid-column: span 3; }
   .lp-preview-c { grid-column: span 3; }
-  .lp-preview-d {
-    display: block;
-    grid-column: span 3;
-  }
+  .lp-preview-d { display: block; grid-column: span 3; }
 }
 
 /* ─── 3. SECTIONS ─── */
@@ -1602,10 +1593,9 @@ body.composer-editing .view-overlay-head h2::after {
   background: var(--surface-1);
   border: 1px solid var(--border-1);
   border-radius: var(--r-4);
-  transition:
-    border-color var(--dur-3) var(--ease-out),
-    transform var(--dur-3) var(--ease-clay),
-    box-shadow var(--dur-3) var(--ease-out);
+  transition: border-color var(--dur-3) var(--ease-out),
+              transform var(--dur-3) var(--ease-clay),
+              box-shadow var(--dur-3) var(--ease-out);
 }
 
 .lp-prop:hover {
@@ -1667,9 +1657,8 @@ body.composer-editing .view-overlay-head h2::after {
   border: 1px solid var(--border-1);
   border-radius: var(--r-4);
   position: relative;
-  transition:
-    border-color var(--dur-3) var(--ease-out),
-    background var(--dur-3) var(--ease-out);
+  transition: border-color var(--dur-3) var(--ease-out),
+              background var(--dur-3) var(--ease-out);
 }
 
 .lp-step:hover {
@@ -1725,10 +1714,9 @@ body.composer-editing .view-overlay-head h2::after {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background:
-    radial-gradient(ellipse 60% 80% at 50% 50%,
-      color-mix(in srgb, var(--c-brand) 22%, transparent),
-      transparent 60%);
+  background: radial-gradient(ellipse 60% 80% at 50% 50%,
+              color-mix(in srgb, var(--c-brand) 22%, transparent),
+              transparent 60%);
   pointer-events: none;
 }
 
@@ -1915,8 +1903,8 @@ body.composer-editing .view-overlay-head h2::after {
 /* ─── 11. LIGHT MODE tweaks ─── */
 [data-theme="light"] .lp-cta::before {
   background: radial-gradient(ellipse 60% 80% at 50% 50%,
-    color-mix(in srgb, var(--c-brand) 15%, transparent),
-    transparent 60%);
+              color-mix(in srgb, var(--c-brand) 15%, transparent),
+              transparent 60%);
 }
 [data-theme="light"] .lp-preview-card > img { opacity: .9; }
 
@@ -1973,11 +1961,10 @@ body.composer-editing .view-overlay-head h2::after {
   text-align: start;
   font-family: inherit;
   color: inherit;
-  transition:
-    background var(--dur-2) var(--ease-out),
-    border-color var(--dur-2) var(--ease-out),
-    transform var(--dur-2) var(--ease-clay),
-    box-shadow var(--dur-2) var(--ease-out);
+  transition: background var(--dur-2) var(--ease-out),
+              border-color var(--dur-2) var(--ease-out),
+              transform var(--dur-2) var(--ease-clay),
+              box-shadow var(--dur-2) var(--ease-out);
 }
 
 .composer-trigger:hover {
@@ -2068,9 +2055,8 @@ body.composer-editing .view-overlay-head h2::after {
   overflow: hidden;
   isolation: isolate;
   background: linear-gradient(135deg, var(--c1, var(--c-brand)) 0%, var(--c2, var(--c-brand-2)) 100%);
-  transition:
-    transform var(--dur-3) var(--ease-clay),
-    box-shadow var(--dur-3) var(--ease-out);
+  transition: transform var(--dur-3) var(--ease-clay),
+              box-shadow var(--dur-3) var(--ease-out);
 }
 
 .collection::after {
@@ -2321,4 +2307,363 @@ body.composer-editing .view-overlay-head h2::after {
     height: 44px;
     border-radius: 12px;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v21.3 — Search Page (Overlay)
+   يُضاف في نهاية 04-views.css (unlayered)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.sv-overlay { z-index: calc(var(--z-modal) + 40); }
+
+.sv-head-spacer {
+  display: inline-block;
+  width: 40px;
+  flex-shrink: 0;
+}
+
+/* ─── Body ─── */
+.sv-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Sticky area (search + tabs) ─── */
+.sv-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg-0);
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+
+.sv-search-wrap {
+  padding: var(--sp-4) var(--pad-x) var(--sp-3);
+}
+
+.sv-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 48px;
+  padding-inline: var(--sp-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-3);
+  cursor: text;
+  transition: border-color var(--dur-2) var(--ease-out),
+              background var(--dur-2) var(--ease-out),
+              box-shadow var(--dur-2) var(--ease-out);
+}
+.sv-search:focus-within {
+  background: var(--bg-1);
+  border-color: var(--c-brand);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-brand) 14%, transparent);
+}
+.sv-search > i {
+  font-size: 20px;
+  color: var(--fg-3);
+  flex-shrink: 0;
+  transition: color var(--dur-2) var(--ease-out);
+}
+.sv-search:focus-within > i { color: var(--c-brand); }
+.sv-search > input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  color: var(--fg-1);
+}
+.sv-search > input::placeholder { color: var(--fg-3); }
+
+.sv-search-clear {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--fg-3);
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--dur-2) var(--ease-out),
+              color var(--dur-2) var(--ease-out),
+              transform var(--dur-2) var(--ease-clay);
+}
+.sv-search-clear:hover { background: var(--surface-3); color: var(--fg-1); transform: scale(1.08); }
+.sv-search-clear:active { transform: scale(.94); }
+.sv-search-clear > i { font-size: 14px; }
+
+/* ─── Tabs ─── */
+.sv-tabs {
+  display: flex;
+  gap: var(--sp-1);
+  padding: 0 var(--pad-x) var(--sp-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+}
+.sv-tabs::-webkit-scrollbar { display: none; }
+
+.sv-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-full);
+  background: transparent;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: var(--fs-2);
+  font-weight: var(--fw-medium);
+  color: var(--fg-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: color var(--dur-2) var(--ease-out),
+              background var(--dur-2) var(--ease-out),
+              border-color var(--dur-2) var(--ease-out),
+              box-shadow var(--dur-2) var(--ease-out);
+}
+.sv-tab:hover { color: var(--fg-1); background: var(--surface-2); }
+.sv-tab[aria-selected="true"] {
+  color: var(--ink);
+  background: var(--grad-brand);
+  font-weight: var(--fw-bold);
+  border-color: transparent;
+  box-shadow: var(--sh-brand);
+}
+.sv-tab > i { font-size: 15px; }
+
+/* ─── Results container ─── */
+.sv-results {
+  flex: 1;
+  padding: var(--sp-5) var(--pad-x) calc(var(--sp-10) + var(--safe-bottom));
+}
+
+/* ─── Section ─── */
+.sv-section { margin-bottom: var(--sp-8); }
+.sv-section:last-child { margin-bottom: 0; }
+
+.sv-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  color: var(--fg-1);
+  margin: 0 0 var(--sp-3);
+  letter-spacing: -0.01em;
+}
+.sv-section-title .sv-count {
+  font-size: var(--fs-2);
+  font-weight: var(--fw-medium);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── User list ─── */
+.sv-user-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.sv-user-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-3);
+  cursor: pointer;
+  text-align: start;
+  font-family: inherit;
+  color: inherit;
+  transition: background var(--dur-2) var(--ease-out),
+              border-color var(--dur-2) var(--ease-out),
+              transform var(--dur-2) var(--ease-clay);
+}
+.sv-user-row:hover {
+  background: var(--surface-2);
+  border-color: var(--border-2);
+  transform: translateY(-1px);
+}
+.sv-user-row:active { transform: translateY(0) scale(.99); }
+
+.sv-user-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-2);
+  border: 2px solid var(--border-1);
+  flex-shrink: 0;
+}
+
+.sv-user-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sv-user-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  color: var(--fg-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sv-user-name > i { font-size: 14px; color: var(--c-brand); flex-shrink: 0; }
+.sv-user-meta {
+  font-size: var(--fs-1);
+  color: var(--fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sv-user-handle { font-family: var(--font-mono); }
+
+/* ─── Tag cloud ─── */
+.sv-tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.sv-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-full);
+  font-family: inherit;
+  font-size: var(--fs-2);
+  font-weight: var(--fw-medium);
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: color var(--dur-2) var(--ease-out),
+              border-color var(--dur-2) var(--ease-out),
+              background var(--dur-2) var(--ease-out),
+              transform var(--dur-2) var(--ease-clay);
+}
+.sv-tag-chip::before {
+  content: '#';
+  color: var(--c-brand);
+  font-weight: 700;
+}
+.sv-tag-chip:hover {
+  color: var(--c-brand);
+  border-color: color-mix(in srgb, var(--c-brand) 40%, transparent);
+  background: color-mix(in srgb, var(--c-brand) 8%, transparent);
+  transform: translateY(-1px);
+}
+.sv-tag-count {
+  font-size: var(--fs-1);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Landings / hints ─── */
+.sv-landing-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: clamp(48px, 12%, 96px) var(--sp-4);
+  text-align: center;
+}
+.sv-landing-hint > i {
+  font-size: 48px;
+  color: var(--fg-3);
+  opacity: .55;
+}
+.sv-landing-hint > p {
+  margin: 0;
+  font-size: var(--fs-2);
+  color: var(--fg-3);
+  max-width: 40ch;
+  line-height: 1.6;
+}
+
+/* ─── Empty ─── */
+.sv-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: clamp(48px, 12%, 96px) var(--sp-4);
+  text-align: center;
+}
+.sv-empty > i {
+  font-size: 56px;
+  color: var(--c-brand);
+  opacity: .5;
+}
+.sv-empty > h3 {
+  margin: 0;
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  color: var(--fg-2);
+}
+.sv-empty > p {
+  margin: 0;
+  font-size: var(--fs-2);
+  color: var(--fg-3);
+  max-width: 32ch;
+  line-height: 1.6;
+}
+
+/* ─── Loading ─── */
+.sv-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-10) 0;
+  color: var(--fg-3);
+  font-size: var(--fs-2);
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 560px) {
+  .sv-search-wrap { padding: var(--sp-3) var(--sp-4) var(--sp-2); }
+  .sv-search { height: 44px; }
+  .sv-search > i { font-size: 18px; }
+  .sv-tabs { padding: 0 var(--sp-4) var(--sp-2); }
+  .sv-tab { height: 32px; padding: 0 var(--sp-3); font-size: var(--fs-1); }
+  .sv-tab > i { font-size: 14px; }
+  .sv-results { padding: var(--sp-4) var(--sp-4) calc(var(--sp-8) + var(--safe-bottom)); }
+  .sv-user-avatar { width: 42px; height: 42px; }
+  .sv-user-name { font-size: var(--fs-2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sv-search,
+  .sv-search-clear,
+  .sv-tab,
+  .sv-user-row,
+  .sv-tag-chip { transition: none !important; transform: none !important; }
 }
