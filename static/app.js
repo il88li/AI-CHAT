@@ -1,9 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v14.2
+   خَيال — app.js v16.2
    Fixes:
-   - Net.init(): real server ping (fixes false offline bar on mobile)
-   - Composer.open(): onerror handler for broken avatar images
-   - Auth: split-layout with aria-invalid + shake feedback
+   - v16.2: composer avatar fill · copy-handle · profile tabs functional
+           · settings About/Account render · composer keyboard support
+   - v14.2: Net.init() real server ping
+           · Composer.open() onerror handler
+           · Auth split-layout aria-invalid + shake feedback
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -19,7 +21,7 @@
     THEME_KEY: 'khayal.theme',
     NET_CHECK_MS: 8000,
     NET_PING_TIMEOUT: 3000,
-    BUILD: '14.2',
+    BUILD: '16.2',
   };
 
   const S = {
@@ -333,7 +335,6 @@
     _checking: false,
 
     async _ping() {
-      // Try to reach the server. Use HEAD on /api/health with a short timeout.
       if (this._checking) return this._lastState;
       this._checking = true;
       try {
@@ -362,13 +363,11 @@
         const browserOffline = !navigator.onLine;
         let offline = browserOffline;
 
-        // Trust the server when the browser claims we're offline
         if (browserOffline) {
           const reachable = await self._ping();
           offline = !reachable;
         }
 
-        // Only toast on transition
         if (self._lastState !== null && self._lastState !== offline) {
           if (!offline) Toast.show('عدت متصلاً', 'success');
         }
@@ -380,10 +379,8 @@
       window.addEventListener('online', update);
       window.addEventListener('offline', update);
 
-      // Periodic sync — catches false negatives from navigator.onLine
       this._interval = setInterval(update, CFG.NET_CHECK_MS);
 
-      // Initial check
       update();
     },
   };
@@ -399,7 +396,6 @@
       if (!m) return;
       S.lastFocused = document.activeElement;
 
-      // Reset any stale invalid states
       m.querySelectorAll('[aria-invalid="true"]').forEach(el => {
         el.removeAttribute('aria-invalid');
       });
@@ -589,6 +585,10 @@
       }
       const dock = document.getElementById('dock');
       if (dock) dock.hidden = !user;
+
+      // v16.2 — fill composer avatar
+      const composerAvatar = document.getElementById('composerAvatar');
+      if (composerAvatar && user) U.safeAvatar(composerAvatar, user.avatar);
     },
 
     logout() {
@@ -613,7 +613,7 @@
       const image = p.image || 'https://placehold.co/800x600/0E0E14/22D3EE?text=خَيال';
       const tags = Array.isArray(p.tags) ? p.tags : [];
       const model = p.model || '';
-      const isOwner = !!(S.me && (p.author === S.me.id || p.author_id === S.me.id || (p.author_data && p.author_data.id === S.me.id)));
+      const isOwner = !!p.is_owner;
 
       const card = document.createElement('article');
       card.className = 'prompt-card';
@@ -907,7 +907,6 @@
         }
         Toast.show('تم الحذف', 'success');
         if (window.Sounds) Sounds.play('success');
-        // invalidate feeds
         Object.keys(S.feeds || {}).forEach(k => {
           if (S.feeds[k]) S.feeds[k].loaded = false;
         });
@@ -1248,7 +1247,6 @@
         return;
       }
 
-      // Avatar — hide on error or missing URL
       const av = document.getElementById('composerFormAvatar');
       if (av) U.safeAvatar(av, S.me.avatar);
 
@@ -1561,6 +1559,7 @@
      ═══════════════════════════════════════════════════════════════ */
   const Profile = {
     current: null,
+    _tabsBound: false,
 
     async load(userId) {
       const id = userId || (S.me && S.me.id);
@@ -1579,6 +1578,8 @@
       if (skeleton) skeleton.hidden = false;
       if (card) card.hidden = true;
       if (tabs) tabs.hidden = true;
+      const tabsWrap = tabs ? tabs.closest('.tabs-sticky') : null;
+      if (tabsWrap) tabsWrap.hidden = true;
       if (panel) panel.innerHTML = '';
 
       try {
@@ -1702,16 +1703,93 @@
 
       if (tabs) {
         tabs.hidden = false;
+        const tabsWrap = tabs.closest('.tabs-sticky');
+        if (tabsWrap) tabsWrap.hidden = false;
         const savedTab = document.getElementById('profileSavedTab');
         const settingsTab = document.getElementById('profileSettingsTab');
         if (savedTab) savedTab.hidden = !isMe;
         if (settingsTab) settingsTab.hidden = !isMe;
+        tabs.querySelectorAll('.tab[data-ptab]').forEach(function (t) {
+          t.setAttribute('aria-selected', t.dataset.ptab === 'posts' ? 'true' : 'false');
+        });
       }
 
       Feed.reset('profile');
       Feed.load('profile');
 
       this.bindActions();
+      this.bindTabs();
+    },
+
+    bindTabs() {
+      if (this._tabsBound) return;
+      this._tabsBound = true;
+      const self = this;
+      document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          self.switchTab(tab.dataset.ptab);
+        });
+      });
+    },
+
+    switchTab(name) {
+      const self = this;
+      document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(function (t) {
+        t.setAttribute('aria-selected', t.dataset.ptab === name ? 'true' : 'false');
+      });
+
+      if (name === 'settings') {
+        if (window.Settings) Settings.open();
+        document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(function (t) {
+          t.setAttribute('aria-selected', t.dataset.ptab === 'posts' ? 'true' : 'false');
+        });
+        return;
+      }
+
+      if (name === 'posts') {
+        Feed.reset('profile');
+        Feed.load('profile');
+        return;
+      }
+
+      const panel = document.getElementById('profilePanel');
+      if (!panel) return;
+
+      if (name === 'about') {
+        const u = self.current;
+        if (!u) return;
+        panel.innerHTML = '<div class="ant-descriptions">' + self.aboutRowsHtml(u) + '</div>';
+        return;
+      }
+
+      panel.innerHTML = '<div class="empty-block">' +
+        '<i class="ph ph-hourglass" aria-hidden="true"></i>' +
+        '<h4>قريباً</h4>' +
+        '<p>هذا القسم قيد التطوير.</p>' +
+        '</div>';
+    },
+
+    aboutRowsHtml(u) {
+      const rows = [];
+      rows.push(['الاسم', U.escapeHtml(u.name || '—')]);
+      rows.push(['المعرّف', U.escapeHtml(u.handle || '@—')]);
+      if (u.pronouns) rows.push(['الضمائر', U.escapeHtml(u.pronouns)]);
+      if (u.bio) rows.push(['نبذة', U.escapeHtml(u.bio)]);
+      if (u.website) {
+        const clean = U.escapeHtml(u.website);
+        const label = U.escapeHtml(u.website.replace(/^https?:\/\//, '').replace(/\/$/, ''));
+        rows.push(['الموقع', '<a href="' + clean + '" target="_blank" rel="noopener noreferrer" class="about-link">' + label + '</a>']);
+      }
+      if (u.created_at) {
+        const d = new Date(u.created_at);
+        rows.push(['انضم', d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' })]);
+      }
+      return rows.map(function (r) {
+        return '<div class="ant-descriptions-item">' +
+          '<div class="ant-descriptions-label">' + r[0] + '</div>' +
+          '<div class="ant-descriptions-value">' + r[1] + '</div>' +
+          '</div>';
+      }).join('');
     },
 
     bindActions() {
@@ -2274,6 +2352,8 @@
       });
 
       this.renderHero(u);
+      this.renderAbout(u);
+      this.renderAccount(u);
       this.clearDirty();
     },
 
@@ -2328,6 +2408,66 @@
       setStat('settingsStatFollowers', u.followers || 0);
       setStat('settingsStatFollowing', u.following || 0);
       setStat('settingsStatLikes', u.total_likes || 0);
+    },
+
+    renderAbout(u) {
+      const set = function (id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      };
+      const show = function (id, on) {
+        const el = document.getElementById(id);
+        if (el) el.hidden = !on;
+      };
+
+      set('aboutName', u.name || '—');
+      set('aboutHandle', u.handle || '@—');
+
+      if (u.pronouns) {
+        set('aboutPronouns', u.pronouns);
+        show('aboutPronounsRow', true);
+      } else {
+        show('aboutPronounsRow', false);
+      }
+
+      if (u.bio && u.bio.trim()) {
+        set('aboutBio', u.bio.trim());
+        show('aboutBioRow', true);
+      } else {
+        show('aboutBioRow', false);
+      }
+
+      const siteEl = document.getElementById('aboutWebsite');
+      if (u.website && siteEl) {
+        siteEl.href = u.website;
+        siteEl.textContent = u.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        show('aboutWebsiteRow', true);
+      } else {
+        show('aboutWebsiteRow', false);
+      }
+
+      if (u.created_at) {
+        const d = new Date(u.created_at);
+        set('aboutJoined', d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' }));
+      } else {
+        set('aboutJoined', '—');
+      }
+    },
+
+    renderAccount(u) {
+      const av = document.getElementById('accountIdentityAvatar');
+      if (av) U.safeAvatar(av, u.avatar);
+
+      const set = function (id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      };
+      set('accountIdentityName', u.name || '—');
+      set('accountIdentityHandle', u.handle || '@—');
+      set('accountIdentityEmail', u.email || '—');
+
+      const badge = document.getElementById('accountIdentityBadge');
+      if (badge) badge.hidden = !u.verified;
     },
 
     async loadUserPosts() {
@@ -2539,6 +2679,9 @@
       if (S.me) {
         this.showApp();
         this.switchTab('home', { silent: true });
+        // v16.2 — fill composer avatar in home trigger
+        const ca = document.getElementById('composerAvatar');
+        if (ca && S.me.avatar) U.safeAvatar(ca, S.me.avatar);
       } else {
         this.showLanding();
         this.bindLanding();
@@ -2580,6 +2723,16 @@
           Drawers.openNotifications();
           return;
         }
+        if (action === 'copy-handle') {
+          e.preventDefault();
+          const el = document.getElementById('profileHandle');
+          const handle = el ? el.textContent.trim() : '';
+          if (!handle) return;
+          U.copy(handle).then(function (ok) {
+            Toast.show(ok ? 'تم نسخ المعرّف' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600);
+          });
+          return;
+        }
       });
 
       document.addEventListener('click', (e) => {
@@ -2600,6 +2753,16 @@
         if (settingsView && !settingsView.hidden) { Settings.close(); return; }
         if (authModal && authModal.getAttribute('data-open') === 'true') { Auth.close(); return; }
         Drawers.closeAll();
+      });
+
+      // v16.2 — composer trigger: keyboard support
+      document.querySelectorAll('.composer-trigger').forEach(function (trigger) {
+        trigger.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault();
+            if (window.Composer) Composer.open();
+          }
+        });
       });
     },
 
@@ -2878,7 +3041,6 @@
   window.U = U;
   window.Theme = Theme;
 
-  // إغلاق قائمة المنشور عند النقر خارجها
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.prompt-menu-wrap')) {
       if (window.Post && Post.closeAllMenus) Post.closeAllMenus();
