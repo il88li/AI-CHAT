@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    06-ant.css — مبادئ Ant Design مطبّقة على نظام tokens الحالي
    RTL · Arabic-first · لا مكتبة خارجية · لا كسر للـ hooks
-   v15.2 — تبويبات مضغوطة + ضبط شامل للهواتف + Override للبلوك القديم
+   v15.3 — تبويبات مضغوطة + ضبط شامل للهواتف + Override + Scroll fix
    ═══════════════════════════════════════════════════════════════ */
 
 /* ─── 1. TOKENS ─ Ant-aligned scale ─ */
@@ -230,10 +230,6 @@ button.ant-stat-btn:hover{background:var(--surface-2)}
   background:var(--ant-bg-layout);
   border-bottom:1px solid var(--ant-border);
   backdrop-filter:none;
-}
-.ant-settings .settings-page{
-  padding:var(--ant-space-4) var(--ant-space-4) calc(var(--ant-space-6) + var(--safe-bot));
-  max-width:720px;margin-inline:auto;width:100%;
 }
 
 /* Identity (Descriptions-style) */
@@ -541,9 +537,6 @@ button.ant-stat-btn:hover{background:var(--surface-2)}
 
 /* ≤720px — الحاوية تضيق */
 @media (max-width:720px){
-  .ant-settings .settings-page{
-    padding:var(--ant-space-3) var(--ant-space-3) calc(var(--ant-space-6) + var(--safe-bot));
-  }
   .ant-identity-cover{height:92px}
   .ant-identity-main{gap:var(--ant-space-3);padding:0 var(--ant-space-3) var(--ant-space-3)}
   .ant-identity-avatar{width:64px;height:64px}
@@ -642,9 +635,6 @@ button.ant-stat-btn:hover{background:var(--surface-2)}
   .ant-tabs-wrap--sub .ant-tab>span{display:inline}
   .ant-tabs-wrap--sub .ant-tab>i{font-size:13px}
 
-  .ant-settings .settings-page{
-    padding:8px 8px calc(var(--ant-space-6) + var(--safe-bot));
-  }
   .ant-card-body{padding:10px}
   .ant-card-head{padding:8px 10px;min-height:36px}
   .ant-card-head>span:first-of-type{font-size:12.5px}
@@ -816,6 +806,93 @@ button.ant-stat-btn:hover{background:var(--surface-2)}
   }
   .ant-settings .feed {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   14. SETTINGS — natural page scroll
+   إصلاح: بطاقة الهوية تتحرك مع الصفحة بدل أن تبقى ثابتة
+   السبب: .settings-page كان overflow:hidden + .settings-content
+          كان overflow-y:auto — فقط المحتوى الداخلي يتمرر
+   الحل: جعل .settings-page حاوية التمرير الوحيدة
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 14.1 الحاوية الرئيسية تصبح هي المُمرِّر */
+.ant-settings .settings-page{
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 calc(var(--ant-space-6) + var(--safe-bot));
+  overflow-y: auto;
+  overflow-x: clip;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 14.2 المحتوى الداخلي لا يتمرر بمفرده */
+.ant-settings .settings-content,
+.ant-settings .ant-content{
+  overflow: visible;
+  flex: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* 14.3 كل قسم مباشر — متمركز في 720px بحشوة داخلية */
+.ant-settings .settings-page > .ant-identity,
+.ant-settings .settings-page > .settings-tabs-wrap,
+.ant-settings .settings-page > .ant-content{
+  width: min(720px, 100%);
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+.ant-settings .settings-page > .ant-identity{
+  padding-inline: var(--ant-space-4);
+  margin-top: var(--ant-space-4);
+  margin-bottom: var(--ant-space-3);
+  position: static;
+}
+.ant-settings .settings-page > .ant-content{
+  padding-inline: var(--ant-space-4);
+}
+
+/* 14.4 التبويبات — sticky إلى أعلى منطقة التمرير (0، لا nav-h) */
+.ant-settings .settings-tabs-wrap.ant-tabs-wrap{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-bottom: var(--ant-space-3);
+  padding-top: var(--ant-space-2);
+  padding-bottom: var(--ant-space-2);
+  padding-inline: var(--ant-space-4);
+  background: color-mix(in srgb, var(--ant-bg-layout) 94%, transparent);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border-bottom: 1px solid var(--ant-border);
+}
+
+/* 14.5 موبايل — حشوة أصغر */
+@media (max-width:720px){
+  .ant-settings .settings-page > .ant-identity,
+  .ant-settings .settings-page > .ant-content,
+  .ant-settings .settings-tabs-wrap.ant-tabs-wrap{
+    padding-inline: var(--ant-space-3);
+  }
+  .ant-settings .settings-page > .ant-identity{
+    margin-top: var(--ant-space-3);
+  }
+}
+@media (max-width:400px){
+  .ant-settings .settings-page > .ant-identity,
+  .ant-settings .settings-page > .ant-content,
+  .ant-settings .settings-tabs-wrap.ant-tabs-wrap{
+    padding-inline: 8px;
+  }
+  .ant-settings .settings-page > .ant-identity{
+    margin-top: 8px;
   }
 }
 
