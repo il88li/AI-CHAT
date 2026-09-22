@@ -1,8 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v21.3
+   خَيال — app.js v21.4
    CSRF · FollowersDrawer · NotificationsLoader · ConfirmModal · ReportModal
    · Post.edit · Post.delete modal · Post.report modal · ProfileView overlay
-   · Settings 5-tab · Search page (overlay)
+   · Settings 5-tab · Search page · Post Detail page
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -16,7 +16,7 @@
     NET_CHECK_MS: 8000,
     NET_PING_TIMEOUT: 3000,
     NOTIF_POLL_MS: 30000,
-    BUILD: '21.3',
+    BUILD: '21.4',
   };
 
   const S = {
@@ -588,7 +588,7 @@
         <div class="prompt-media">
           <img src="${U.escapeHtml(image)}" alt="${U.escapeHtml(p.title || '')}"
                loading="lazy" data-state="loading"
-               data-action="open-author-media">
+               data-action="open-post-view">
           ${model ? `<span class="prompt-model"><i class="ph ph-sparkle" aria-hidden="true"></i>${U.escapeHtml(model)}</span>` : ''}
           <div class="prompt-floats">
             <button class="float-btn" data-action="like" aria-pressed="${liked}" aria-label="إعجاب" type="button">
@@ -663,10 +663,15 @@
       if (action === 'save') { e.stopPropagation(); this.save(btn, p.id); return; }
       if (action === 'copy' || action === 'copy-excerpt') { e.stopPropagation(); this.copy(p.id, btn); return; }
       if (action === 'comments') { e.stopPropagation(); Drawers.openComments(p.id); return; }
-      if (action === 'open-author' || action === 'open-author-media') {
+      if (action === 'open-author') {
         e.stopPropagation();
         const aid = btn.dataset.authorId || (p.author_data && p.author_data.id) || p.author;
         if (aid) ProfileView.open(parseInt(aid, 10));
+        return;
+      }
+      if (action === 'open-post-view') {
+        e.stopPropagation();
+        PostView.open(p.id);
         return;
       }
       if (action === 'menu') { e.stopPropagation(); this.toggleMenu(btn, e); return; }
@@ -796,734 +801,1172 @@
       } catch (err) { Toast.show(err.message || 'تعذّر إرسال البلاغ', 'error'); }
     },
   };
+/* ═══════════ FEED ═══════════ */
+const Feed = {
+  container(name) {
+    const map = { home: 'homeFeed', explore: 'exploreFeed', liked: 'likedFeed', saved: 'savedFeed', profile: 'profilePanel' };
+    return document.getElementById(map[name] || '');
+  },
+  skeletonsHtml() {
+    let html = '';
+    for (let i = 0; i < 6; i++) html += Feed.skeletonCardHtml();
+    return html;
+  },
+  skeletonCardHtml() {
+    return `<article class="prompt-card skeleton-card" aria-hidden="true">
+      <div class="prompt-media skeleton skeleton-media"></div>
+      <div class="prompt-body">
+        <div class="skeleton skeleton-line" style="width:55%"></div>
+        <div class="skeleton skeleton-line" style="width:85%;height:18px"></div>
+        <div class="skeleton skeleton-line" style="width:100%"></div>
+        <div class="skeleton skeleton-line" style="width:75%"></div>
+      </div>
+    </article>`;
+  },
+  emptyHtml(icon, title, msg) {
+    return `<div class="empty-block" data-empty-state>
+      <i class="ph ${icon}" aria-hidden="true"></i>
+      <h4>${U.escapeHtml(title)}</h4>
+      <p>${U.escapeHtml(msg)}</p>
+    </div>`;
+  },
+  async load(name, opts) {
+    opts = opts || {};
+    const fs = feedState(name);
+    if (fs.busy && !opts.force) return;
+    if (!opts.force && fs.loaded && fs.items.length > 0) return;
+    const container = this.container(name);
+    if (!container) return;
+    if (opts.reset !== false) { fs.items = []; fs.before = null; fs.hasMore = true; fs.loaded = false; }
+    if (fs.items.length === 0) { container.innerHTML = this.skeletonsHtml(); container.setAttribute('aria-busy', 'true'); }
+    fs.busy = true;
+    if (fs.controller) fs.controller.abort();
+    fs.controller = new AbortController();
+    const params = new URLSearchParams();
+    if (name === 'home' || name === 'explore') {
+      params.set('sort', S.sort);
+      if (S.filterTag) params.set('tag', S.filterTag);
+      if (S.filterModel) params.set('model', S.filterModel);
+    }
+    params.set('limit', String(CFG.PAGE_SIZE));
+    if (fs.before) params.set('before_id', String(fs.before));
+    try {
+      const items = await API.get('/api/posts?' + params.toString(), { signal: fs.controller.signal });
+      const list = Array.isArray(items) ? items : [];
+      if (list.length === 0 && fs.items.length === 0) {
+        this.showEmpty(name); fs.hasMore = false; fs.loaded = true; return;
+      }
+      const frag = document.createDocumentFragment();
+      list.forEach(p => frag.appendChild(Post.renderCard(p)));
+      if (fs.items.length === 0) container.innerHTML = '';
+      container.appendChild(frag);
+      fs.items = fs.items.concat(list);
+      fs.before = list[list.length - 1].id;
+      fs.hasMore = list.length === CFG.PAGE_SIZE;
+      fs.loaded = true;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      if (fs.items.length === 0) {
+        container.innerHTML = this.emptyHtml('ph-cloud-slash', 'تعذّر التحميل', err.message || 'حاول مرة أخرى');
+      } else Toast.show(err.message || 'تعذّر تحميل المزيد', 'error');
+    } finally {
+      fs.busy = false;
+      container.setAttribute('aria-busy', 'false');
+    }
+  },
+  showEmpty(name) {
+    const c = this.container(name);
+    if (!c) return;
+    const map = {
+      home: ['ph-image-square', 'لا توجد برومبتات', 'كن أول من ينشر.'],
+      explore: ['ph-compass', 'لا شيء هنا', 'جرّب تصفية أخرى.'],
+      liked: ['ph-heart', 'لا توجد إعجابات بعد', 'ابدأ بتصفح المنصة وضع قلبك على ما يعجبك.'],
+      saved: ['ph-bookmark-simple', 'المكتبة فارغة', 'احفظ البرومبتات المميزة للرجوع إليها لاحقاً.'],
+      profile: ['ph-image-square', 'لا منشورات', 'لم ينشر هذا المستخدم بعد.'],
+    };
+    const [icon, title, msg] = map[name] || ['ph-info', 'لا يوجد شيء', ''];
+    c.innerHTML = this.emptyHtml(icon, title, msg);
+  },
+  async loadMore(name) {
+    const fs = feedState(name);
+    if (fs.busy || !fs.hasMore) return;
+    await this.load(name, { reset: false });
+  },
+  reset(name) {
+    const fs = feedState(name);
+    fs.items = []; fs.before = null; fs.hasMore = true; fs.loaded = false;
+  },
+};
 
-  /* ═══════════ FEED ═══════════ */
-  const Feed = {
-    container(name) {
-      const map = { home: 'homeFeed', explore: 'exploreFeed', liked: 'likedFeed', saved: 'savedFeed', profile: 'profilePanel' };
-      return document.getElementById(map[name] || '');
-    },
-    skeletonsHtml() {
-      let html = '';
-      for (let i = 0; i < 6; i++) html += Feed.skeletonCardHtml();
-      return html;
-    },
-    skeletonCardHtml() {
-      return `<article class="prompt-card skeleton-card" aria-hidden="true">
-        <div class="prompt-media skeleton skeleton-media"></div>
-        <div class="prompt-body">
-          <div class="skeleton skeleton-line" style="width:55%"></div>
-          <div class="skeleton skeleton-line" style="width:85%;height:18px"></div>
-          <div class="skeleton skeleton-line" style="width:100%"></div>
-          <div class="skeleton skeleton-line" style="width:75%"></div>
+/* ═══════════ COMMENTS ═══════════ */
+const Comments = {
+  currentPostId: null,
+  async load(postId) {
+    const body = document.getElementById('commentsBody');
+    const form = document.getElementById('commentForm');
+    const countEl = document.getElementById('commentCount');
+    if (!body) return;
+    body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
+    if (form) form.style.display = S.me ? 'flex' : 'none';
+    try {
+      const items = await API.get(`/api/posts/${postId}/comments`);
+      if (!items || items.length === 0) {
+        body.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا تعليقات بعد</h4><p>كن أول المعلّقين.</p></div>';
+        if (countEl) countEl.textContent = '';
+        return;
+      }
+      if (countEl) countEl.textContent = '(' + items.length + ')';
+      body.innerHTML = items.map(c => this.rowHtml(c)).join('');
+    } catch (err) {
+      body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
+    }
+  },
+  rowHtml(c) {
+    const a = c.author_data || {};
+    const mine = S.me && S.me.id === c.author;
+    return `<div class="comment" data-comment-id="${c.id}">
+      <img class="avatar avatar-sm" src="${U.escapeHtml(a.avatar || '')}" alt="" loading="lazy">
+      <div class="comment-body">
+        <div class="comment-top">
+          <span class="comment-name">${U.escapeHtml(a.name || 'مستخدم')}</span>
+          <span class="comment-time">${U.relativeTime(c.time)}</span>
         </div>
-      </article>`;
-    },
-    emptyHtml(icon, title, msg) {
-      return `<div class="empty-block" data-empty-state>
-        <i class="ph ${icon}" aria-hidden="true"></i>
-        <h4>${U.escapeHtml(title)}</h4>
-        <p>${U.escapeHtml(msg)}</p>
-      </div>`;
-    },
-    async load(name, opts) {
-      opts = opts || {};
-      const fs = feedState(name);
-      if (fs.busy && !opts.force) return;
-      if (!opts.force && fs.loaded && fs.items.length > 0) return;
-      const container = this.container(name);
-      if (!container) return;
-      if (opts.reset !== false) { fs.items = []; fs.before = null; fs.hasMore = true; fs.loaded = false; }
-      if (fs.items.length === 0) { container.innerHTML = this.skeletonsHtml(); container.setAttribute('aria-busy', 'true'); }
-      fs.busy = true;
-      if (fs.controller) fs.controller.abort();
-      fs.controller = new AbortController();
-      const params = new URLSearchParams();
-      if (name === 'home' || name === 'explore') {
-        params.set('sort', S.sort);
-        if (S.filterTag) params.set('tag', S.filterTag);
-        if (S.filterModel) params.set('model', S.filterModel);
-      }
-      params.set('limit', String(CFG.PAGE_SIZE));
-      if (fs.before) params.set('before_id', String(fs.before));
-      try {
-        const items = await API.get('/api/posts?' + params.toString(), { signal: fs.controller.signal });
-        const list = Array.isArray(items) ? items : [];
-        if (list.length === 0 && fs.items.length === 0) {
-          this.showEmpty(name); fs.hasMore = false; fs.loaded = true; return;
-        }
-        const frag = document.createDocumentFragment();
-        list.forEach(p => frag.appendChild(Post.renderCard(p)));
-        if (fs.items.length === 0) container.innerHTML = '';
-        container.appendChild(frag);
-        fs.items = fs.items.concat(list);
-        fs.before = list[list.length - 1].id;
-        fs.hasMore = list.length === CFG.PAGE_SIZE;
-        fs.loaded = true;
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        if (fs.items.length === 0) {
-          container.innerHTML = this.emptyHtml('ph-cloud-slash', 'تعذّر التحميل', err.message || 'حاول مرة أخرى');
-        } else Toast.show(err.message || 'تعذّر تحميل المزيد', 'error');
-      } finally {
-        fs.busy = false;
-        container.setAttribute('aria-busy', 'false');
-      }
-    },
-    showEmpty(name) {
-      const c = this.container(name);
-      if (!c) return;
-      const map = {
-        home: ['ph-image-square', 'لا توجد برومبتات', 'كن أول من ينشر.'],
-        explore: ['ph-compass', 'لا شيء هنا', 'جرّب تصفية أخرى.'],
-        liked: ['ph-heart', 'لا توجد إعجابات بعد', 'ابدأ بتصفح المنصة وضع قلبك على ما يعجبك.'],
-        saved: ['ph-bookmark-simple', 'المكتبة فارغة', 'احفظ البرومبتات المميزة للرجوع إليها لاحقاً.'],
-        profile: ['ph-image-square', 'لا منشورات', 'لم ينشر هذا المستخدم بعد.'],
-      };
-      const [icon, title, msg] = map[name] || ['ph-info', 'لا يوجد شيء', ''];
-      c.innerHTML = this.emptyHtml(icon, title, msg);
-    },
-    async loadMore(name) {
-      const fs = feedState(name);
-      if (fs.busy || !fs.hasMore) return;
-      await this.load(name, { reset: false });
-    },
-    reset(name) {
-      const fs = feedState(name);
-      fs.items = []; fs.before = null; fs.hasMore = true; fs.loaded = false;
-    },
-  };
-
-  /* ═══════════ COMMENTS ═══════════ */
-  const Comments = {
-    currentPostId: null,
-    async load(postId) {
+        <div class="comment-text">${U.escapeHtml(c.text || '')}</div>
+        ${mine ? `<div class="comment-actions"><button type="button" data-action="delete-comment" data-comment-id="${c.id}"><i class="ph ph-trash"></i> حذف</button></div>` : ''}
+      </div>
+    </div>`;
+  },
+  async send(ev) {
+    ev.preventDefault();
+    if (!S.me) { Auth.open('login'); return; }
+    const input = document.getElementById('commentInput');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text || !this.currentPostId) return;
+    input.disabled = true;
+    try {
+      const c = await API.post(`/api/posts/${this.currentPostId}/comments`, { text });
+      input.value = ''; U.autoGrow(input);
+      if (window.Sounds) Sounds.play('send');
       const body = document.getElementById('commentsBody');
-      const form = document.getElementById('commentForm');
-      const countEl = document.getElementById('commentCount');
-      if (!body) return;
-      body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-      if (form) form.style.display = S.me ? 'flex' : 'none';
-      try {
-        const items = await API.get(`/api/posts/${postId}/comments`);
-        if (!items || items.length === 0) {
-          body.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا تعليقات بعد</h4><p>كن أول المعلّقين.</p></div>';
-          if (countEl) countEl.textContent = '';
-          return;
-        }
-        if (countEl) countEl.textContent = '(' + items.length + ')';
-        body.innerHTML = items.map(c => this.rowHtml(c)).join('');
-      } catch (err) {
-        body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
+      if (body) {
+        const empty = body.querySelector('.empty-block');
+        if (empty) empty.remove();
+        body.insertAdjacentHTML('afterbegin', this.rowHtml(c));
+        const countEl = document.getElementById('commentCount');
+        if (countEl) countEl.textContent = '(' + body.querySelectorAll('.comment').length + ')';
       }
-    },
-    rowHtml(c) {
-      const a = c.author_data || {};
-      const mine = S.me && S.me.id === c.author;
-      return `<div class="comment" data-comment-id="${c.id}">
-        <img class="avatar avatar-sm" src="${U.escapeHtml(a.avatar || '')}" alt="" loading="lazy">
-        <div class="comment-body">
-          <div class="comment-top">
-            <span class="comment-name">${U.escapeHtml(a.name || 'مستخدم')}</span>
-            <span class="comment-time">${U.relativeTime(c.time)}</span>
-          </div>
-          <div class="comment-text">${U.escapeHtml(c.text || '')}</div>
-          ${mine ? `<div class="comment-actions"><button type="button" data-action="delete-comment" data-comment-id="${c.id}"><i class="ph ph-trash"></i> حذف</button></div>` : ''}
-        </div>
-      </div>`;
-    },
-    async send(ev) {
-      ev.preventDefault();
-      if (!S.me) { Auth.open('login'); return; }
-      const input = document.getElementById('commentInput');
-      if (!input) return;
-      const text = input.value.trim();
-      if (!text || !this.currentPostId) return;
-      input.disabled = true;
-      try {
-        const c = await API.post(`/api/posts/${this.currentPostId}/comments`, { text });
-        input.value = ''; U.autoGrow(input);
-        if (window.Sounds) Sounds.play('send');
-        const body = document.getElementById('commentsBody');
-        if (body) {
-          const empty = body.querySelector('.empty-block');
-          if (empty) empty.remove();
-          body.insertAdjacentHTML('afterbegin', this.rowHtml(c));
-          const countEl = document.getElementById('commentCount');
-          if (countEl) countEl.textContent = '(' + body.querySelectorAll('.comment').length + ')';
-        }
-      } catch (err) { Toast.show(err.message || 'تعذّر الإرسال', 'error'); }
-      finally { input.disabled = false; input.focus(); }
-    },
-    async delete(id) {
-      const ok = await ConfirmModal.show({
-        title: 'حذف التعليق', message: 'سيُحذف التعليق نهائياً.',
-        confirmLabel: 'حذف', danger: true,
-      });
-      if (!ok) return;
-      try {
-        await API.del(`/api/comments/${id}`);
-        const row = document.querySelector(`.comment[data-comment-id="${id}"]`);
-        if (row) row.remove();
-        Toast.show('تم الحذف', 'success', 1500);
-      } catch (err) { Toast.show(err.message || 'تعذّر الحذف', 'error'); }
-    },
-    init() {
-      document.addEventListener('click', (e) => {
-        const del = e.target.closest('[data-action="delete-comment"]');
-        if (del) this.delete(parseInt(del.dataset.commentId, 10));
-      });
-    },
-  };
+    } catch (err) { Toast.show(err.message || 'تعذّر الإرسال', 'error'); }
+    finally { input.disabled = false; input.focus(); }
+  },
+  async delete(id) {
+    const ok = await ConfirmModal.show({
+      title: 'حذف التعليق', message: 'سيُحذف التعليق نهائياً.',
+      confirmLabel: 'حذف', danger: true,
+    });
+    if (!ok) return;
+    try {
+      await API.del(`/api/comments/${id}`);
+      const row = document.querySelector(`.comment[data-comment-id="${id}"]`);
+      if (row) row.remove();
+      Toast.show('تم الحذف', 'success', 1500);
+    } catch (err) { Toast.show(err.message || 'تعذّر الحذف', 'error'); }
+  },
+  init() {
+    document.addEventListener('click', (e) => {
+      const del = e.target.closest('[data-action="delete-comment"]');
+      if (del) this.delete(parseInt(del.dataset.commentId, 10));
+    });
+  },
+};
 
-  /* ═══════════ DRAWERS ═══════════ */
-  const Drawers = {
-    openComments(postId) {
-      this.closeNotifications(); this.closeFollowers();
-      Comments.currentPostId = postId;
-      const scrim = document.getElementById('commentsScrim');
-      const drawer = document.getElementById('commentsDrawer');
-      if (!scrim || !drawer) return;
-      scrim.setAttribute('data-open', 'true');
-      drawer.setAttribute('data-open', 'true');
-      document.documentElement.style.overflow = 'hidden';
-      Comments.load(postId);
-      if (window.Sounds) Sounds.play('open');
-    },
-    closeComments() {
-      const s = document.getElementById('commentsScrim');
-      const d = document.getElementById('commentsDrawer');
-      if (s) s.setAttribute('data-open', 'false');
-      if (d) d.setAttribute('data-open', 'false');
-      document.documentElement.style.overflow = '';
-    },
-    openNotifications() {
-      this.closeComments(); this.closeFollowers();
-      const scrim = document.getElementById('notificationsScrim');
-      const drawer = document.getElementById('notificationsDrawer');
-      if (!scrim || !drawer) return;
-      scrim.setAttribute('data-open', 'true');
-      drawer.setAttribute('data-open', 'true');
-      document.documentElement.style.overflow = 'hidden';
-      NotificationsLoader.load();
-      if (window.Sounds) Sounds.play('open');
-    },
-    closeNotifications() {
-      const s = document.getElementById('notificationsScrim');
-      const d = document.getElementById('notificationsDrawer');
-      if (s) s.setAttribute('data-open', 'false');
-      if (d) d.setAttribute('data-open', 'false');
-      document.documentElement.style.overflow = '';
-    },
-    openFollowers(userId, type) {
-      this.closeComments(); this.closeNotifications();
-      FollowersDrawer.open(userId, type);
-    },
-    closeFollowers() { FollowersDrawer.close(); },
-    closeAll() { this.closeComments(); this.closeNotifications(); this.closeFollowers(); },
-  };
+/* ═══════════ DRAWERS ═══════════ */
+const Drawers = {
+  openComments(postId) {
+    this.closeNotifications(); this.closeFollowers();
+    Comments.currentPostId = postId;
+    const scrim = document.getElementById('commentsScrim');
+    const drawer = document.getElementById('commentsDrawer');
+    if (!scrim || !drawer) return;
+    scrim.setAttribute('data-open', 'true');
+    drawer.setAttribute('data-open', 'true');
+    document.documentElement.style.overflow = 'hidden';
+    Comments.load(postId);
+    if (window.Sounds) Sounds.play('open');
+  },
+  closeComments() {
+    const s = document.getElementById('commentsScrim');
+    const d = document.getElementById('commentsDrawer');
+    if (s) s.setAttribute('data-open', 'false');
+    if (d) d.setAttribute('data-open', 'false');
+    document.documentElement.style.overflow = '';
+  },
+  openNotifications() {
+    this.closeComments(); this.closeFollowers();
+    const scrim = document.getElementById('notificationsScrim');
+    const drawer = document.getElementById('notificationsDrawer');
+    if (!scrim || !drawer) return;
+    scrim.setAttribute('data-open', 'true');
+    drawer.setAttribute('data-open', 'true');
+    document.documentElement.style.overflow = 'hidden';
+    NotificationsLoader.load();
+    if (window.Sounds) Sounds.play('open');
+  },
+  closeNotifications() {
+    const s = document.getElementById('notificationsScrim');
+    const d = document.getElementById('notificationsDrawer');
+    if (s) s.setAttribute('data-open', 'false');
+    if (d) d.setAttribute('data-open', 'false');
+    document.documentElement.style.overflow = '';
+  },
+  openFollowers(userId, type) {
+    this.closeComments(); this.closeNotifications();
+    FollowersDrawer.open(userId, type);
+  },
+  closeFollowers() { FollowersDrawer.close(); },
+  closeAll() { this.closeComments(); this.closeNotifications(); this.closeFollowers(); },
+};
 
-  /* ═══════════ FOLLOWERS DRAWER ═══════════ */
-  const FollowersDrawer = {
-    userId: null, type: 'followers', before: null, hasMore: true, busy: false,
-    open(userId, type) {
-      if (!userId) return;
-      this.userId = userId;
-      this.type = type === 'following' ? 'following' : 'followers';
-      this.before = null; this.hasMore = true; this.busy = false;
-      const scrim = document.getElementById('followersScrim');
-      const drawer = document.getElementById('followersDrawer');
-      const title = document.getElementById('followersTitle');
-      if (!scrim || !drawer) return;
-      if (title) title.textContent = this.type === 'following' ? 'يتابع' : 'المتابعون';
-      scrim.setAttribute('data-open', 'true');
-      drawer.setAttribute('data-open', 'true');
-      document.documentElement.style.overflow = 'hidden';
-      if (window.Sounds) Sounds.play('open');
-      this.load();
-    },
-    close() {
-      const s = document.getElementById('followersScrim');
-      const d = document.getElementById('followersDrawer');
-      if (s) s.setAttribute('data-open', 'false');
-      if (d) d.setAttribute('data-open', 'false');
-      document.documentElement.style.overflow = '';
-    },
-    async load() {
-      const body = document.getElementById('followersBody');
-      if (!body || !this.userId || this.busy) return;
-      this.busy = true;
-      const isFirst = !this.before;
-      if (isFirst) body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-      const path = `/api/users/${this.userId}/${this.type}?limit=30${this.before ? '&before_id=' + this.before : ''}`;
-      try {
-        const data = await API.get(path);
-        const items = (data && data.items) || [];
-        this.hasMore = !!data.next_before;
-        this.before = data.next_before;
-        if (isFirst) {
-          if (!items.length) {
-            body.innerHTML = `<div class="empty-block">
-              <i class="ph ph-users"></i>
-              <h4>${this.type === 'following' ? 'لا يتابع أحداً' : 'لا متابعين بعد'}</h4>
-              <p>${this.type === 'following' ? 'عندما يتابع هذا المستخدم شخصاً سيظهر هنا.' : 'كن أول من يتابع هذا المستخدم.'}</p>
-            </div>`;
-            return;
-          }
-          body.innerHTML = '';
-        }
-        const frag = document.createDocumentFragment();
-        items.forEach(u => frag.appendChild(this.rowHtml(u)));
-        body.appendChild(frag);
-        if (this.hasMore) {
-          const existing = body.querySelector('[data-load-more]');
-          if (existing) existing.remove();
-          const lm = document.createElement('button');
-          lm.className = 'load-more-btn';
-          lm.setAttribute('data-load-more', 'true');
-          lm.type = 'button';
-          lm.innerHTML = '<span>تحميل المزيد</span><i class="ph ph-arrow-down"></i>';
-          lm.addEventListener('click', () => this.load());
-          body.appendChild(lm);
-        }
-      } catch (err) {
-        if (isFirst) {
-          body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
-        } else Toast.show(err.message || 'تعذّر التحميل', 'error');
-      } finally { this.busy = false; }
-    },
-    rowHtml(u) {
-      const isMe = S.me && S.me.id === u.id;
-      return `<div class="follower-row" data-user-id="${u.id}">
-        <img class="follower-row-avatar" src="${U.escapeHtml(u.avatar || '')}" alt="" loading="lazy">
-        <div class="follower-row-info">
-          <div class="follower-row-name">
-            ${U.escapeHtml(u.name || '')}
-            ${u.verified ? '<i class="ph ph-seal-check" aria-hidden="true"></i>' : ''}
-          </div>
-          <div class="follower-row-handle">${U.escapeHtml(u.handle || '')}</div>
-        </div>
-        ${!isMe ? `<button class="btn btn-sm follower-row-btn ${u.is_following ? 'btn-secondary' : 'btn-primary'}" data-follow-user="${u.id}" type="button">
-          ${u.is_following ? 'أتابعه' : 'متابعة'}
-        </button>` : ''}
-      </div>`;
-    },
-    init() {
-      document.addEventListener('click', async (e) => {
-        const row = e.target.closest('.follower-row');
-        const btn = e.target.closest('[data-follow-user]');
-        if (btn) {
-          e.stopPropagation();
-          const uid = parseInt(btn.dataset.followUser, 10);
-          if (!uid) return;
-          btn.setAttribute('aria-busy', 'true');
-          try {
-            const res = await API.post(`/api/users/${uid}/follow`);
-            const following = !!res.following;
-            btn.classList.toggle('btn-primary', !following);
-            btn.classList.toggle('btn-secondary', following);
-            btn.textContent = following ? 'أتابعه' : 'متابعة';
-            if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
-          } catch (err) { Toast.show(err.message || 'تعذّر', 'error'); }
-          finally { btn.removeAttribute('aria-busy'); }
-          return;
-        }
-        if (row) {
-          const uid = parseInt(row.dataset.userId, 10);
-          if (!uid) return;
-          this.close();
-          setTimeout(() => ProfileView.open(uid), 200);
-        }
-      });
-    },
-  };
-
-  /* ═══════════ NOTIFICATIONS ═══════════ */
-  const NotificationsLoader = {
-    _interval: null, unread: 0,
-    start() {
-      if (!S.me) return;
-      this.refresh();
-      this._interval = setInterval(() => this.refresh(), CFG.NOTIF_POLL_MS);
-    },
-    stop() {
-      if (this._interval) clearInterval(this._interval);
-      this._interval = null;
-      this.setBadge(0);
-    },
-    async refresh() {
-      if (!S.me) return;
-      try {
-        const data = await API.get('/api/notifications/unread-count');
-        this.setBadge((data && data.count) || 0);
-      } catch (e) {}
-    },
-    setBadge(n) {
-      this.unread = n;
-      [document.getElementById('dockNotifBadge'), document.getElementById('navNotifBadge')].forEach(b => {
-        if (!b) return;
-        if (n > 0) { b.textContent = n > 99 ? '99+' : String(n); b.hidden = false; }
-        else b.hidden = true;
-      });
-    },
-    async load() {
-      const body = document.getElementById('notificationsBody');
-      if (!body || !S.me) return;
-      body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-      try {
-        const data = await API.get('/api/notifications?limit=30');
-        const items = (data && data.items) || [];
-        this.setBadge((data && data.unread) || 0);
+/* ═══════════ FOLLOWERS DRAWER ═══════════ */
+const FollowersDrawer = {
+  userId: null, type: 'followers', before: null, hasMore: true, busy: false,
+  open(userId, type) {
+    if (!userId) return;
+    this.userId = userId;
+    this.type = type === 'following' ? 'following' : 'followers';
+    this.before = null; this.hasMore = true; this.busy = false;
+    const scrim = document.getElementById('followersScrim');
+    const drawer = document.getElementById('followersDrawer');
+    const title = document.getElementById('followersTitle');
+    if (!scrim || !drawer) return;
+    if (title) title.textContent = this.type === 'following' ? 'يتابع' : 'المتابعون';
+    scrim.setAttribute('data-open', 'true');
+    drawer.setAttribute('data-open', 'true');
+    document.documentElement.style.overflow = 'hidden';
+    if (window.Sounds) Sounds.play('open');
+    this.load();
+  },
+  close() {
+    const s = document.getElementById('followersScrim');
+    const d = document.getElementById('followersDrawer');
+    if (s) s.setAttribute('data-open', 'false');
+    if (d) d.setAttribute('data-open', 'false');
+    document.documentElement.style.overflow = '';
+  },
+  async load() {
+    const body = document.getElementById('followersBody');
+    if (!body || !this.userId || this.busy) return;
+    this.busy = true;
+    const isFirst = !this.before;
+    if (isFirst) body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
+    const path = `/api/users/${this.userId}/${this.type}?limit=30${this.before ? '&before_id=' + this.before : ''}`;
+    try {
+      const data = await API.get(path);
+      const items = (data && data.items) || [];
+      this.hasMore = !!data.next_before;
+      this.before = data.next_before;
+      if (isFirst) {
         if (!items.length) {
-          body.innerHTML = '<div class="empty-block"><i class="ph ph-bell"></i><h4>لا إشعارات بعد</h4><p>ستظهر هنا التفاعلات التي تهمّك.</p></div>';
+          body.innerHTML = `<div class="empty-block">
+            <i class="ph ph-users"></i>
+            <h4>${this.type === 'following' ? 'لا يتابع أحداً' : 'لا متابعين بعد'}</h4>
+            <p>${this.type === 'following' ? 'عندما يتابع هذا المستخدم شخصاً سيظهر هنا.' : 'كن أول من يتابع هذا المستخدم.'}</p>
+          </div>`;
           return;
         }
-        body.innerHTML = items.map(n => this.rowHtml(n)).join('');
-        setTimeout(() => { API.post('/api/notifications/read-all').then(() => this.setBadge(0)).catch(() => {}); }, 800);
-      } catch (err) {
-        body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
+        body.innerHTML = '';
       }
-    },
-    rowHtml(n) {
-      const a = n.actor || {};
-      const icons = { like: 'ph-heart-fill', comment: 'ph-chat-circle-fill', follow: 'ph-user-plus-fill', message: 'ph-chat-teardrop-fill' };
-      const icon = icons[n.kind] || 'ph-bell';
-      const color = n.kind || 'info';
-      return `<button class="notif-row ${n.read ? 'is-read' : 'is-unread'}" data-notif-id="${n.id}" data-kind="${n.kind}" data-target-id="${n.target_id || ''}" data-actor-id="${a.id || ''}" type="button">
-        <span class="notif-avatar-wrap">
-          <img class="notif-avatar" src="${U.escapeHtml(a.avatar || '')}" alt="" loading="lazy">
-          <span class="notif-icon notif-icon--${color}"><i class="ph ${icon}" aria-hidden="true"></i></span>
-        </span>
-        <span class="notif-body">
-          <span class="notif-text">${U.escapeHtml(a.name || 'مستخدم')} · ${U.escapeHtml(n.text || '')}</span>
-          <span class="notif-time">${U.relativeTime(n.created_at)}</span>
-        </span>
-        ${!n.read ? '<span class="notif-dot" aria-hidden="true"></span>' : ''}
-      </button>`;
-    },
-    init() {
-      document.addEventListener('click', (e) => {
-        const row = e.target.closest('.notif-row');
-        if (!row) return;
-        const kind = row.dataset.kind;
-        const targetId = parseInt(row.dataset.targetId, 10);
-        const actorId = parseInt(row.dataset.actorId, 10);
-        Drawers.closeNotifications();
-        if (kind === 'follow' && actorId) setTimeout(() => ProfileView.open(actorId), 220);
-        else if ((kind === 'like' || kind === 'comment') && targetId) {
-          setTimeout(() => {
-            const el = document.querySelector(`[data-post-id="${targetId}"]`);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 260);
-        } else if (kind === 'message' && actorId) Chat.openWith(actorId);
-      });
-    },
-  };
+      const frag = document.createDocumentFragment();
+      items.forEach(u => frag.appendChild(this.rowHtml(u)));
+      body.appendChild(frag);
+      if (this.hasMore) {
+        const existing = body.querySelector('[data-load-more]');
+        if (existing) existing.remove();
+        const lm = document.createElement('button');
+        lm.className = 'load-more-btn';
+        lm.setAttribute('data-load-more', 'true');
+        lm.type = 'button';
+        lm.innerHTML = '<span>تحميل المزيد</span><i class="ph ph-arrow-down"></i>';
+        lm.addEventListener('click', () => this.load());
+        body.appendChild(lm);
+      }
+    } catch (err) {
+      if (isFirst) {
+        body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
+      } else Toast.show(err.message || 'تعذّر التحميل', 'error');
+    } finally { this.busy = false; }
+  },
+  rowHtml(u) {
+    const isMe = S.me && S.me.id === u.id;
+    return `<div class="follower-row" data-user-id="${u.id}">
+      <img class="follower-row-avatar" src="${U.escapeHtml(u.avatar || '')}" alt="" loading="lazy">
+      <div class="follower-row-info">
+        <div class="follower-row-name">
+          ${U.escapeHtml(u.name || '')}
+          ${u.verified ? '<i class="ph ph-seal-check" aria-hidden="true"></i>' : ''}
+        </div>
+        <div class="follower-row-handle">${U.escapeHtml(u.handle || '')}</div>
+      </div>
+      ${!isMe ? `<button class="btn btn-sm follower-row-btn ${u.is_following ? 'btn-secondary' : 'btn-primary'}" data-follow-user="${u.id}" type="button">
+        ${u.is_following ? 'أتابعه' : 'متابعة'}
+      </button>` : ''}
+    </div>`;
+  },
+  init() {
+    document.addEventListener('click', async (e) => {
+      const row = e.target.closest('.follower-row');
+      const btn = e.target.closest('[data-follow-user]');
+      if (btn) {
+        e.stopPropagation();
+        const uid = parseInt(btn.dataset.followUser, 10);
+        if (!uid) return;
+        btn.setAttribute('aria-busy', 'true');
+        try {
+          const res = await API.post(`/api/users/${uid}/follow`);
+          const following = !!res.following;
+          btn.classList.toggle('btn-primary', !following);
+          btn.classList.toggle('btn-secondary', following);
+          btn.textContent = following ? 'أتابعه' : 'متابعة';
+          if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
+        } catch (err) { Toast.show(err.message || 'تعذّر', 'error'); }
+        finally { btn.removeAttribute('aria-busy'); }
+        return;
+      }
+      if (row) {
+        const uid = parseInt(row.dataset.userId, 10);
+        if (!uid) return;
+        this.close();
+        setTimeout(() => ProfileView.open(uid), 200);
+      }
+    });
+  },
+};
 
-  /* ═══════════ COMPOSER ═══════════ */
-  const Composer = {
-    type: 'text',
-    editingId: null,
+/* ═══════════ NOTIFICATIONS ═══════════ */
+const NotificationsLoader = {
+  _interval: null, unread: 0,
+  start() {
+    if (!S.me) return;
+    this.refresh();
+    this._interval = setInterval(() => this.refresh(), CFG.NOTIF_POLL_MS);
+  },
+  stop() {
+    if (this._interval) clearInterval(this._interval);
+    this._interval = null;
+    this.setBadge(0);
+  },
+  async refresh() {
+    if (!S.me) return;
+    try {
+      const data = await API.get('/api/notifications/unread-count');
+      this.setBadge((data && data.count) || 0);
+    } catch (e) {}
+  },
+  setBadge(n) {
+    this.unread = n;
+    [document.getElementById('dockNotifBadge'), document.getElementById('navNotifBadge')].forEach(b => {
+      if (!b) return;
+      if (n > 0) { b.textContent = n > 99 ? '99+' : String(n); b.hidden = false; }
+      else b.hidden = true;
+    });
+  },
+  async load() {
+    const body = document.getElementById('notificationsBody');
+    if (!body || !S.me) return;
+    body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
+    try {
+      const data = await API.get('/api/notifications?limit=30');
+      const items = (data && data.items) || [];
+      this.setBadge((data && data.unread) || 0);
+      if (!items.length) {
+        body.innerHTML = '<div class="empty-block"><i class="ph ph-bell"></i><h4>لا إشعارات بعد</h4><p>ستظهر هنا التفاعلات التي تهمّك.</p></div>';
+        return;
+      }
+      body.innerHTML = items.map(n => this.rowHtml(n)).join('');
+      setTimeout(() => { API.post('/api/notifications/read-all').then(() => this.setBadge(0)).catch(() => {}); }, 800);
+    } catch (err) {
+      body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
+    }
+  },
+  rowHtml(n) {
+    const a = n.actor || {};
+    const icons = { like: 'ph-heart-fill', comment: 'ph-chat-circle-fill', follow: 'ph-user-plus-fill', message: 'ph-chat-teardrop-fill' };
+    const icon = icons[n.kind] || 'ph-bell';
+    const color = n.kind || 'info';
+    return `<button class="notif-row ${n.read ? 'is-read' : 'is-unread'}" data-notif-id="${n.id}" data-kind="${n.kind}" data-target-id="${n.target_id || ''}" data-actor-id="${a.id || ''}" type="button">
+      <span class="notif-avatar-wrap">
+        <img class="notif-avatar" src="${U.escapeHtml(a.avatar || '')}" alt="" loading="lazy">
+        <span class="notif-icon notif-icon--${color}"><i class="ph ${icon}" aria-hidden="true"></i></span>
+      </span>
+      <span class="notif-body">
+        <span class="notif-text">${U.escapeHtml(a.name || 'مستخدم')} · ${U.escapeHtml(n.text || '')}</span>
+        <span class="notif-time">${U.relativeTime(n.created_at)}</span>
+      </span>
+      ${!n.read ? '<span class="notif-dot" aria-hidden="true"></span>' : ''}
+    </button>`;
+  },
+  init() {
+    document.addEventListener('click', (e) => {
+      const row = e.target.closest('.notif-row');
+      if (!row) return;
+      const kind = row.dataset.kind;
+      const targetId = parseInt(row.dataset.targetId, 10);
+      const actorId = parseInt(row.dataset.actorId, 10);
+      Drawers.closeNotifications();
+      if (kind === 'follow' && actorId) setTimeout(() => ProfileView.open(actorId), 220);
+      else if ((kind === 'like' || kind === 'comment') && targetId) {
+        setTimeout(() => PostView.open(targetId), 260);
+      } else if (kind === 'message' && actorId) Chat.openWith(actorId);
+    });
+  },
+};
 
-    open() {
-      if (!S.me) { Auth.open('login'); return; }
-      const view = document.getElementById('composerView');
-      if (!view) { console.error('[خَيال] #composerView غير موجود'); Toast.show('صفحة النشر غير متوفرة', 'error'); return; }
-      this.editingId = null;
-      this._resetFormUI();
+/* ═══════════ COMPOSER ═══════════ */
+const Composer = {
+  type: 'text',
+  editingId: null,
+
+  open() {
+    if (!S.me) { Auth.open('login'); return; }
+    const view = document.getElementById('composerView');
+    if (!view) { console.error('[خَيال] #composerView غير موجود'); Toast.show('صفحة النشر غير متوفرة', 'error'); return; }
+    this.editingId = null;
+    this._resetFormUI();
+    const av = document.getElementById('composerFormAvatar');
+    if (av) U.safeAvatar(av, S.me.avatar);
+    const name = document.getElementById('composerUserName');
+    if (name) name.textContent = S.me.name || '—';
+    this.restoreDraft();
+    view.hidden = false;
+    document.body.classList.add('view-open');
+    if (window.Sounds) Sounds.play('open');
+  },
+
+  async openEdit(postId) {
+    if (!S.me) { Auth.open('login'); return; }
+    if (!postId) return;
+    const view = document.getElementById('composerView');
+    if (!view) return;
+    try {
+      const post = await API.get(`/api/posts/${postId}`);
+      if (!post.is_owner) { Toast.show('لا تملك صلاحية التعديل', 'error'); return; }
+      this.editingId = postId;
+      this._fillForm(post);
+      this._setEditUI(true);
       const av = document.getElementById('composerFormAvatar');
       if (av) U.safeAvatar(av, S.me.avatar);
       const name = document.getElementById('composerUserName');
       if (name) name.textContent = S.me.name || '—';
-      this.restoreDraft();
       view.hidden = false;
       document.body.classList.add('view-open');
+      document.body.classList.add('composer-editing');
       if (window.Sounds) Sounds.play('open');
-    },
+    } catch (err) { Toast.show(err.message || 'تعذّر تحميل المنشور', 'error'); }
+  },
 
-    async openEdit(postId) {
-      if (!S.me) { Auth.open('login'); return; }
-      if (!postId) return;
-      const view = document.getElementById('composerView');
-      if (!view) return;
-      try {
-        const post = await API.get(`/api/posts/${postId}`);
-        if (!post.is_owner) { Toast.show('لا تملك صلاحية التعديل', 'error'); return; }
-        this.editingId = postId;
-        this._fillForm(post);
-        this._setEditUI(true);
-        const av = document.getElementById('composerFormAvatar');
-        if (av) U.safeAvatar(av, S.me.avatar);
-        const name = document.getElementById('composerUserName');
-        if (name) name.textContent = S.me.name || '—';
-        view.hidden = false;
-        document.body.classList.add('view-open');
-        document.body.classList.add('composer-editing');
-        if (window.Sounds) Sounds.play('open');
-      } catch (err) { Toast.show(err.message || 'تعذّر تحميل المنشور', 'error'); }
-    },
+  _fillForm(post) {
+    const el = (id) => document.getElementById(id);
+    if (el('cTitle')) el('cTitle').value = post.title || '';
+    if (el('cPrompt')) el('cPrompt').value = post.prompt || '';
+    if (el('cImage')) el('cImage').value = post.image || '';
+    if (el('cModel') && post.model) el('cModel').value = post.model;
+    if (el('cTags')) el('cTags').value = (post.tags || []).join('، ');
+    if (post.image) this.previewImage(post.image);
+    this.chooseType(post.image ? 'prompt' : 'text');
+  },
 
-    _fillForm(post) {
+  _setEditUI(isEdit) {
+    const head = document.querySelector('#composerView .view-overlay-head h2');
+    if (head) head.textContent = isEdit ? 'تعديل المنشور' : 'منشور جديد';
+    const btn = document.getElementById('composerSubmit');
+    if (btn) {
+      btn.innerHTML = isEdit
+        ? '<i class="ph ph-check" aria-hidden="true"></i><span>حفظ</span>'
+        : '<i class="ph ph-paper-plane-tilt" aria-hidden="true"></i><span>نشر</span>';
+    }
+  },
+
+  _resetFormUI() {
+    const form = document.getElementById('composerForm');
+    if (form) form.reset();
+    this.clearPreview();
+    this.chooseType('text');
+    this._setEditUI(false);
+    document.body.classList.remove('composer-editing');
+  },
+
+  close() {
+    const view = document.getElementById('composerView');
+    if (!view) return;
+    if (!this.editingId) this.saveDraft();
+    view.hidden = true;
+    document.body.classList.remove('view-open');
+    document.body.classList.remove('composer-editing');
+    this.editingId = null;
+    if (window.Sounds) Sounds.play('close');
+  },
+
+  saveDraft() {
+    if (!S.me || this.editingId) return;
+    const draft = {
+      title: (document.getElementById('cTitle') || {}).value || '',
+      prompt: (document.getElementById('cPrompt') || {}).value || '',
+      image: (document.getElementById('cImage') || {}).value || '',
+      model: (document.getElementById('cModel') || {}).value || '',
+      tags: (document.getElementById('cTags') || {}).value || '',
+      type: this.type,
+    };
+    try { localStorage.setItem(CFG.DRAFT_KEY, JSON.stringify(draft)); } catch (e) {}
+  },
+
+  restoreDraft() {
+    try {
+      const raw = localStorage.getItem(CFG.DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
       const el = (id) => document.getElementById(id);
-      if (el('cTitle')) el('cTitle').value = post.title || '';
-      if (el('cPrompt')) el('cPrompt').value = post.prompt || '';
-      if (el('cImage')) el('cImage').value = post.image || '';
-      if (el('cModel') && post.model) el('cModel').value = post.model;
-      if (el('cTags')) el('cTags').value = (post.tags || []).join('، ');
-      if (post.image) this.previewImage(post.image);
-      this.chooseType(post.image ? 'prompt' : 'text');
-    },
+      if (d.title && el('cTitle')) el('cTitle').value = d.title;
+      if (d.prompt && el('cPrompt')) el('cPrompt').value = d.prompt;
+      if (d.image && el('cImage')) el('cImage').value = d.image;
+      if (d.model && el('cModel')) el('cModel').value = d.model;
+      if (d.tags && el('cTags')) el('cTags').value = d.tags;
+    } catch (e) {}
+  },
 
-    _setEditUI(isEdit) {
-      const head = document.querySelector('#composerView .view-overlay-head h2');
-      if (head) head.textContent = isEdit ? 'تعديل المنشور' : 'منشور جديد';
-      const btn = document.getElementById('composerSubmit');
-      if (btn) {
-        btn.innerHTML = isEdit
-          ? '<i class="ph ph-check" aria-hidden="true"></i><span>حفظ</span>'
-          : '<i class="ph ph-paper-plane-tilt" aria-hidden="true"></i><span>نشر</span>';
-      }
-    },
+  clearDraft() { try { localStorage.removeItem(CFG.DRAFT_KEY); } catch (e) {} },
 
-    _resetFormUI() {
-      const form = document.getElementById('composerForm');
-      if (form) form.reset();
-      this.clearPreview();
-      this.chooseType('text');
-      this._setEditUI(false);
-      document.body.classList.remove('composer-editing');
-    },
+  chooseType(type) {
+    this.type = type;
+    const switchEl = document.querySelector('.type-switch');
+    if (switchEl) {
+      switchEl.querySelectorAll('.type-pill').forEach(b => b.setAttribute('aria-selected', b.dataset.type === type ? 'true' : 'false'));
+    }
+    const imageField = document.getElementById('imageField');
+    if (imageField) imageField.hidden = type !== 'prompt';
+    if (window.Sounds) Sounds.play('toggle');
+  },
 
-    close() {
-      const view = document.getElementById('composerView');
-      if (!view) return;
-      if (!this.editingId) this.saveDraft();
-      view.hidden = true;
-      document.body.classList.remove('view-open');
-      document.body.classList.remove('composer-editing');
-      this.editingId = null;
-      if (window.Sounds) Sounds.play('close');
-    },
+  previewImage(url) {
+    const wrap = document.getElementById('imgPreview');
+    const img = document.getElementById('imgPreviewEl');
+    if (!wrap || !img) return;
+    if (url && /^https?:\/\//i.test(url)) { img.src = url; wrap.hidden = false; }
+    else { wrap.hidden = true; }
+  },
 
-    saveDraft() {
-      if (!S.me || this.editingId) return;
-      const draft = {
-        title: (document.getElementById('cTitle') || {}).value || '',
-        prompt: (document.getElementById('cPrompt') || {}).value || '',
-        image: (document.getElementById('cImage') || {}).value || '',
-        model: (document.getElementById('cModel') || {}).value || '',
-        tags: (document.getElementById('cTags') || {}).value || '',
-        type: this.type,
-      };
-      try { localStorage.setItem(CFG.DRAFT_KEY, JSON.stringify(draft)); } catch (e) {}
-    },
+  clearPreview() {
+    const wrap = document.getElementById('imgPreview');
+    const img = document.getElementById('imgPreviewEl');
+    const input = document.getElementById('cImage');
+    if (wrap) wrap.hidden = true;
+    if (img) img.src = '';
+    if (input) input.value = '';
+  },
 
-    restoreDraft() {
-      try {
-        const raw = localStorage.getItem(CFG.DRAFT_KEY);
-        if (!raw) return;
-        const d = JSON.parse(raw);
-        const el = (id) => document.getElementById(id);
-        if (d.title && el('cTitle')) el('cTitle').value = d.title;
-        if (d.prompt && el('cPrompt')) el('cPrompt').value = d.prompt;
-        if (d.image && el('cImage')) el('cImage').value = d.image;
-        if (d.model && el('cModel')) el('cModel').value = d.model;
-        if (d.tags && el('cTags')) el('cTags').value = d.tags;
-      } catch (e) {}
-    },
+  async publish(ev) {
+    if (ev) ev.preventDefault();
+    if (!S.me) { Auth.open('login'); return; }
 
-    clearDraft() { try { localStorage.removeItem(CFG.DRAFT_KEY); } catch (e) {} },
+    const title = ((document.getElementById('cTitle') || {}).value || '').trim();
+    const prompt = ((document.getElementById('cPrompt') || {}).value || '').trim();
+    const image = ((document.getElementById('cImage') || {}).value || '').trim();
+    const model = ((document.getElementById('cModel') || {}).value || '').trim();
+    const tagsRaw = ((document.getElementById('cTags') || {}).value || '').trim();
 
-    chooseType(type) {
-      this.type = type;
-      const switchEl = document.querySelector('.type-switch');
-      if (switchEl) {
-        switchEl.querySelectorAll('.type-pill').forEach(b => b.setAttribute('aria-selected', b.dataset.type === type ? 'true' : 'false'));
-      }
-      const imageField = document.getElementById('imageField');
-      if (imageField) imageField.hidden = type !== 'prompt';
-      if (window.Sounds) Sounds.play('toggle');
-    },
+    if (!title || !prompt) {
+      if (window.Sounds) Sounds.play('error');
+      return Toast.show('العنوان والمحتوى مطلوبان', 'warning');
+    }
 
-    previewImage(url) {
-      const wrap = document.getElementById('imgPreview');
-      const img = document.getElementById('imgPreviewEl');
-      if (!wrap || !img) return;
-      if (url && /^https?:\/\//i.test(url)) { img.src = url; wrap.hidden = false; }
-      else { wrap.hidden = true; }
-    },
+    const tags = tagsRaw ? tagsRaw.split(/[,،]/).map(t => t.trim()).filter(Boolean) : [];
 
-    clearPreview() {
-      const wrap = document.getElementById('imgPreview');
-      const img = document.getElementById('imgPreviewEl');
-      const input = document.getElementById('cImage');
-      if (wrap) wrap.hidden = true;
-      if (img) img.src = '';
-      if (input) input.value = '';
-    },
+    const btn = document.getElementById('composerSubmit');
+    if (btn) { btn.setAttribute('aria-busy', 'true'); btn.disabled = true; }
 
-    async publish(ev) {
-      if (ev) ev.preventDefault();
-      if (!S.me) { Auth.open('login'); return; }
+    const payload = { title, prompt, image: image || null, model: model || null, tags };
 
-      const title = ((document.getElementById('cTitle') || {}).value || '').trim();
-      const prompt = ((document.getElementById('cPrompt') || {}).value || '').trim();
-      const image = ((document.getElementById('cImage') || {}).value || '').trim();
-      const model = ((document.getElementById('cModel') || {}).value || '').trim();
-      const tagsRaw = ((document.getElementById('cTags') || {}).value || '').trim();
-
-      if (!title || !prompt) {
-        if (window.Sounds) Sounds.play('error');
-        return Toast.show('العنوان والمحتوى مطلوبان', 'warning');
-      }
-
-      const tags = tagsRaw ? tagsRaw.split(/[,،]/).map(t => t.trim()).filter(Boolean) : [];
-
-      const btn = document.getElementById('composerSubmit');
-      if (btn) { btn.setAttribute('aria-busy', 'true'); btn.disabled = true; }
-
-      const payload = { title, prompt, image: image || null, model: model || null, tags };
-
-      try {
-        if (this.editingId) {
-          const updated = await API.patch(`/api/posts/${this.editingId}`, payload);
-          const card = document.querySelector(`[data-post-id="${this.editingId}"]`);
-          if (card && updated) card.replaceWith(Post.renderCard(updated));
-          Toast.show('تم حفظ التعديلات', 'success');
-        } else {
-          const post = await API.post('/api/posts', payload);
-          const homeEl = document.getElementById('homeFeed');
-          if (homeEl && post) {
-            const empty = homeEl.querySelector('.empty-block');
-            if (empty) empty.remove();
-            homeEl.insertBefore(Post.renderCard(post), homeEl.firstChild);
-          }
-          this.clearDraft();
-          Toast.show('تم النشر', 'success');
+    try {
+      if (this.editingId) {
+        const updated = await API.patch(`/api/posts/${this.editingId}`, payload);
+        const card = document.querySelector(`[data-post-id="${this.editingId}"]`);
+        if (card && updated) card.replaceWith(Post.renderCard(updated));
+        // إن كانت PostView مفتوحة على نفس المنشور، حدّثها
+        if (PostView.current && PostView.current.id === this.editingId) {
+          PostView.current = Object.assign(PostView.current, updated);
         }
-        this.close();
-        if (window.Sounds) Sounds.play('success');
-      } catch (err) {
-        if (window.Sounds) Sounds.play('error');
-        Toast.show(err.message || 'تعذّر', 'error');
-      } finally {
-        if (btn) { btn.removeAttribute('aria-busy'); btn.disabled = false; }
-      }
-    },
-
-    init() {
-      document.querySelectorAll('.type-pill').forEach(btn => btn.addEventListener('click', () => this.chooseType(btn.dataset.type)));
-      ['cTitle', 'cPrompt', 'cImage', 'cTags'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', U.debounce(() => this.saveDraft(), 1500));
-      });
-    },
-  };
-
-  /* ═══════════ CHAT ═══════════ */
-  const Chat = {
-    allChats: [],
-    async loadList() {
-      const list = document.getElementById('chatList');
-      if (!list || !S.me) return;
-      list.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-      try {
-        const chats = await API.get('/api/chats');
-        this.allChats = chats || [];
-        if (!this.allChats.length) {
-          list.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا محادثات</h4><p>ابدأ محادثة جديدة من ملف أي مستخدم.</p></div>';
-          return;
+        Toast.show('تم حفظ التعديلات', 'success');
+      } else {
+        const post = await API.post('/api/posts', payload);
+        const homeEl = document.getElementById('homeFeed');
+        if (homeEl && post) {
+          const empty = homeEl.querySelector('.empty-block');
+          if (empty) empty.remove();
+          homeEl.insertBefore(Post.renderCard(post), homeEl.firstChild);
         }
-        list.innerHTML = this.allChats.map(c => this.rowHtml(c)).join('');
-        this.bindRows();
-      } catch (err) {
-        list.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
+        this.clearDraft();
+        Toast.show('تم النشر', 'success');
       }
-    },
-    rowHtml(c) {
-      const u = c.with_user || {};
-      const unread = c.unread > 0 ? `<span class="badge">${c.unread}</span>` : '';
-      return `<button class="chat-item" type="button" data-chat-id="${c.id}">
-        <div style="position:relative">
-          <img class="avatar avatar-sm" src="${U.escapeHtml(u.avatar || '')}" alt="">
-          ${unread}
-        </div>
-        <div class="chat-item-info">
-          <div class="chat-item-top">
-            <span class="chat-item-name">${U.escapeHtml(u.name || 'محادثة')}</span>
-            <span class="chat-item-time">${U.escapeHtml(c.time || '')}</span>
-          </div>
-          <div class="chat-item-preview">${U.escapeHtml(c.last || 'لا رسائل بعد')}</div>
-        </div>
-      </button>`;
-    },
-    bindRows() {
-      document.querySelectorAll('.chat-item').forEach(row => row.addEventListener('click', () => this.openThread(parseInt(row.dataset.chatId, 10))));
-    },
-    async openThread(chatId) {
-      if (!S.me) return;
-      S.openChatId = chatId;
-      const layout = document.getElementById('chatLayout');
-      const name = document.getElementById('chatThreadName');
-      const body = document.getElementById('chatBody');
-      const composer = document.querySelector('.chat-composer');
-      const chat = this.allChats.find(c => c.id === chatId);
-      if (name && chat && chat.with_user) name.textContent = chat.with_user.name;
-      if (layout) layout.dataset.view = 'thread';
-      document.body.classList.add('chat-fullscreen');
-      if (body) body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-      if (composer) composer.style.display = 'flex';
-      document.querySelectorAll('.chat-item').forEach(r => r.setAttribute('aria-current', r.dataset.chatId === String(chatId) ? 'true' : 'false'));
-      try {
-        const msgs = await API.get(`/api/chats/${chatId}/messages`);
-        if (!msgs || !msgs.length) body.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>ابدأ المحادثة</h4><p>أرسل أول رسالة.</p></div>';
-        else { body.innerHTML = msgs.map(m => this.msgHtml(m)).join(''); body.scrollTop = body.scrollHeight; }
-      } catch (err) {
-        body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
+      this.close();
+      if (window.Sounds) Sounds.play('success');
+    } catch (err) {
+      if (window.Sounds) Sounds.play('error');
+      Toast.show(err.message || 'تعذّر', 'error');
+    } finally {
+      if (btn) { btn.removeAttribute('aria-busy'); btn.disabled = false; }
+    }
+  },
+
+  init() {
+    document.querySelectorAll('.type-pill').forEach(btn => btn.addEventListener('click', () => this.chooseType(btn.dataset.type)));
+    ['cTitle', 'cPrompt', 'cImage', 'cTags'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', U.debounce(() => this.saveDraft(), 1500));
+    });
+  },
+};
+
+/* ═══════════ CHAT ═══════════ */
+const Chat = {
+  allChats: [],
+  async loadList() {
+    const list = document.getElementById('chatList');
+    if (!list || !S.me) return;
+    list.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
+    try {
+      const chats = await API.get('/api/chats');
+      this.allChats = chats || [];
+      if (!this.allChats.length) {
+        list.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا محادثات</h4><p>ابدأ محادثة جديدة من ملف أي مستخدم.</p></div>';
+        return;
       }
-    },
-    msgHtml(m) {
-      return `<div class="msg ${m.from === 'me' ? 'msg-me' : 'msg-them'}">${U.escapeHtml(m.text)}<span class="msg-time">${U.escapeHtml(m.time || '')}</span></div>`;
-    },
-    async send(ev) {
-      ev.preventDefault();
-      if (!S.me || !S.openChatId) return;
-      const input = document.getElementById('chatInput');
-      const body = document.getElementById('chatBody');
-      if (!input || !body) return;
-      const text = input.value.trim();
-      if (!text) return;
-      input.value = ''; U.autoGrow(input);
-      const empty = body.querySelector('.empty-block'); if (empty) empty.remove();
-      body.insertAdjacentHTML('beforeend', this.msgHtml({ from: 'me', text, time: 'الآن' }));
-      body.scrollTop = body.scrollHeight;
+      list.innerHTML = this.allChats.map(c => this.rowHtml(c)).join('');
+      this.bindRows();
+    } catch (err) {
+      list.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
+    }
+  },
+  rowHtml(c) {
+    const u = c.with_user || {};
+    const unread = c.unread > 0 ? `<span class="badge">${c.unread}</span>` : '';
+    return `<button class="chat-item" type="button" data-chat-id="${c.id}">
+      <div style="position:relative">
+        <img class="avatar avatar-sm" src="${U.escapeHtml(u.avatar || '')}" alt="">
+        ${unread}
+      </div>
+      <div class="chat-item-info">
+        <div class="chat-item-top">
+          <span class="chat-item-name">${U.escapeHtml(u.name || 'محادثة')}</span>
+          <span class="chat-item-time">${U.escapeHtml(c.time || '')}</span>
+        </div>
+        <div class="chat-item-preview">${U.escapeHtml(c.last || 'لا رسائل بعد')}</div>
+      </div>
+    </button>`;
+  },
+  bindRows() {
+    document.querySelectorAll('.chat-item').forEach(row => row.addEventListener('click', () => this.openThread(parseInt(row.dataset.chatId, 10))));
+  },
+  async openThread(chatId) {
+    if (!S.me) return;
+    S.openChatId = chatId;
+    const layout = document.getElementById('chatLayout');
+    const name = document.getElementById('chatThreadName');
+    const body = document.getElementById('chatBody');
+    const composer = document.querySelector('.chat-composer');
+    const chat = this.allChats.find(c => c.id === chatId);
+    if (name && chat && chat.with_user) name.textContent = chat.with_user.name;
+    if (layout) layout.dataset.view = 'thread';
+    document.body.classList.add('chat-fullscreen');
+    if (body) body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
+    if (composer) composer.style.display = 'flex';
+    document.querySelectorAll('.chat-item').forEach(r => r.setAttribute('aria-current', r.dataset.chatId === String(chatId) ? 'true' : 'false'));
+    try {
+      const msgs = await API.get(`/api/chats/${chatId}/messages`);
+      if (!msgs || !msgs.length) body.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>ابدأ المحادثة</h4><p>أرسل أول رسالة.</p></div>';
+      else { body.innerHTML = msgs.map(m => this.msgHtml(m)).join(''); body.scrollTop = body.scrollHeight; }
+    } catch (err) {
+      body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
+    }
+  },
+  msgHtml(m) {
+    return `<div class="msg ${m.from === 'me' ? 'msg-me' : 'msg-them'}">${U.escapeHtml(m.text)}<span class="msg-time">${U.escapeHtml(m.time || '')}</span></div>`;
+  },
+  async send(ev) {
+    ev.preventDefault();
+    if (!S.me || !S.openChatId) return;
+    const input = document.getElementById('chatInput');
+    const body = document.getElementById('chatBody');
+    if (!input || !body) return;
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = ''; U.autoGrow(input);
+    const empty = body.querySelector('.empty-block'); if (empty) empty.remove();
+    body.insertAdjacentHTML('beforeend', this.msgHtml({ from: 'me', text, time: 'الآن' }));
+    body.scrollTop = body.scrollHeight;
+    if (window.Sounds) Sounds.play('send');
+    try { await API.post(`/api/chats/${this.openChatId}/messages`, { text }); }
+    catch (err) { Toast.show(err.message || 'تعذّر الإرسال', 'error'); }
+  },
+  filterList(q) {
+    const query = (q || '').trim().toLowerCase();
+    document.querySelectorAll('.chat-item').forEach(row => {
+      const name = (row.querySelector('.chat-item-name') || {}).textContent || '';
+      row.style.display = !query || name.toLowerCase().includes(query) ? '' : 'none';
+    });
+  },
+  backToList() {
+    const layout = document.getElementById('chatLayout');
+    if (layout) layout.dataset.view = 'list';
+    document.body.classList.remove('chat-fullscreen');
+    S.openChatId = null;
+  },
+  async openWith(userId) {
+    if (!S.me) { Auth.open('login'); return; }
+    try {
+      const res = await API.post(`/api/chats/with/${userId}`);
+      App.switchTab('chat');
+      await this.loadList();
+      if (res && res.id) setTimeout(() => this.openThread(res.id), 200);
+    } catch (err) { Toast.show(err.message || 'تعذّر فتح المحادثة', 'error'); }
+  },
+};
+
+/* ═══════════ POST VIEW (Overlay) ═══════════ */
+const PostView = {
+  current: null,
+  _scrollBound: false,
+
+  async open(postId) {
+    if (!postId) return;
+    const view = document.getElementById('postView');
+    if (!view) { console.error('[PostView] #postView مفقود'); return; }
+
+    const skeleton = document.getElementById('postViewSkeleton');
+    const content = document.getElementById('postViewContent');
+    if (skeleton) skeleton.hidden = false;
+    if (content) content.hidden = true;
+
+    view.hidden = false;
+    document.body.classList.add('view-open');
+    document.documentElement.style.overflow = 'hidden';
+    if (window.Sounds) Sounds.play('open');
+
+    try {
+      const post = await API.get('/api/posts/' + postId);
+      this.current = post;
+      this._render(post);
+      if (skeleton) skeleton.hidden = true;
+      if (content) content.hidden = false;
+      const body = document.querySelector('.pv2-body');
+      if (body) body.scrollTop = 0;
+    } catch (err) {
+      Toast.show(err.message || 'تعذّر تحميل المنشور', 'error');
+      this.close();
+    }
+  },
+
+  close() {
+    const view = document.getElementById('postView');
+    if (!view) return;
+    view.hidden = true;
+    document.body.classList.remove('view-open');
+    document.documentElement.style.overflow = '';
+    this.current = null;
+    if (window.Sounds) Sounds.play('close');
+
+    // إزالة ?p= من الرابط
+    if (location.search.includes('p=')) {
+      const params = new URLSearchParams(location.search);
+      params.delete('p');
+      const qs = params.toString();
+      const url = location.pathname + (qs ? '?' + qs : '');
+      history.replaceState({}, '', url || location.pathname);
+    }
+  },
+
+  _render(p) {
+    const isMe = S.me && S.me.id === p.author;
+    const a = p.author_data || {};
+
+    /* Image */
+    const images = Post._extractImages(p);
+    const media = document.getElementById('pv2Media');
+    const img = document.getElementById('pv2Image');
+    if (img) {
+      if (images.length) {
+        img.src = images[0];
+        img.alt = p.title || '';
+        img.onerror = function () { if (media) media.hidden = true; };
+        img.onload = function () { if (media) media.hidden = false; };
+        if (media) media.hidden = false;
+      } else {
+        if (media) media.hidden = true;
+      }
+    }
+
+    /* Meta */
+    const modelEl = document.getElementById('pv2Model');
+    if (modelEl) {
+      if (p.model) {
+        modelEl.innerHTML = '<i class="ph ph-sparkle" aria-hidden="true"></i>' + U.escapeHtml(p.model);
+        modelEl.hidden = false;
+      } else modelEl.hidden = true;
+    }
+    const timeEl = document.getElementById('pv2Time');
+    if (timeEl) timeEl.textContent = U.relativeTime(p.time);
+
+    /* Title */
+    const title = document.getElementById('pv2Title');
+    if (title) title.textContent = p.title || '—';
+
+    /* Author */
+    const avatar = document.getElementById('pv2AuthorAvatar');
+    if (avatar) U.safeAvatar(avatar, a.avatar || '');
+    const nameEl = document.getElementById('pv2AuthorName');
+    if (nameEl) nameEl.textContent = a.name || 'مستخدم';
+    const verified = document.getElementById('pv2AuthorVerified');
+    if (verified) verified.hidden = !a.verified;
+    const handle = document.getElementById('pv2AuthorHandle');
+    if (handle) handle.textContent = a.handle || '—';
+    const authorBtn = document.getElementById('pv2AuthorBtn');
+    if (authorBtn) authorBtn.dataset.userId = String(a.id || '');
+
+    const followBtn = document.getElementById('pv2AuthorFollow');
+    if (followBtn) {
+      if (isMe) {
+        followBtn.dataset.state = 'owner';
+        followBtn.hidden = true;
+      } else {
+        followBtn.hidden = false;
+        followBtn.dataset.state = a.is_following ? 'following' : 'idle';
+        followBtn.dataset.userId = String(a.id || '');
+        followBtn.innerHTML = a.is_following
+          ? '<i class="ph ph-check" aria-hidden="true"></i><span>أتابعه</span>'
+          : '<i class="ph ph-plus" aria-hidden="true"></i><span>متابعة</span>';
+      }
+    }
+
+    /* Prompt */
+    const promptEl = document.getElementById('pv2Prompt');
+    if (promptEl) promptEl.textContent = p.prompt || '—';
+
+    /* Tags */
+    const tagsEl = document.getElementById('pv2Tags');
+    if (tagsEl) {
+      const tags = Array.isArray(p.tags) ? p.tags : [];
+      if (tags.length) {
+        tagsEl.innerHTML = tags.map(t =>
+          '<button class="tag" type="button" data-tag="' + U.escapeHtml(t) + '">' + U.escapeHtml(t) + '</button>'
+        ).join('');
+        tagsEl.hidden = false;
+      } else tagsEl.hidden = true;
+    }
+
+    /* Actions / Stats */
+    const likeBtn = document.getElementById('pv2LikeBtn');
+    if (likeBtn) likeBtn.setAttribute('aria-pressed', String(!!p.liked));
+    const saveBtn = document.getElementById('pv2SaveBtn');
+    if (saveBtn) saveBtn.setAttribute('aria-pressed', String(!!p.saved));
+    const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
+    setStat('pv2StatLikes', p.likes || 0);
+    setStat('pv2StatSaves', p.saves || 0);
+    setStat('pv2StatCopies', p.copies || 0);
+
+    /* Menu buttons */
+    const editBtn = document.getElementById('pv2EditBtn');
+    const deleteBtn = document.getElementById('pv2DeleteBtn');
+    const reportBtn = document.getElementById('pv2ReportBtn');
+    if (editBtn) editBtn.hidden = !isMe;
+    if (deleteBtn) deleteBtn.hidden = !isMe;
+    if (reportBtn) reportBtn.hidden = isMe;
+
+    /* Comment composer visibility */
+    const commentForm = document.getElementById('pv2CommentForm');
+    if (commentForm) commentForm.dataset.hidden = S.me ? 'false' : 'true';
+    const commentAvatar = document.getElementById('pv2CommentAvatar');
+    if (commentAvatar && S.me) U.safeAvatar(commentAvatar, S.me.avatar);
+
+    /* Load comments + related */
+    this._loadComments(p.id);
+    this._loadRelated(p.id);
+  },
+
+  async _loadComments(postId) {
+    const list = document.getElementById('pv2CommentsList');
+    const countEl = document.getElementById('pv2CommentsCount');
+    if (!list) return;
+    list.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
+    try {
+      const items = await API.get('/api/posts/' + postId + '/comments');
+      if (!items || !items.length) {
+        list.innerHTML = '<div class="empty-block">' +
+          '<i class="ph ph-chat-circle-dots" aria-hidden="true"></i>' +
+          '<h4>لا تعليقات بعد</h4>' +
+          '<p>كن أول المعلّقين.</p>' +
+          '</div>';
+        if (countEl) countEl.textContent = '';
+        return;
+      }
+      if (countEl) countEl.textContent = '(' + items.length + ')';
+      list.innerHTML = items.map(c => Comments.rowHtml(c)).join('');
+    } catch (err) {
+      list.innerHTML = '<div class="empty-block">' +
+        '<i class="ph ph-warning-circle" aria-hidden="true"></i>' +
+        '<h4>تعذّر التحميل</h4>' +
+        '<p>' + U.escapeHtml(err.message) + '</p>' +
+        '</div>';
+    }
+  },
+
+  async _loadRelated(postId) {
+    const section = document.getElementById('pv2Related');
+    const grid = document.getElementById('pv2RelatedGrid');
+    if (!section || !grid) return;
+    grid.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
+    section.hidden = false;
+    try {
+      const items = await API.get('/api/posts/' + postId + '/related?limit=4');
+      if (!items || !items.length) { section.hidden = true; return; }
+      grid.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      items.forEach(p => frag.appendChild(Post.renderCard(p)));
+      grid.appendChild(frag);
+    } catch (err) { section.hidden = true; }
+  },
+
+  async submitComment(ev) {
+    ev.preventDefault();
+    if (!S.me) { Auth.open('login'); return; }
+    if (!this.current) return;
+    const input = document.getElementById('pv2CommentInput');
+    const submitBtn = document.getElementById('pv2CommentSubmit');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+    input.disabled = true;
+    if (submitBtn) submitBtn.setAttribute('aria-busy', 'true');
+    try {
+      const c = await API.post('/api/posts/' + this.current.id + '/comments', { text });
+      input.value = '';
+      U.autoGrow(input);
       if (window.Sounds) Sounds.play('send');
-      try { await API.post(`/api/chats/${this.openChatId}/messages`, { text }); }
-      catch (err) { Toast.show(err.message || 'تعذّر الإرسال', 'error'); }
-    },
-    filterList(q) {
-      const query = (q || '').trim().toLowerCase();
-      document.querySelectorAll('.chat-item').forEach(row => {
-        const name = (row.querySelector('.chat-item-name') || {}).textContent || '';
-        row.style.display = !query || name.toLowerCase().includes(query) ? '' : 'none';
+      const list = document.getElementById('pv2CommentsList');
+      if (list) {
+        const empty = list.querySelector('.empty-block');
+        if (empty) empty.remove();
+        list.insertAdjacentHTML('afterbegin', Comments.rowHtml(c));
+        const countEl = document.getElementById('pv2CommentsCount');
+        if (countEl) countEl.textContent = '(' + list.querySelectorAll('.comment').length + ')';
+      }
+    } catch (err) {
+      Toast.show(err.message || 'تعذّر الإرسال', 'error');
+    } finally {
+      input.disabled = false;
+      if (submitBtn) submitBtn.removeAttribute('aria-busy');
+      input.focus();
+    }
+  },
+
+  async toggleLike(btn) {
+    if (!S.me) { Auth.open('login'); return; }
+    if (!this.current) return;
+    const postId = this.current.id;
+    const currently = btn.getAttribute('aria-pressed') === 'true';
+    const next = !currently;
+    btn.setAttribute('aria-pressed', String(next));
+    this.current.liked = next;
+    try {
+      const res = await API.post('/api/posts/' + postId + '/like');
+      const liked = !!res.liked;
+      btn.setAttribute('aria-pressed', String(liked));
+      this.current.liked = liked;
+      this.current.likes = res.likes;
+      const stat = document.getElementById('pv2StatLikes');
+      if (stat) stat.textContent = U.formatNumber(res.likes);
+      document.querySelectorAll('[data-post-id="' + postId + '"] [data-action="like"]').forEach(b => {
+        b.setAttribute('aria-pressed', String(liked));
       });
-    },
-    backToList() {
-      const layout = document.getElementById('chatLayout');
-      if (layout) layout.dataset.view = 'list';
-      document.body.classList.remove('chat-fullscreen');
-      S.openChatId = null;
-    },
-    async openWith(userId) {
-      if (!S.me) { Auth.open('login'); return; }
-      try {
-        const res = await API.post(`/api/chats/with/${userId}`);
-        App.switchTab('chat');
-        await this.loadList();
-        if (res && res.id) setTimeout(() => this.openThread(res.id), 200);
-      } catch (err) { Toast.show(err.message || 'تعذّر فتح المحادثة', 'error'); }
-    },
-  };
+      document.querySelectorAll('[data-post-id="' + postId + '"] [data-count="likes"]').forEach(el => {
+        el.textContent = U.formatNumber(res.likes);
+      });
+      if (window.Sounds) Sounds.play('like');
+    } catch (err) {
+      btn.setAttribute('aria-pressed', String(currently));
+      this.current.liked = currently;
+      Toast.show(err.message || 'تعذّر الإعجاب', 'error');
+    }
+  },
+
+  async toggleSave(btn) {
+    if (!S.me) { Auth.open('login'); return; }
+    if (!this.current) return;
+    const postId = this.current.id;
+    const currently = btn.getAttribute('aria-pressed') === 'true';
+    const next = !currently;
+    btn.setAttribute('aria-pressed', String(next));
+    this.current.saved = next;
+    try {
+      const res = await API.post('/api/posts/' + postId + '/save');
+      const saved = !!res.saved;
+      btn.setAttribute('aria-pressed', String(saved));
+      this.current.saved = saved;
+      this.current.saves = res.saves;
+      const stat = document.getElementById('pv2StatSaves');
+      if (stat) stat.textContent = U.formatNumber(res.saves);
+      document.querySelectorAll('[data-post-id="' + postId + '"] [data-action="save"]').forEach(b => {
+        b.setAttribute('aria-pressed', String(saved));
+      });
+      Toast.show(saved ? 'تم الحفظ' : 'أُزيل من المحفوظة', 'success', 1800);
+      if (saved && S.feeds.saved) S.feeds.saved.loaded = false;
+    } catch (err) {
+      btn.setAttribute('aria-pressed', String(currently));
+      this.current.saved = currently;
+      Toast.show(err.message || 'تعذّر الحفظ', 'error');
+    }
+  },
+
+  async copyPrompt(btn) {
+    if (!this.current) return;
+    const ok = await U.copy(this.current.prompt || '');
+    if (ok) {
+      if (window.Sounds) Sounds.play('copy');
+      Toast.show('تم النسخ', 'success', 1600);
+      API.post('/api/posts/' + this.current.id + '/copy').then(res => {
+        const stat = document.getElementById('pv2StatCopies');
+        if (stat) stat.textContent = U.formatNumber(res.copies);
+        this.current.copies = res.copies;
+      }).catch(() => {});
+      if (btn) {
+        btn.dataset.state = 'copied';
+        setTimeout(() => { if (btn) btn.removeAttribute('data-state'); }, 1400);
+      }
+    } else {
+      Toast.show('تعذّر النسخ', 'error');
+    }
+  },
+
+  share() {
+    if (!this.current) return;
+    const url = location.origin + '/?p=' + this.current.id;
+    if (navigator.share) {
+      navigator.share({ title: this.current.title || 'خَيال', url }).catch(() => {});
+    } else {
+      U.copy(url).then(ok => Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600));
+    }
+    this.closeMenu();
+  },
+
+  edit() {
+    this.closeMenu();
+    if (!this.current) return;
+    const id = this.current.id;
+    this.close();
+    setTimeout(() => Composer.openEdit(id), 220);
+  },
+
+  async remove() {
+    this.closeMenu();
+    if (!this.current) return;
+    const id = this.current.id;
+    const ok = await ConfirmModal.show({
+      title: 'حذف المنشور',
+      message: 'سيُحذف المنشور نهائياً. لا يمكن التراجع عن هذا الإجراء.',
+      confirmLabel: 'حذف',
+      cancelLabel: 'بقاء',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await API.del('/api/posts/' + id);
+      Toast.show('تم الحذف', 'success');
+      if (window.Sounds) Sounds.play('success');
+      Object.keys(S.feeds || {}).forEach(k => { if (S.feeds[k]) S.feeds[k].loaded = false; });
+      const card = document.querySelector('[data-post-id="' + id + '"]');
+      if (card) {
+        card.style.transition = 'opacity .3s, transform .3s';
+        card.style.opacity = '0';
+        card.style.transform = 'scale(.95)';
+        setTimeout(() => card.remove(), 300);
+      }
+      this.close();
+    } catch (err) {
+      Toast.show(err.message || 'تعذّر الحذف', 'error');
+    }
+  },
+
+  async report() {
+    this.closeMenu();
+    if (!this.current) return;
+    const id = this.current.id;
+    const result = await ReportModal.show(id);
+    if (!result) return;
+    try {
+      await API.post('/api/posts/' + id + '/report', { reason: result.reason, note: result.note });
+      Toast.show('تم إرسال البلاغ، شكراً لك', 'success', 2600);
+      if (window.Sounds) Sounds.play('success');
+    } catch (err) {
+      Toast.show(err.message || 'تعذّر إرسال البلاغ', 'error');
+    }
+  },
+
+  async followAuthor(btn) {
+    if (!S.me) { Auth.open('login'); return; }
+    if (!this.current) return;
+    const a = this.current.author_data || {};
+    if (!a.id) return;
+    if (btn.dataset.state === 'owner') return;
+    btn.setAttribute('aria-busy', 'true');
+    try {
+      const res = await API.post('/api/users/' + a.id + '/follow');
+      const following = !!res.following;
+      btn.dataset.state = following ? 'following' : 'idle';
+      btn.innerHTML = following
+        ? '<i class="ph ph-check" aria-hidden="true"></i><span>أتابعه</span>'
+        : '<i class="ph ph-plus" aria-hidden="true"></i><span>متابعة</span>';
+      this.current.author_data.is_following = following;
+      if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
+      Toast.show(following ? 'تتابعه الآن' : 'أُلغي المتابعة', 'success', 1600);
+    } catch (err) {
+      Toast.show(err.message || 'تعذّر', 'error');
+    } finally {
+      btn.removeAttribute('aria-busy');
+    }
+  },
+
+  openAuthor() {
+    if (!this.current) return;
+    const a = this.current.author_data || {};
+    if (!a.id) return;
+    const id = a.id;
+    this.close();
+    setTimeout(() => ProfileView.open(id), 220);
+  },
+
+  toggleMenu(btn) {
+    const menu = document.getElementById('pv2Menu');
+    if (!menu) return;
+    const isOpen = !menu.hidden;
+    document.querySelectorAll('.prompt-menu').forEach(m => {
+      if (m === menu) return;
+      m.hidden = true;
+      const b = m.closest('.prompt-menu-wrap')?.querySelector('.prompt-menu-btn');
+      if (b) b.setAttribute('aria-expanded', 'false');
+    });
+    if (!isOpen) {
+      menu.hidden = false;
+      if (btn) btn.setAttribute('aria-expanded', 'true');
+    } else {
+      this.closeMenu();
+    }
+  },
+
+  closeMenu() {
+    const menu = document.getElementById('pv2Menu');
+    if (!menu) return;
+    menu.hidden = true;
+    const btn = document.querySelector('[data-action="post-view-menu"]');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  },
+};
   /* ═══════════ PROFILE VIEW (Overlay) ═══════════ */
   const ProfileView = {
     current: null,
@@ -1686,14 +2129,8 @@
         '<span class="pv-post-badge"><i class="ph ph-heart-fill"></i>' + likes + '</span>';
       btn.addEventListener('click', () => {
         const pid = btn.dataset.postId;
-        this.close();
-        setTimeout(() => {
-          App.switchTab('home');
-          setTimeout(() => {
-            const el = document.querySelector('[data-post-id="' + pid + '"]');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 200);
-        }, 250);
+        // v21.4 — بدلاً من الإغلاق والقفز للـ feed، افتح PostView فوق
+        PostView.open(parseInt(pid, 10));
       });
       return btn;
     },
@@ -2604,17 +3041,12 @@
     renderAccount(u) {
       const av = document.getElementById('accountIdentityAvatar');
       if (av) U.safeAvatar(av, u.avatar);
-
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-
-      // Mini identity card
       set('accountIdentityName', u.name || '—');
       set('accountIdentityHandle', u.handle || '@—');
       set('accountIdentityEmail', u.email || '—');
       const badge = document.getElementById('accountIdentityBadge');
       if (badge) badge.hidden = !u.verified;
-
-      // Info table (v21.2)
       set('accountInfoName', u.name || '—');
       set('accountInfoHandle', u.handle || '—');
       set('accountInfoEmail', u.email || '—');
@@ -2787,7 +3219,19 @@
       }
 
       this.updateHeroStats();
+      this.handleDeepLink();
       console.log('[خَيال] booted. v' + CFG.BUILD);
+    },
+
+    handleDeepLink() {
+      try {
+        const params = new URLSearchParams(location.search);
+        const pid = params.get('p');
+        if (!pid) return;
+        const id = parseInt(pid, 10);
+        if (!id || isNaN(id)) return;
+        setTimeout(() => PostView.open(id), 400);
+      } catch (e) {}
     },
 
     bindGlobal() {
@@ -2823,6 +3267,17 @@
         if (action === 'close-comments') { e.preventDefault(); Drawers.closeComments(); return; }
         if (action === 'close-search') { e.preventDefault(); Search.close(); return; }
         if (action === 'search-clear') { e.preventDefault(); Search.clearInput(); return; }
+        if (action === 'close-post-view') { e.preventDefault(); PostView.close(); return; }
+        if (action === 'post-view-menu') { e.preventDefault(); PostView.toggleMenu(btn); return; }
+        if (action === 'post-view-like') { e.preventDefault(); PostView.toggleLike(btn); return; }
+        if (action === 'post-view-save') { e.preventDefault(); PostView.toggleSave(btn); return; }
+        if (action === 'post-view-share') { e.preventDefault(); PostView.share(); return; }
+        if (action === 'post-view-copy-prompt') { e.preventDefault(); PostView.copyPrompt(btn); return; }
+        if (action === 'post-view-edit') { e.preventDefault(); PostView.edit(); return; }
+        if (action === 'post-view-delete') { e.preventDefault(); PostView.remove(); return; }
+        if (action === 'post-view-report') { e.preventDefault(); PostView.report(); return; }
+        if (action === 'post-view-follow') { e.preventDefault(); PostView.followAuthor(btn); return; }
+        if (action === 'post-view-open-author') { e.preventDefault(); PostView.openAuthor(); return; }
         if (action === 'copy-handle') {
           e.preventDefault();
           const el = document.getElementById('profileHandle');
@@ -2840,6 +3295,11 @@
 
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
+        // أغلق قائمة PostView أولاً إن كانت مفتوحة
+        const pvm = document.getElementById('pv2Menu');
+        if (pvm && !pvm.hidden) { PostView.closeMenu(); return; }
+        const pov = document.getElementById('postView');
+        if (pov && !pov.hidden) { PostView.close(); return; }
         const sv = document.getElementById('searchView');
         if (sv && !sv.hidden) { Search.close(); return; }
         const pv = document.getElementById('profileView');
@@ -2931,11 +3391,10 @@
             ).join('');
             results.querySelectorAll('.search-result').forEach(r => {
               r.addEventListener('click', () => {
-                const pid = r.dataset.postId;
+                const pid = parseInt(r.dataset.postId, 10);
                 results.setAttribute('data-open', 'false');
                 input.value = '';
-                const existing = document.querySelector('[data-post-id="' + pid + '"]');
-                if (existing) existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (pid) PostView.open(pid);
               });
             });
           }
@@ -2992,7 +3451,6 @@
         b.removeAttribute('onclick');
         b.addEventListener('click', () => Auth.open('register'));
       });
-
       document.querySelectorAll('[data-action="landing-cta-register"]').forEach(b => {
         b.addEventListener('click', () => Auth.open('register'));
       });
@@ -3100,6 +3558,7 @@
   window.Composer = Composer;
   window.Profile = Profile;
   window.ProfileView = ProfileView;
+  window.PostView = PostView;
   window.FollowersDrawer = FollowersDrawer;
   window.NotificationsLoader = NotificationsLoader;
   window.ConfirmModal = ConfirmModal;
