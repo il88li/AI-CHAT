@@ -742,3 +742,349 @@ body.view-open{overflow:hidden !important}
 #avatarBtn>img{width:34px;height:34px;border-radius:50%;object-fit:cover;border:2px solid color-mix(in srgb,var(--c-brand) 40%,transparent)}
 
 } /* end @layer views */
+
+/* ═══════════════════════════════════════════════════════════
+   Settings v14.4 — About · Identity · Tabs · Group titles
+   انسخ هذا بالكامل في نهاية: static/css/04-views.css
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── About card ─── */
+.about-card{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+  background:var(--surface-1);
+  border:1px solid var(--border-1);
+  border-radius:var(--r-4);
+  overflow:hidden;
+}
+.about-row{
+  display:flex;
+  align-items:flex-start;
+  gap:var(--sp-4);
+  padding:var(--sp-4) var(--sp-5);
+  border-bottom:1px solid var(--border-1);
+}
+.about-row:last-child{border-bottom:none}
+.about-icon{
+  width:36px;
+  height:36px;
+  border-radius:var(--r-2);
+  background:var(--surface-2);
+  display:grid;
+  place-items:center;
+  color:var(--c-brand);
+  font-size:18px;
+  flex-shrink:0;
+}
+.about-body{flex:1;min-width:0}
+.about-label{
+  display:block;
+  font-size:var(--fs-1);
+  color:var(--fg-3);
+  margin-bottom:2px;
+}
+.about-value{
+  font-size:var(--fs-3);
+  font-weight:var(--fw-semibold);
+  color:var(--fg-1);
+}
+.about-bio{
+  font-weight:var(--fw-regular);
+  line-height:var(--lh-relaxed);
+  color:var(--fg-2);
+  margin:0;
+}
+.about-link{
+  color:var(--c-brand);
+  text-decoration:none;
+}
+.about-link:hover{
+  text-decoration:underline;
+  text-underline-offset:3px;
+}
+
+/* ─── Account identity card ─── */
+.account-identity-card{
+  display:flex;
+  align-items:center;
+  gap:var(--sp-4);
+  padding:var(--sp-5);
+  margin-bottom:var(--sp-6);
+  background:var(--surface-1);
+  border:1px solid var(--border-1);
+  border-radius:var(--r-4);
+  position:relative;
+}
+.account-identity-avatar{
+  width:56px;
+  height:56px;
+  border-radius:50%;
+  overflow:hidden;
+  flex-shrink:0;
+  box-shadow:0 0 0 3px var(--c-brand);
+}
+.account-identity-avatar>img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.account-identity-info{flex:1;min-width:0}
+.account-identity-info>strong{
+  display:block;
+  font-size:var(--fs-4);
+  font-weight:var(--fw-bold);
+  color:var(--fg-1);
+  line-height:1.25;
+}
+.account-identity-info>span{
+  display:block;
+  font-size:var(--fs-2);
+  color:var(--fg-3);
+  line-height:1.4;
+}
+.account-identity-email{
+  margin-top:2px !important;
+  font-size:var(--fs-1) !important;
+  color:var(--fg-4) !important;
+}
+.account-identity-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:4px 10px;
+  border-radius:var(--r-full);
+  background:color-mix(in srgb,var(--c-brand) 12%,transparent);
+  color:var(--c-brand);
+  font-size:var(--fs-1);
+  font-weight:var(--fw-semibold);
+  flex-shrink:0;
+}
+.account-identity-badge>i{font-size:14px}
+
+/* ─── Group titles with icons ─── */
+.settings-group-title{
+  display:flex;
+  align-items:center;
+  gap:var(--sp-2);
+  font-size:var(--fs-2);
+  font-weight:var(--fw-bold);
+  color:var(--fg-2);
+  margin:var(--sp-6) 0 var(--sp-3);
+  padding-inline-start:var(--sp-1);
+}
+.settings-group-title>i{
+  font-size:16px;
+  color:var(--c-brand);
+}
+.settings-group-title:first-of-type{margin-top:0}
+
+/* ─── Settings tabs (scroll + 6 tabs) ─── */
+.settings-tabs-wrap{
+  position:sticky;
+  top:0;
+  z-index:10;
+  background:color-mix(in srgb,var(--bg-1) 85%,transparent);
+  backdrop-filter:blur(16px) saturate(1.4);
+  padding:var(--sp-2) 0;
+  margin-bottom:var(--sp-4);
+  border-bottom:1px solid var(--border-1);
+}
+.settings-tabs{
+  display:flex;
+  gap:var(--sp-1);
+  overflow-x:auto;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+  padding:var(--sp-1) var(--pad-x);
+  scroll-snap-type:x proximity;
+}
+.settings-tabs::-webkit-scrollbar{display:none}
+.settings-tab{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  height:40px;
+  padding:0 var(--sp-4);
+  border-radius:var(--r-full);
+  background:transparent;
+  border:1px solid transparent;
+  font-size:var(--fs-2);
+  font-weight:var(--fw-medium);
+  color:var(--fg-3);
+  white-space:nowrap;
+  flex-shrink:0;
+  scroll-snap-align:start;
+  transition:
+    color var(--dur-2) var(--ease-out),
+    background var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
+}
+.settings-tab:hover{
+  color:var(--fg-1);
+  background:var(--surface-2);
+}
+.settings-tab.is-active,
+.settings-tab[aria-selected="true"]{
+  color:var(--ink);
+  background:var(--grad-brand);
+  font-weight:var(--fw-bold);
+  border-color:transparent;
+  box-shadow:var(--sh-brand);
+}
+.settings-tab>i{font-size:16px}
+
+/* ─── Settings panels ─── */
+.settings-panel{display:none}
+.settings-panel.is-active{
+  display:block;
+  animation:enter-in var(--dur-3) var(--ease-clay);
+}
+
+/* ─── Settings content spacing ─── */
+.settings-content{
+  padding-inline:var(--pad-x);
+  padding-bottom:var(--sp-10);
+}
+.settings-block{
+  background:var(--surface-1);
+  border:1px solid var(--border-1);
+  border-radius:var(--r-3);
+  padding:var(--sp-4);
+  margin-bottom:var(--sp-4);
+}
+.settings-block--danger{
+  border-color:color-mix(in srgb,var(--c-danger) 30%,var(--border-1));
+  background:color-mix(in srgb,var(--c-danger) 4%,var(--surface-1));
+}
+.settings-block-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:var(--sp-3);
+}
+.settings-block-head h4{
+  font-size:var(--fs-3);
+  font-weight:var(--fw-semibold);
+  color:var(--fg-1);
+  margin:0;
+}
+.settings-block-hint{
+  font-size:var(--fs-1);
+  color:var(--fg-3);
+  font-weight:var(--fw-medium);
+}
+
+/* ─── Setting row (toggle rows) ─── */
+.setting-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--sp-4);
+  padding:var(--sp-3) 0;
+}
+.setting-row + .setting-row{
+  border-top:1px solid var(--border-1);
+}
+.setting-row-info{flex:1;min-width:0}
+.setting-row-info strong{
+  display:block;
+  font-size:var(--fs-3);
+  font-weight:var(--fw-semibold);
+  color:var(--fg-1);
+}
+.setting-row-info span{
+  display:block;
+  font-size:var(--fs-1);
+  color:var(--fg-3);
+  margin-top:2px;
+  line-height:var(--lh-snug);
+}
+
+/* ─── Reset button ─── */
+.settings-reset-btn{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:var(--sp-2);
+  width:100%;
+  height:44px;
+  margin-top:var(--sp-2);
+  border-radius:var(--r-3);
+  background:var(--surface-2);
+  border:1px solid var(--border-1);
+  color:var(--fg-2);
+  font-size:var(--fs-2);
+  font-weight:var(--fw-medium);
+  transition:background var(--dur-2) var(--ease-out),color var(--dur-2) var(--ease-out);
+}
+.settings-reset-btn:hover{
+  background:var(--surface-3);
+  color:var(--fg-1);
+}
+.settings-reset-btn>i{font-size:16px}
+
+/* ─── Sound grid ─── */
+.sound-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:var(--sp-2);
+  margin-top:var(--sp-3);
+}
+.sound-card{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  padding:var(--sp-3) var(--sp-2);
+  border-radius:var(--r-3);
+  background:var(--surface-2);
+  border:1px solid transparent;
+  transition:background var(--dur-2) var(--ease-out),border-color var(--dur-2) var(--ease-out),transform var(--dur-2) var(--ease-clay);
+}
+.sound-card:hover{
+  background:var(--surface-3);
+  border-color:var(--border-2);
+  transform:translateY(-2px);
+}
+.sound-card:active{transform:scale(.96)}
+.sound-card-icon{
+  width:32px;height:32px;
+  display:grid;place-items:center;
+  font-size:18px;color:var(--c-brand);
+}
+.sound-card-label{
+  font-size:var(--fs-1);
+  font-weight:var(--fw-medium);
+  color:var(--fg-2);
+}
+.sound-card-play{
+  font-size:12px;color:var(--fg-4);
+}
+
+/* ─── Volume slider ─── */
+.volume-slider{
+  width:100%;
+  height:6px;
+  border-radius:var(--r-full);
+  appearance:none;
+  background:var(--surface-3);
+  outline:none;
+}
+.volume-slider::-webkit-slider-thumb{
+  appearance:none;
+  width:18px;height:18px;
+  border-radius:50%;
+  background:var(--c-brand);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--c-brand) 20%,transparent);
+  cursor:pointer;
+}
+.volume-slider::-moz-range-thumb{
+  width:18px;height:18px;
+  border-radius:50%;
+  background:var(--c-brand);
+  border:none;
+  cursor:pointer;
+}
