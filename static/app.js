@@ -1,5 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v13.5
+   خَيال — app.js v14.0
+   Auth: split-layout modal with aria-invalid + shake feedback
    Settings: Profile dashboard + preferences API + reset button
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
@@ -14,7 +15,7 @@
     SEARCH_DEBOUNCE: 280,
     DRAFT_KEY: 'khayal.composer.draft',
     THEME_KEY: 'khayal.theme',
-    BUILD: '13.5',
+    BUILD: '14.0',
   };
 
   const S = {
@@ -320,7 +321,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     AUTH
+     AUTH (v14 — Split layout · aria-invalid feedback)
      ═══════════════════════════════════════════════════════════════ */
   const Auth = {
     modal() { return document.getElementById('authModal'); },
@@ -329,6 +330,12 @@
       const m = this.modal();
       if (!m) return;
       S.lastFocused = document.activeElement;
+
+      // Reset any stale invalid states
+      m.querySelectorAll('[aria-invalid="true"]').forEach(el => {
+        el.removeAttribute('aria-invalid');
+      });
+
       this.switchMode(mode || 'login');
       m.setAttribute('data-open', 'true');
       document.documentElement.style.overflow = 'hidden';
@@ -340,7 +347,7 @@
     },
 
     close(e) {
-      if (e && e.target && e.target.closest('.auth')) return;
+      if (e && e.target && e.target.closest('.auth-shell')) return;
       const m = this.modal();
       if (!m) return;
       m.setAttribute('data-open', 'false');
@@ -365,7 +372,12 @@
       const title = m.querySelector('#authTitle');
       const sub = m.querySelector('#authSub');
       if (title) title.textContent = mode === 'register' ? 'حساب جديد' : 'تسجيل الدخول';
-      if (sub) sub.textContent = mode === 'register' ? 'انضم إلى خَيال' : 'أهلاً بعودتك إلى خَيال';
+      if (sub) sub.textContent = mode === 'register' ? 'انضم إلى مبدعي خَيال' : 'أهلاً بعودتك إلى خَيال';
+
+      // Clear invalid states when switching modes
+      m.querySelectorAll('[aria-invalid="true"]').forEach(el => {
+        el.removeAttribute('aria-invalid');
+      });
     },
 
     togglePassword(btn) {
@@ -395,11 +407,19 @@
       ev.preventDefault();
       const form = ev.target;
       const btn = form.querySelector('#loginSubmit');
-      const identifier = (form.querySelector('#loginIdentifier') || {}).value || '';
-      const password = (form.querySelector('#loginPassword') || {}).value || '';
+      const idEl = form.querySelector('#loginIdentifier');
+      const pwEl = form.querySelector('#loginPassword');
+      const identifier = (idEl || {}).value || '';
+      const password = (pwEl || {}).value || '';
       const remember = !!(form.querySelector('#rememberMe') || {}).checked;
 
+      // Clear previous invalid states
+      if (idEl) idEl.removeAttribute('aria-invalid');
+      if (pwEl) pwEl.removeAttribute('aria-invalid');
+
       if (!identifier || !password) {
+        if (idEl && !identifier) idEl.setAttribute('aria-invalid', 'true');
+        if (pwEl && !password) pwEl.setAttribute('aria-invalid', 'true');
         if (window.Sounds) Sounds.play('error');
         return Toast.show('أدخل بيانات الدخول', 'warning');
       }
@@ -413,6 +433,9 @@
         window.__ME__ = user;
         this.afterLogin(user);
       } catch (err) {
+        // Highlight both fields on any login failure (avoids username enumeration)
+        if (idEl) idEl.setAttribute('aria-invalid', 'true');
+        if (pwEl) pwEl.setAttribute('aria-invalid', 'true');
         if (window.Sounds) Sounds.play('error');
         Toast.show(err.message, 'error');
       } finally {
@@ -425,20 +448,34 @@
       ev.preventDefault();
       const form = ev.target;
       const btn = form.querySelector('#registerSubmit');
+      const nameEl = form.querySelector('#regName');
+      const userEl = form.querySelector('#regUsername');
+      const emailEl = form.querySelector('#regEmail');
+      const pwEl = form.querySelector('#regPassword');
+      const agreeEl = form.querySelector('#agreeTerms');
+
       const payload = {
-        name: (form.querySelector('#regName') || {}).value || '',
-        username: (form.querySelector('#regUsername') || {}).value || '',
-        email: (form.querySelector('#regEmail') || {}).value || '',
-        password: (form.querySelector('#regPassword') || {}).value || '',
+        name: (nameEl || {}).value || '',
+        username: (userEl || {}).value || '',
+        email: (emailEl || {}).value || '',
+        password: (pwEl || {}).value || '',
       };
 
+      // Clear previous invalid states
+      [nameEl, userEl, emailEl, pwEl].forEach(el => {
+        if (el) el.removeAttribute('aria-invalid');
+      });
+
       if (!payload.name || !payload.username || !payload.email || !payload.password) {
+        if (nameEl && !payload.name) nameEl.setAttribute('aria-invalid', 'true');
+        if (userEl && !payload.username) userEl.setAttribute('aria-invalid', 'true');
+        if (emailEl && !payload.email) emailEl.setAttribute('aria-invalid', 'true');
+        if (pwEl && !payload.password) pwEl.setAttribute('aria-invalid', 'true');
         if (window.Sounds) Sounds.play('error');
         return Toast.show('املأ جميع الحقول', 'warning');
       }
 
-      const agree = form.querySelector('#agreeTerms');
-      if (agree && !agree.checked) {
+      if (agreeEl && !agreeEl.checked) {
         if (window.Sounds) Sounds.play('error');
         return Toast.show('وافق على الشروط أولاً', 'warning');
       }
@@ -453,6 +490,9 @@
         this.afterLogin(user);
         Toast.show('أهلاً بك في خَيال', 'success');
       } catch (err) {
+        // Highlight username + email — common conflict fields
+        if (userEl) userEl.setAttribute('aria-invalid', 'true');
+        if (emailEl) emailEl.setAttribute('aria-invalid', 'true');
         if (window.Sounds) Sounds.play('error');
         Toast.show(err.message, 'error');
       } finally {
@@ -1556,7 +1596,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     SETTINGS (v13.5 — Phase C: reset + preferences API)
+     SETTINGS
      ═══════════════════════════════════════════════════════════════ */
   function _defaultPreferences() {
     return {
