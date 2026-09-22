@@ -35,11 +35,12 @@
 <script src="https://unpkg.com/@phosphor-icons/web@2.1.1" defer></script>
 
 <!-- Design System — طبقات CSS بالترتيب الصحيح -->
-<link rel="stylesheet" href="/static/css/01-tokens.css?v=14.3">
-<link rel="stylesheet" href="/static/css/02-base.css?v=14.3">
-<link rel="stylesheet" href="/static/css/03-components.css?v=14.3">
-<link rel="stylesheet" href="/static/css/04-views.css?v=14.3">
-<link rel="stylesheet" href="/static/css/05-responsive.css?v=14.3">
+<link rel="stylesheet" href="/static/css/01-tokens.css?v=15.0">
+<link rel="stylesheet" href="/static/css/02-base.css?v=15.0">
+<link rel="stylesheet" href="/static/css/03-components.css?v=15.0">
+<link rel="stylesheet" href="/static/css/04-views.css?v=15.0">
+<link rel="stylesheet" href="/static/css/05-responsive.css?v=15.0">
+<link rel="stylesheet" href="/static/css/06-ant.css?v=15.0">
 {% block styles %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -64,10 +65,10 @@
 
 <script>
   window.__ME__ = {{ me | tojson }};
-  window.__BUILD__ = '14.3';
+  window.__BUILD__ = '15.0';
 </script>
-<script src="/static/sounds.js?v=14.3" defer></script>
-<script src="/static/app.js?v=14.3" defer></script>
+<script src="/static/sounds.js?v=15.0" defer></script>
+<script src="/static/app.js?v=15.0" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
