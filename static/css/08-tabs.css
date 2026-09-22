@@ -1,0 +1,212 @@
+/* ═══════════════════════════════════════════════════════════════
+   08-tabs.css — نظام موحّد لكل التبويبات ذات الخيارات المتعددة
+   Pill-in-pill · يطابق نمط "الأحدث / الأكثر رواجاً"
+   Loads after 06-ant.css — wins on cascade order
+   v16.1
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── 1. CONTAINER — pill-in-pill ─── */
+.sort-tabs,
+.auth-tabs,
+.settings-tabs.ant-tabs-wrap,
+.profile-tabs.ant-tabs-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-full);
+  box-shadow: var(--sh-tabs);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  max-width: 100%;
+}
+
+/* التمرير الأفقي للتبويبات الكثيرة على الجوال */
+.settings-tabs.ant-tabs-wrap,
+.profile-tabs.ant-tabs-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--border-1);
+  margin-bottom: 0;
+}
+
+.sort-tabs::-webkit-scrollbar,
+.auth-tabs::-webkit-scrollbar,
+.settings-tabs.ant-tabs-wrap::-webkit-scrollbar,
+.profile-tabs.ant-tabs-wrap::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── 2. ITEM ─── */
+.sort-tab,
+.auth-tab,
+.type-pill,
+.settings-tab.ant-tab,
+.profile-tabs .tab.ant-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  background: transparent !important;
+  border: none !important;
+  border-radius: var(--r-full);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--fg-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  scroll-snap-align: start;
+  box-shadow: none !important;
+  transition:
+    color var(--dur-2) var(--ease-out),
+    background var(--dur-2) var(--ease-out);
+}
+
+/* الأيقونات */
+.sort-tab > i,
+.auth-tab > i,
+.type-pill > i,
+.settings-tab.ant-tab > i,
+.profile-tabs .tab.ant-tab > i {
+  font-size: 15px;
+  transition: color var(--dur-2) var(--ease-out);
+}
+
+/* إلغاء الـ underline المورّث من Ant */
+.settings-tab.ant-tab::after,
+.profile-tabs .tab.ant-tab::after {
+  display: none !important;
+}
+
+/* ─── 3. HOVER ─── */
+.sort-tab:hover,
+.auth-tab:hover,
+.type-pill:hover,
+.settings-tab.ant-tab:hover,
+.profile-tabs .tab.ant-tab:hover {
+  background: var(--surface-2) !important;
+  color: var(--fg-1);
+}
+.sort-tab:hover > i,
+.auth-tab:hover > i,
+.type-pill:hover > i,
+.settings-tab.ant-tab:hover > i,
+.profile-tabs .tab.ant-tab:hover > i {
+  color: var(--c-brand);
+}
+
+/* ─── 4. ACTIVE ─── */
+.sort-tab[aria-selected="true"],
+.auth-tab[aria-selected="true"],
+.type-pill[aria-selected="true"],
+.settings-tab.ant-tab.is-active,
+.settings-tab.ant-tab[aria-selected="true"],
+.profile-tabs .tab.ant-tab[aria-selected="true"] {
+  background: var(--surface-3) !important;
+  color: var(--fg-1) !important;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08) !important;
+}
+.sort-tab[aria-selected="true"] > i,
+.auth-tab[aria-selected="true"] > i,
+.type-pill[aria-selected="true"] > i,
+.settings-tab.ant-tab.is-active > i,
+.settings-tab.ant-tab[aria-selected="true"] > i,
+.profile-tabs .tab.ant-tab[aria-selected="true"] > i {
+  color: var(--c-brand);
+}
+
+/* ─── 5. FOCUS ─── */
+.sort-tab:focus-visible,
+.auth-tab:focus-visible,
+.type-pill:focus-visible,
+.settings-tab.ant-tab:focus-visible,
+.profile-tabs .tab.ant-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--c-brand) !important;
+}
+
+/* ─── 6. TYPE-SWITCH — grid variant (composer) ─── */
+.type-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-full);
+  box-shadow: var(--sh-tabs);
+}
+.type-switch .type-pill {
+  height: 34px;
+  border-radius: var(--r-full);
+}
+
+/* ─── 7. STICKY WRAPPER ─── */
+.tabs-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--bg-0) 94%, transparent);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border-bottom: 1px solid var(--border-1);
+  margin-bottom: 12px;
+}
+.tabs-sticky:has([hidden]) { display: none; }
+
+/* ─── 8. RESPONSIVE ─── */
+@media (max-width:560px){
+  .sort-tab,
+  .auth-tab,
+  .type-pill,
+  .settings-tab.ant-tab,
+  .profile-tabs .tab.ant-tab {
+    height: 30px;
+    padding: 0 10px;
+    font-size: 12.5px;
+    gap: 4px;
+  }
+  .sort-tab > i,
+  .auth-tab > i,
+  .type-pill > i,
+  .settings-tab.ant-tab > i,
+  .profile-tabs .tab.ant-tab > i {
+    font-size: 14px;
+  }
+}
+
+@media (max-width:400px){
+  /* Icon-only mode للتبويبات الكثيرة */
+  .settings-tab.ant-tab > span,
+  .profile-tabs .tab.ant-tab > span { display: none; }
+  .settings-tab.ant-tab,
+  .profile-tabs .tab.ant-tab {
+    padding: 0 9px;
+    height: 30px;
+  }
+  .settings-tab.ant-tab > i,
+  .profile-tabs .tab.ant-tab > i { font-size: 15px; }
+}
+
+/* ─── 9. REDUCED MOTION ─── */
+@media (prefers-reduced-motion:reduce){
+  .sort-tab, .auth-tab, .type-pill,
+  .settings-tab.ant-tab, .profile-tabs .tab.ant-tab,
+  .sort-tab > i, .auth-tab > i, .type-pill > i,
+  .settings-tab.ant-tab > i, .profile-tabs .tab.ant-tab > i {
+    transition: none !important;
+  }
+}
