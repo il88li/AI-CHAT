@@ -1,9 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v17.0
-   v17.0: ربط بطاقة البروفايل الجديدة (profile-hero)
-          - Profile.render() → new IDs (profileActionBtn, profilePresence, profileEditBtn)
-          - Profile.bindActions() → action button + social row
-          - App.bindGlobal() → edit-profile handler
+   خَيال — app.js v18.0
+   v18.0: ProfileView overlay جديد (يُفتح من المنشورات)
+          · ProfileView module كامل
+          · Post.onCardClick → ProfileView.open
+          · data-action="open-author-media" على صورة المنشور
    v16.2: composer avatar fill · copy-handle · profile tabs functional
           · settings About/Account render · composer keyboard support
    v14.2: Net.init() real server ping
@@ -24,7 +24,7 @@
     THEME_KEY: 'khayal.theme',
     NET_CHECK_MS: 8000,
     NET_PING_TIMEOUT: 3000,
-    BUILD: '17.0',
+    BUILD: '18.0',
   };
 
   const S = {
@@ -629,7 +629,8 @@
       card.innerHTML = `
         <div class="prompt-media">
           <img src="${U.escapeHtml(image)}" alt="${U.escapeHtml(p.title || '')}"
-               loading="lazy" data-state="loading">
+               loading="lazy" data-state="loading"
+               data-action="open-author-media">
           ${model ? `<span class="prompt-model"><i class="ph ph-sparkle" aria-hidden="true"></i>${U.escapeHtml(model)}</span>` : ''}
           <div class="prompt-floats">
             <button class="float-btn" data-action="like" aria-pressed="${liked}"
@@ -732,10 +733,12 @@
         Drawers.openComments(p.id);
         return;
       }
-      if (action === 'open-author') {
+      if (action === 'open-author' || action === 'open-author-media') {
         e.stopPropagation();
-        const aid = btn.dataset.authorId;
-        if (aid) App.openProfile(parseInt(aid, 10));
+        const aid = btn.dataset.authorId
+                 || (p.author_data && p.author_data.id)
+                 || p.author;
+        if (aid) ProfileView.open(parseInt(aid, 10));
         return;
       }
       if (action === 'menu') {
@@ -1556,7 +1559,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     PROFILE — v17.0 (بطاقة profile-hero الجديدة)
+     PROFILE (تبويب الحساب — يستخدم .profile-card القديم)
      ═══════════════════════════════════════════════════════════════ */
   const Profile = {
     current: null,
@@ -1601,13 +1604,12 @@
       if (!card) return;
 
       card.hidden = false;
+      card.setAttribute('data-style', u.card_style || 'glass');
       card.style.setProperty('--_accent', u.accent_color || '#22D3EE');
 
-      /* ─── Cover ─── */
       const cover = document.getElementById('profileCover');
       if (cover) cover.dataset.cover = u.cover || 'aurora';
 
-      /* ─── Avatar ─── */
       const avatar = document.getElementById('profileAvatar');
       if (avatar) {
         U.safeAvatar(avatar, u.avatar);
@@ -1615,43 +1617,12 @@
         avatar.dataset.frame = u.avatar_shape || 'ring';
       }
 
-      /* ─── Action button (top-right of cover) ─── */
-      const actionBtn = document.getElementById('profileActionBtn');
-      if (actionBtn) {
-        if (isMe) {
-          actionBtn.dataset.variant = 'icon';
-          actionBtn.dataset.state = 'owner';
-          actionBtn.dataset.action = 'open-settings';
-          actionBtn.removeAttribute('data-user-id');
-          actionBtn.setAttribute('aria-label', 'تعديل الملف');
-          actionBtn.innerHTML = '<i class="ph ph-pencil-simple" aria-hidden="true"></i>';
-        } else {
-          actionBtn.dataset.variant = 'pill';
-          actionBtn.dataset.state = u.is_following ? 'following' : 'idle';
-          actionBtn.dataset.action = 'follow';
-          actionBtn.dataset.userId = String(u.id);
-          actionBtn.setAttribute('aria-label', u.is_following ? 'إلغاء المتابعة' : 'متابعة');
-          actionBtn.innerHTML =
-            '<i class="ph ' + (u.is_following ? 'ph-check' : 'ph-plus') + '" aria-hidden="true"></i>' +
-            '<span>' + (u.is_following ? 'أتابعه' : 'متابعة') + '</span>';
-        }
-      }
-
-      /* ─── Presence ─── */
-      const presence = document.getElementById('profilePresence');
-      if (presence) {
-        presence.hidden = isMe;
-        presence.dataset.online = 'true';
-      }
-
-      /* ─── Name + verified ─── */
       const name = document.getElementById('profileName');
       if (name) name.textContent = u.name || '—';
 
       const verified = document.getElementById('profileVerified');
       if (verified) verified.hidden = !u.verified;
 
-      /* ─── Handle + pronouns ─── */
       const handle = document.getElementById('profileHandle');
       if (handle) handle.textContent = u.handle || '@—';
 
@@ -1665,42 +1636,83 @@
         }
       }
 
-      /* ─── Bio ─── */
       const bio = document.getElementById('profileBio');
-      if (bio) {
-        const hasBio = !!(u.bio && u.bio.trim());
-        bio.textContent = hasBio ? u.bio.trim() : '';
-        bio.hidden = !hasBio;
+      if (bio) bio.textContent = u.bio || '';
+
+      const meta = document.getElementById('profileMeta');
+      const website = document.getElementById('profileWebsite');
+      const link = website ? website.querySelector('a') : null;
+
+      if (u.website && link) {
+        link.href = u.website;
+        link.textContent = u.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        website.hidden = false;
+      } else if (website) {
+        website.hidden = true;
       }
 
-      /* ─── Stats ─── */
-      const setStat = function (id, v) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = U.formatNumber(v);
-      };
+      const joined = document.getElementById('profileJoined');
+      if (joined && u.created_at) {
+        const d = new Date(u.created_at);
+        joined.querySelector('span').textContent = 'انضم ' + d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' });
+        joined.hidden = false;
+      } else if (joined) {
+        joined.hidden = true;
+      }
+
+      if (meta && (website.hidden === false || joined.hidden === false)) meta.hidden = false;
+      else if (meta) meta.hidden = true;
+
+      const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
       setStat('statFollowers', u.followers || 0);
       setStat('statFollowing', u.following || 0);
       setStat('statPosts', u.posts_count || 0);
       setStat('statLikes', u.total_likes || 0);
 
-      /* ─── Social row — إظهار/إخفاء حسب الملكية ─── */
-      const editBtn = document.getElementById('profileEditBtn');
-      if (editBtn) editBtn.hidden = !isMe;
+      const actions = document.getElementById('profileActions');
+      if (actions) {
+        if (isMe) {
+          actions.innerHTML = `
+            <button class="btn btn-secondary" data-action="open-settings" type="button">
+              <i class="ph ph-pencil-simple" aria-hidden="true"></i>
+              <span>تعديل الملف</span>
+            </button>
+            <button class="btn btn-ghost btn-icon" data-action="share-profile" aria-label="مشاركة" type="button">
+              <i class="ph ph-share-network" aria-hidden="true"></i>
+            </button>`;
+        } else {
+          actions.innerHTML = `
+            <button class="btn ${u.is_following ? 'btn-secondary' : 'btn-primary'}"
+                    data-action="follow" data-user-id="${u.id}" type="button">
+              <i class="ph ${u.is_following ? 'ph-check' : 'ph-user-plus'}" aria-hidden="true"></i>
+              <span>${u.is_following ? 'تتابعه' : 'متابعة'}</span>
+            </button>
+            <button class="btn btn-secondary" data-action="message" data-user-id="${u.id}" type="button">
+              <i class="ph ph-chat-circle" aria-hidden="true"></i>
+              <span>رسالة</span>
+            </button>`;
+        }
+      }
 
-      const msgBtn = card.querySelector('.profile-hero-social-btn[data-action="message"]');
-      if (msgBtn) msgBtn.hidden = isMe;
+      const coverEdit = document.getElementById('profileCoverEditBtn');
+      const avatarEdit = document.getElementById('profileAvatarEditBtn');
+      if (coverEdit) {
+        coverEdit.hidden = !isMe;
+        if (isMe) coverEdit.setAttribute('data-action', 'open-settings');
+      }
+      if (avatarEdit) {
+        avatarEdit.hidden = !isMe;
+        if (isMe) avatarEdit.setAttribute('data-action', 'open-settings');
+      }
 
-      /* ─── Tabs ─── */
       if (tabs) {
         tabs.hidden = false;
         const tabsWrap = tabs.closest('.tabs-sticky');
         if (tabsWrap) tabsWrap.hidden = false;
-
         const savedTab = document.getElementById('profileSavedTab');
         const settingsTab = document.getElementById('profileSettingsTab');
         if (savedTab) savedTab.hidden = !isMe;
         if (settingsTab) settingsTab.hidden = !isMe;
-
         tabs.querySelectorAll('.tab[data-ptab]').forEach(function (t) {
           t.setAttribute('aria-selected', t.dataset.ptab === 'posts' ? 'true' : 'false');
         });
@@ -1711,77 +1723,6 @@
 
       this.bindActions();
       this.bindTabs();
-    },
-
-    bindActions() {
-      const card = document.getElementById('profileCard');
-      if (!card) return;
-
-      /* ─── Action button (متابعة / تعديل) ─── */
-      const actionBtn = document.getElementById('profileActionBtn');
-      if (actionBtn && !actionBtn._bound) {
-        actionBtn._bound = true;
-        actionBtn.addEventListener('click', async function () {
-          const act = actionBtn.dataset.action;
-
-          if (act === 'open-settings') {
-            if (window.Settings) Settings.open();
-            return;
-          }
-
-          if (act === 'follow') {
-            const uid = parseInt(actionBtn.dataset.userId, 10);
-            if (!uid) return;
-
-            actionBtn.setAttribute('aria-busy', 'true');
-            try {
-              const res = await API.post('/api/users/' + uid + '/follow');
-              const following = !!res.following;
-
-              actionBtn.dataset.state = following ? 'following' : 'idle';
-              actionBtn.setAttribute('aria-label', following ? 'إلغاء المتابعة' : 'متابعة');
-              actionBtn.innerHTML =
-                '<i class="ph ' + (following ? 'ph-check' : 'ph-plus') + '" aria-hidden="true"></i>' +
-                '<span>' + (following ? 'أتابعه' : 'متابعة') + '</span>';
-
-              const sf = document.getElementById('statFollowers');
-              if (sf && typeof res.followers === 'number') {
-                sf.textContent = U.formatNumber(res.followers);
-              }
-
-              if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
-              Toast.show(following ? 'تتابعه الآن' : 'أُلغي المتابعة', 'success', 1600);
-            } catch (err) {
-              if (window.Sounds) Sounds.play('error');
-              Toast.show(err.message || 'تعذّر', 'error');
-            } finally {
-              actionBtn.removeAttribute('aria-busy');
-            }
-          }
-        });
-      }
-
-      /* ─── Edit button (social row) ─── */
-      const editBtn = document.getElementById('profileEditBtn');
-      if (editBtn && !editBtn._bound) {
-        editBtn._bound = true;
-        editBtn.addEventListener('click', function () {
-          if (window.Settings) Settings.open();
-        });
-      }
-
-      /* ─── Message button (social row) ─── */
-      const msgBtn = card.querySelector('.profile-hero-social-btn[data-action="message"]');
-      if (msgBtn && !msgBtn._bound) {
-        msgBtn._bound = true;
-        msgBtn.addEventListener('click', function () {
-          if (Profile.current && Profile.current.id) {
-            Chat.openWith(Profile.current.id);
-          }
-        });
-      }
-
-      /* share-profile / copy-handle — تُدار مركزياً في bindGlobal */
     },
 
     bindTabs() {
@@ -1855,6 +1796,49 @@
       }).join('');
     },
 
+    bindActions() {
+      const card = document.getElementById('profileCard');
+      if (!card) return;
+
+      card.querySelectorAll('[data-action="follow"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const uid = parseInt(btn.dataset.userId, 10);
+          btn.setAttribute('aria-busy', 'true');
+          try {
+            const res = await API.post(`/api/users/${uid}/follow`);
+            const following = res.following;
+            btn.classList.toggle('btn-primary', !following);
+            btn.classList.toggle('btn-secondary', following);
+            btn.querySelector('i').className = following ? 'ph ph-check' : 'ph ph-user-plus';
+            btn.querySelector('span').textContent = following ? 'تتابعه' : 'متابعة';
+            if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
+          } catch (err) {
+            Toast.show(err.message, 'error');
+          } finally {
+            btn.removeAttribute('aria-busy');
+          }
+        });
+      });
+
+      card.querySelectorAll('[data-action="message"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          Chat.openWith(parseInt(btn.dataset.userId, 10));
+        });
+      });
+
+      card.querySelectorAll('[data-action="open-settings"]').forEach(btn => {
+        btn.addEventListener('click', () => Settings.open());
+      });
+
+      card.querySelectorAll('[data-action="share-profile"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const url = window.location.origin + '/u/' + (this.current && this.current.username);
+          const ok = await U.copy(url);
+          Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600);
+        });
+      });
+    },
+
     async refresh() {
       if (this.current) await this.load(this.current.id);
     },
@@ -1862,6 +1846,248 @@
     save(ev) {
       if (ev) ev.preventDefault();
       if (window.Settings) Settings.save();
+    },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     PROFILE VIEW — overlay جديد (نمط المرجع: Olivia Beits)
+     يُفتح عند النقر على اسم/صورة الناشر في المنشور
+     ═══════════════════════════════════════════════════════════════ */
+  const ProfileView = {
+    current: null,
+
+    async open(userId) {
+      if (!userId) return;
+      const view = document.getElementById('profileView');
+      if (!view) { console.error('[ProfileView] #profileView مفقود'); return; }
+
+      const skeleton = document.getElementById('pvSkeleton');
+      const scroll = document.getElementById('pvScroll');
+      if (skeleton) skeleton.hidden = false;
+      if (scroll) scroll.hidden = true;
+
+      view.hidden = false;
+      document.body.classList.add('view-open');
+      document.documentElement.style.overflow = 'hidden';
+      if (window.Sounds) Sounds.play('open');
+
+      try {
+        const u = await API.get('/api/users/' + userId);
+        this.current = u;
+        this._render(u);
+        if (skeleton) skeleton.hidden = true;
+        if (scroll) { scroll.hidden = false; scroll.scrollTop = 0; }
+      } catch (err) {
+        Toast.show(err.message || 'تعذّر التحميل', 'error');
+        this.close();
+      }
+    },
+
+    close() {
+      const view = document.getElementById('profileView');
+      if (!view) return;
+      view.hidden = true;
+      document.body.classList.remove('view-open');
+      document.documentElement.style.overflow = '';
+      this.current = null;
+      if (window.Sounds) Sounds.play('close');
+    },
+
+    _render(u) {
+      const isMe = S.me && S.me.id === u.id;
+
+      const hero = document.getElementById('pvHero');
+      if (hero) hero.dataset.cover = u.cover || 'aurora';
+
+      const nameText = document.getElementById('pvNameText');
+      if (nameText) nameText.textContent = u.name || '—';
+
+      const verified = document.getElementById('pvVerified');
+      if (verified) verified.hidden = !u.verified;
+
+      const handle = document.getElementById('pvHandle');
+      if (handle) handle.textContent = u.handle || '@—';
+
+      const pronouns = document.getElementById('pvPronouns');
+      if (pronouns) {
+        if (u.pronouns) {
+          pronouns.textContent = u.pronouns;
+          pronouns.hidden = false;
+        } else {
+          pronouns.hidden = true;
+        }
+      }
+
+      const followBtn = document.getElementById('pvFollowBtn');
+      if (followBtn) {
+        if (isMe) {
+          followBtn.dataset.state = 'owner';
+          followBtn.dataset.userId = '';
+          followBtn.innerHTML = '<i class="ph ph-pencil-simple" aria-hidden="true"></i><span>تعديل الملف</span>';
+        } else {
+          followBtn.dataset.state = u.is_following ? 'following' : 'idle';
+          followBtn.dataset.userId = String(u.id);
+          followBtn.innerHTML = u.is_following
+            ? '<i class="ph ph-check" aria-hidden="true"></i><span>أتابعه</span>'
+            : '<i class="ph ph-plus" aria-hidden="true"></i><span>متابعة</span>';
+        }
+      }
+
+      const setNum = function (id, v) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = U.formatNumber(v);
+      };
+      setNum('pvStatFollowing', u.following || 0);
+      setNum('pvStatFollowers', u.followers || 0);
+      setNum('pvStatPosts', u.posts_count || 0);
+
+      const bio = document.getElementById('pvBio');
+      if (bio) {
+        if (u.bio && u.bio.trim()) {
+          bio.textContent = u.bio.trim();
+          bio.hidden = false;
+        } else {
+          bio.hidden = true;
+        }
+      }
+
+      const meta = document.getElementById('pvMeta');
+      const webWrap = document.getElementById('pvMetaWebsite');
+      const webLink = document.getElementById('pvMetaWebsiteLink');
+      const joinedWrap = document.getElementById('pvMetaJoined');
+      const joinedText = document.getElementById('pvMetaJoinedText');
+
+      let hasMeta = false;
+
+      if (u.website && webWrap && webLink) {
+        webLink.href = u.website;
+        webLink.textContent = u.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        webWrap.hidden = false;
+        hasMeta = true;
+      } else if (webWrap) {
+        webWrap.hidden = true;
+      }
+
+      if (u.created_at && joinedWrap && joinedText) {
+        const d = new Date(u.created_at);
+        joinedText.textContent = 'انضم ' + d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' });
+        joinedWrap.hidden = false;
+        hasMeta = true;
+      } else if (joinedWrap) {
+        joinedWrap.hidden = true;
+      }
+
+      if (meta) meta.hidden = !hasMeta;
+
+      this._loadPosts(u.id);
+    },
+
+    async _loadPosts(userId) {
+      const grid = document.getElementById('pvPostsGrid');
+      if (!grid) return;
+
+      grid.innerHTML =
+        '<div class="pv-empty">' +
+          '<i class="ph ph-circle-notch" style="animation:spin .8s linear infinite"></i>' +
+          '<h4>جارٍ التحميل…</h4>' +
+        '</div>';
+
+      try {
+        const items = await API.get('/api/users/' + userId + '/posts');
+        if (!items || !items.length) {
+          grid.innerHTML =
+            '<div class="pv-empty">' +
+              '<i class="ph ph-image-square" aria-hidden="true"></i>' +
+              '<h4>لا منشورات بعد</h4>' +
+              '<p>لم ينشر هذا المستخدم بعد.</p>' +
+            '</div>';
+          return;
+        }
+
+        grid.innerHTML = items.map(function (p) {
+          const img = p.image || 'https://placehold.co/400x400/0E0E14/22D3EE?text=خَيال';
+          const likes = U.formatNumber(p.likes || 0);
+          return (
+            '<button class="pv-post" type="button" data-post-id="' + p.id + '">' +
+              '<img src="' + U.escapeHtml(img) + '" alt="" loading="lazy">' +
+              '<span class="pv-post-badge">' +
+                '<i class="ph ph-heart-fill" aria-hidden="true"></i>' + likes +
+              '</span>' +
+            '</button>'
+          );
+        }).join('');
+
+        grid.querySelectorAll('.pv-post').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            const pid = btn.dataset.postId;
+            ProfileView.close();
+            setTimeout(function () {
+              App.switchTab('home');
+              setTimeout(function () {
+                const el = document.querySelector('[data-post-id="' + pid + '"]');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 200);
+            }, 250);
+          });
+        });
+      } catch (err) {
+        grid.innerHTML =
+          '<div class="pv-empty">' +
+            '<i class="ph ph-warning-circle" aria-hidden="true"></i>' +
+            '<h4>تعذّر التحميل</h4>' +
+            '<p>' + U.escapeHtml(err.message || 'حاول مرة أخرى') + '</p>' +
+          '</div>';
+      }
+    },
+
+    async _handleFollow(btn) {
+      if (!S.me) { Auth.open('login'); return; }
+
+      if (btn.dataset.state === 'owner') {
+        this.close();
+        if (window.Settings) Settings.open();
+        return;
+      }
+
+      const uid = parseInt(btn.dataset.userId, 10);
+      if (!uid) return;
+
+      btn.setAttribute('aria-busy', 'true');
+      try {
+        const res = await API.post('/api/users/' + uid + '/follow');
+        const following = !!res.following;
+
+        btn.dataset.state = following ? 'following' : 'idle';
+        btn.innerHTML = following
+          ? '<i class="ph ph-check" aria-hidden="true"></i><span>أتابعه</span>'
+          : '<i class="ph ph-plus" aria-hidden="true"></i><span>متابعة</span>';
+
+        const sf = document.getElementById('pvStatFollowers');
+        if (sf && typeof res.followers === 'number') {
+          sf.textContent = U.formatNumber(res.followers);
+        }
+
+        if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
+        Toast.show(following ? 'تتابعه الآن' : 'أُلغي المتابعة', 'success', 1600);
+      } catch (err) {
+        if (window.Sounds) Sounds.play('error');
+        Toast.show(err.message || 'تعذّر', 'error');
+      } finally {
+        btn.removeAttribute('aria-busy');
+      }
+    },
+
+    _handleShare() {
+      const u = this.current;
+      if (!u) return;
+      const url = window.location.origin + '/u/' + (u.username || '');
+      U.copy(url).then(function (ok) {
+        Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600);
+      });
+    },
+
+    _handleMenu() {
+      Toast.show('قريباً', 'info');
     },
   };
 
@@ -2708,8 +2934,8 @@
 
       this.updateHeroStats();
 
-      console.log('[خَيال] booted. Settings module:',
-                  window.Settings ? 'ready' : 'missing');
+      console.log('[خَيال] booted. ProfileView:',
+                  window.ProfileView ? 'ready' : 'missing');
     },
 
     bindGlobal() {
@@ -2743,6 +2969,12 @@
           Drawers.openNotifications();
           return;
         }
+        if (action === 'close-profile-view') { e.preventDefault(); ProfileView.close(); return; }
+        if (action === 'profile-view-follow') { e.preventDefault(); ProfileView._handleFollow(btn); return; }
+        if (action === 'profile-view-share') { e.preventDefault(); ProfileView._handleShare(); return; }
+        if (action === 'profile-view-menu') { e.preventDefault(); ProfileView._handleMenu(); return; }
+        if (action === 'profile-view-followers') { e.preventDefault(); return; }
+        if (action === 'profile-view-following') { e.preventDefault(); return; }
         if (action === 'copy-handle') {
           e.preventDefault();
           const el = document.getElementById('profileHandle');
@@ -2765,6 +2997,8 @@
 
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
+        const pv = document.getElementById('profileView');
+        if (pv && !pv.hidden) { ProfileView.close(); return; }
         const composerView = document.getElementById('composerView');
         const settingsView = document.getElementById('settingsView');
         const authModal = document.getElementById('authModal');
@@ -3007,7 +3241,7 @@
 
     openProfile(userId) {
       if (!userId) return;
-      Profile.load(userId);
+      ProfileView.open(userId);
     },
 
     async refreshAll(force) {
@@ -3053,6 +3287,7 @@
   window.Drawers = Drawers;
   window.Composer = Composer;
   window.Profile = Profile;
+  window.ProfileView = ProfileView;
   window.Explore = Explore;
   window.Settings = Settings;
   window.Toast = Toast;
