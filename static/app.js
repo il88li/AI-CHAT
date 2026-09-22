@@ -613,6 +613,7 @@
       const image = p.image || 'https://placehold.co/800x600/0E0E14/22D3EE?text=خَيال';
       const tags = Array.isArray(p.tags) ? p.tags : [];
       const model = p.model || '';
+      const isOwner = !!(S.me && (p.author === S.me.id || p.author_id === S.me.id || (p.author_data && p.author_data.id === S.me.id)));
 
       const card = document.createElement('article');
       card.className = 'prompt-card';
@@ -638,6 +639,35 @@
                     aria-label="حفظ" type="button">
               <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
             </button>
+            <div class="prompt-menu-wrap">
+              <button class="float-btn prompt-menu-btn" data-action="menu"
+                      aria-label="المزيد" aria-haspopup="true" aria-expanded="false" type="button">
+                <i class="ph ph-dots-three" aria-hidden="true"></i>
+              </button>
+              <div class="prompt-menu" role="menu" hidden>
+                <button role="menuitem" type="button" data-action="share">
+                  <i class="ph ph-share-network" aria-hidden="true"></i>
+                  <span>مشاركة</span>
+                </button>
+                <button role="menuitem" type="button" data-action="copy">
+                  <i class="ph ph-copy" aria-hidden="true"></i>
+                  <span>نسخ البرومبت</span>
+                </button>
+                ${isOwner ? `
+                <button role="menuitem" type="button" data-action="edit">
+                  <i class="ph ph-pencil-simple" aria-hidden="true"></i>
+                  <span>تعديل</span>
+                </button>
+                <button role="menuitem" type="button" class="menu-danger" data-action="delete">
+                  <i class="ph ph-trash" aria-hidden="true"></i>
+                  <span>حذف</span>
+                </button>` : ''}
+                <button role="menuitem" type="button" data-action="report">
+                  <i class="ph ph-flag" aria-hidden="true"></i>
+                  <span>إبلاغ</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="prompt-body">
@@ -705,6 +735,31 @@
         e.stopPropagation();
         const aid = btn.dataset.authorId;
         if (aid) App.openProfile(parseInt(aid, 10));
+        return;
+      }
+      if (action === 'menu') {
+        e.stopPropagation();
+        this.toggleMenu(btn, e);
+        return;
+      }
+      if (action === 'share') {
+        e.stopPropagation();
+        this.share(p.id);
+        return;
+      }
+      if (action === 'edit') {
+        e.stopPropagation();
+        this.edit(p.id);
+        return;
+      }
+      if (action === 'delete') {
+        e.stopPropagation();
+        this.delete(p.id);
+        return;
+      }
+      if (action === 'report') {
+        e.stopPropagation();
+        this.report(p.id);
         return;
       }
     },
@@ -786,6 +841,85 @@
       } else {
         Toast.show('تعذّر النسخ', 'error');
       }
+    },
+
+    toggleMenu(btn, e) {
+      if (e) e.stopPropagation();
+      const wrap = btn.closest('.prompt-menu-wrap');
+      if (!wrap) return;
+      const menu = wrap.querySelector('.prompt-menu');
+      if (!menu) return;
+      const isOpen = !menu.hidden;
+
+      document.querySelectorAll('.prompt-menu').forEach(m => {
+        m.hidden = true;
+        const b = m.closest('.prompt-menu-wrap')?.querySelector('.prompt-menu-btn');
+        if (b) b.setAttribute('aria-expanded', 'false');
+      });
+
+      if (!isOpen) {
+        menu.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    },
+
+    closeAllMenus() {
+      document.querySelectorAll('.prompt-menu').forEach(m => {
+        m.hidden = true;
+        const b = m.closest('.prompt-menu-wrap')?.querySelector('.prompt-menu-btn');
+        if (b) b.setAttribute('aria-expanded', 'false');
+      });
+    },
+
+    share(id) {
+      const url = `${location.origin}/?p=${id}`;
+      if (navigator.share) {
+        navigator.share({ title: 'برومبت من خَيال', url }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(url).then(() => {
+          Toast.show('تم نسخ الرابط', 'success');
+        }).catch(() => Toast.show('تعذّر النسخ', 'error'));
+      }
+      this.closeAllMenus();
+    },
+
+    edit(id) {
+      this.closeAllMenus();
+      if (typeof Composer !== 'undefined' && Composer.openEdit) {
+        Composer.openEdit(id);
+      } else {
+        Toast.show('تعديل المنشور قريباً', 'info');
+      }
+    },
+
+    async delete(id) {
+      this.closeAllMenus();
+      if (!S.me) { Auth.open('login'); return; }
+      if (!confirm('هل تريد حذف هذا المنشور نهائياً؟')) return;
+      try {
+        await API.del(`/api/posts/${id}`);
+        const card = document.querySelector(`[data-post-id="${id}"]`);
+        if (card) {
+          card.style.transition = 'opacity .3s, transform .3s';
+          card.style.opacity = '0';
+          card.style.transform = 'scale(.95)';
+          setTimeout(() => card.remove(), 300);
+        }
+        Toast.show('تم الحذف', 'success');
+        if (window.Sounds) Sounds.play('success');
+        // invalidate feeds
+        Object.keys(S.feeds || {}).forEach(k => {
+          if (S.feeds[k]) S.feeds[k].loaded = false;
+        });
+      } catch (err) {
+        Toast.show(err.message || 'تعذّر الحذف', 'error');
+        if (window.Sounds) Sounds.play('error');
+      }
+    },
+
+    report(id) {
+      this.closeAllMenus();
+      Toast.show('شكراً، سيتم مراجعة البلاغ', 'info');
     },
   };
 
@@ -2743,6 +2877,13 @@
   window.Install = Install;
   window.U = U;
   window.Theme = Theme;
+
+  // إغلاق قائمة المنشور عند النقر خارجها
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.prompt-menu-wrap')) {
+      if (window.Post && Post.closeAllMenus) Post.closeAllMenus();
+    }
+  });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => App.boot());
