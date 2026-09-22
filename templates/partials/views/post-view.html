@@ -1,0 +1,160 @@
+<div class="view-overlay pv2-overlay" id="postView" hidden role="dialog" aria-modal="true" aria-labelledby="pv2Title">
+
+  <header class="view-overlay-head">
+    <button class="btn btn-icon btn-ghost" data-action="close-post-view" aria-label="رجوع" type="button">
+      <i class="ph ph-arrow-right" aria-hidden="true"></i>
+    </button>
+    <h2>المنشور</h2>
+    <div class="prompt-menu-wrap">
+      <button class="btn btn-icon btn-ghost prompt-menu-btn"
+              data-action="post-view-menu"
+              aria-label="المزيد"
+              aria-haspopup="true"
+              aria-expanded="false"
+              type="button">
+        <i class="ph ph-dots-three" aria-hidden="true"></i>
+      </button>
+      <div class="prompt-menu" id="pv2Menu" role="menu" hidden>
+        <button role="menuitem" type="button" data-action="post-view-share">
+          <i class="ph ph-share-network"></i><span>مشاركة</span>
+        </button>
+        <button role="menuitem" type="button" data-action="post-view-copy-prompt">
+          <i class="ph ph-copy"></i><span>نسخ البرومبت</span>
+        </button>
+        <button role="menuitem" type="button" data-action="post-view-edit" id="pv2EditBtn" hidden>
+          <i class="ph ph-pencil-simple"></i><span>تعديل</span>
+        </button>
+        <button role="menuitem" type="button" class="menu-danger" data-action="post-view-delete" id="pv2DeleteBtn" hidden>
+          <i class="ph ph-trash"></i><span>حذف</span>
+        </button>
+        <button role="menuitem" type="button" data-action="post-view-report" id="pv2ReportBtn" hidden>
+          <i class="ph ph-flag"></i><span>إبلاغ</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="pv2-body">
+
+    <!-- ═══ Skeleton ═══ -->
+    <div class="pv2-skeleton" id="postViewSkeleton" aria-hidden="true">
+      <div class="pv2-skeleton-block pv2-skeleton-media"></div>
+      <div class="pv2-skeleton-line pv2-line-sm"></div>
+      <div class="pv2-skeleton-line pv2-line-lg"></div>
+      <div class="pv2-skeleton-line pv2-line-md"></div>
+      <div class="pv2-skeleton-block pv2-skeleton-card"></div>
+      <div class="pv2-skeleton-block pv2-skeleton-prompt"></div>
+    </div>
+
+    <!-- ═══ Content ═══ -->
+    <article class="pv2-content" id="postViewContent" hidden>
+
+      <!-- Image -->
+      <figure class="pv2-media" id="pv2Media">
+        <img id="pv2Image" src="" alt="" loading="eager" decoding="async">
+      </figure>
+
+      <!-- Meta -->
+      <div class="pv2-meta">
+        <span class="prompt-model" id="pv2Model" hidden></span>
+        <time class="pv2-time" id="pv2Time"></time>
+      </div>
+
+      <!-- Title -->
+      <h1 class="pv2-title" id="pv2Title">—</h1>
+
+      <!-- Author -->
+      <div class="pv2-author">
+        <button class="pv2-author-btn" type="button" data-action="post-view-open-author" id="pv2AuthorBtn">
+          <img class="pv2-author-avatar" id="pv2AuthorAvatar" src="" alt="">
+          <span class="pv2-author-info">
+            <span class="pv2-author-name">
+              <span id="pv2AuthorName">—</span>
+              <i class="ph ph-seal-check" id="pv2AuthorVerified" aria-hidden="true" hidden></i>
+            </span>
+            <span class="pv2-author-handle" id="pv2AuthorHandle">—</span>
+          </span>
+        </button>
+        <button class="btn btn-primary btn-sm pv2-author-follow"
+                type="button"
+                data-action="post-view-follow"
+                id="pv2AuthorFollow"
+                data-state="idle">
+          <i class="ph ph-plus" aria-hidden="true"></i>
+          <span>متابعة</span>
+        </button>
+      </div>
+
+      <!-- Prompt -->
+      <section class="pv2-prompt-wrap">
+        <header class="pv2-prompt-head">
+          <h2 class="pv2-section-label">البرومبت</h2>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="post-view-copy-prompt">
+            <i class="ph ph-copy" aria-hidden="true"></i>
+            <span>نسخ</span>
+          </button>
+        </header>
+        <pre class="pv2-prompt" id="pv2Prompt">—</pre>
+      </section>
+
+      <!-- Tags -->
+      <div class="pv2-tags" id="pv2Tags" hidden></div>
+
+      <!-- Actions / Stats -->
+      <div class="pv2-actions-row">
+        <button class="pv2-action" data-action="post-view-like" id="pv2LikeBtn" type="button" aria-pressed="false">
+          <i class="ph ph-heart" aria-hidden="true"></i>
+          <strong id="pv2StatLikes">0</strong>
+          <span>إعجاب</span>
+        </button>
+        <button class="pv2-action" data-action="post-view-save" id="pv2SaveBtn" type="button" aria-pressed="false">
+          <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
+          <strong id="pv2StatSaves">0</strong>
+          <span>حفظ</span>
+        </button>
+        <div class="pv2-action pv2-action-static">
+          <i class="ph ph-copy" aria-hidden="true"></i>
+          <strong id="pv2StatCopies">0</strong>
+          <span>نسخة</span>
+        </div>
+        <button class="pv2-action" data-action="post-view-share" type="button">
+          <i class="ph ph-share-network" aria-hidden="true"></i>
+          <strong class="pv2-action-dash">—</strong>
+          <span>مشاركة</span>
+        </button>
+      </div>
+
+      <!-- Comments -->
+      <section class="pv2-comments">
+        <header class="pv2-comments-head">
+          <h2 class="pv2-section-label">
+            التعليقات
+            <span class="pv2-count" id="pv2CommentsCount" aria-live="polite"></span>
+          </h2>
+        </header>
+
+        <form class="pv2-comment-form" id="pv2CommentForm" onsubmit="PostView.submitComment(event)">
+          <img class="avatar avatar-sm" id="pv2CommentAvatar" src="" alt="">
+          <textarea id="pv2CommentInput"
+                    placeholder="أضف تعليقاً…"
+                    rows="1"
+                    maxlength="1000"
+                    oninput="U.autoGrow(this)"
+                    aria-label="نص التعليق"></textarea>
+          <button type="submit" class="btn btn-primary btn-icon" aria-label="إرسال" id="pv2CommentSubmit">
+            <i class="ph ph-paper-plane-tilt" aria-hidden="true"></i>
+          </button>
+        </form>
+
+        <div class="pv2-comments-list" id="pv2CommentsList"></div>
+      </section>
+
+      <!-- Related -->
+      <section class="pv2-related" id="pv2Related" hidden>
+        <h2 class="pv2-section-label">ذات صلة</h2>
+        <div class="feed" id="pv2RelatedGrid"></div>
+      </section>
+
+    </article>
+  </div>
+</div>
