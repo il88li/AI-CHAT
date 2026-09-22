@@ -1,82 +1,423 @@
-/* ═══════════════════════════════════════════════════════════════
-   LAYER: base — Reset · Typography · Primitives · Focus · Aurora · Keyframes
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   خَيال — Base Layer v1.0
+   Reset · Typography · Focus · Aurora · Primitives · A11y · Native-feel
+   ═══════════════════════════════════════════════════════════════════════ */
 @layer base {
 
-/* ─── 1. RESET ─── */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-[hidden]{display:none !important}
-html{-webkit-text-size-adjust:100%;overflow-x:clip;overscroll-behavior-y:none;height:100%}
-body{
-  font-family:var(--font-sans);font-size:var(--fs-3);
-  line-height:var(--lh-normal);color:var(--fg-1);background:var(--bg-0);
-  min-height:100dvh;overflow-x:clip;
-  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-  text-rendering:optimizeLegibility;-webkit-tap-highlight-color:transparent;
-  -webkit-user-select:none;user-select:none;
-  transition:background var(--dur-3) var(--ease-out),color var(--dur-3) var(--ease-out);
-}
-input,textarea,select,[contenteditable]{-webkit-user-select:auto;user-select:auto}
-button,input,textarea,select{font:inherit;color:inherit;max-width:100%;background:none;border:none}
-button{cursor:pointer;transition:transform var(--dur-1) var(--ease-out)}
-button:active:not(:disabled){transform:scale(.94) translateY(1px);transition-duration:60ms}
-button:disabled{cursor:not-allowed}
-a{color:inherit;text-decoration:none}
-img,svg,video{display:block;max-width:100%;height:auto}
-ul,ol{list-style:none}
-:focus{outline:none}
-::selection{background:color-mix(in srgb,var(--c-brand) 30%,transparent);color:var(--fg-1)}
-::placeholder{color:var(--fg-4);opacity:1}
-::-webkit-scrollbar{width:10px;height:10px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:9999px;border:3px solid transparent;background-clip:padding-box}
-
-/* ─── 2. TYPOGRAPHY ─── */
-h1,h2,h3,h4,h5,h6{font-family:var(--font-sans);font-weight:var(--fw-bold);line-height:var(--lh-tight);letter-spacing:var(--ls-tight);text-wrap:balance}
-h1{font-size:var(--fs-8)}h2{font-size:var(--fs-7)}h3{font-size:var(--fs-6)}h4{font-size:var(--fs-5)}
-p{text-wrap:pretty;max-width:var(--reading-max)}
-code,kbd,samp,pre{font-family:var(--font-mono);font-size:.92em}
-
-/* ─── 3. LAYOUT PRIMITIVES ─── */
-.container{width:100%;max-width:var(--container-max);margin-inline:auto;padding-inline:var(--pad-x)}
-.stack>*+*{margin-block-start:var(--sp-4)}
-.stack-sm>*+*{margin-block-start:var(--sp-2)}
-.stack-lg>*+*{margin-block-start:var(--sp-6)}
-.cluster{display:flex;flex-wrap:wrap;gap:var(--sp-3);align-items:center}
-.cluster-between{display:flex;flex-wrap:wrap;gap:var(--sp-3);align-items:center;justify-content:space-between}
-.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-
-/* ─── 4. FOCUS ─── */
-:where(a,button,input,textarea,select,[tabindex]):focus-visible{
-  outline:none;border-radius:var(--r-2);transition:none;
-  box-shadow:0 0 0 2px var(--bg-0),0 0 0 4px var(--c-brand),0 0 0 8px color-mix(in srgb,var(--c-brand) 22%,transparent);
+/* ═══════════════════════════════════════════════
+   1. RESET
+   ═══════════════════════════════════════════════ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-/* ─── 5. AURORA ─── */
-.aurora{position:fixed;inset:0;z-index:var(--z-base);pointer-events:none;overflow:hidden;contain:strict}
-.aurora::before,.aurora::after{content:'';position:absolute;border-radius:50%;filter:blur(90px);opacity:.55;will-change:transform}
-.aurora::before{
-  width:min(60vw,720px);height:min(60vw,720px);top:-20vw;inset-inline-end:-10vw;
-  background:radial-gradient(circle,var(--aurora-1),transparent 65%);animation:aurora-a 22s ease-in-out infinite;
-}
-.aurora::after{
-  width:min(55vw,680px);height:min(55vw,680px);bottom:-22vw;inset-inline-start:-14vw;
-  background:radial-gradient(circle,var(--aurora-2),transparent 65%);animation:aurora-b 26s ease-in-out infinite reverse;
-}
-.aurora-mid{
-  position:absolute;width:min(40vw,520px);height:min(40vw,520px);top:35%;inset-inline-start:30%;
-  border-radius:50%;filter:blur(110px);opacity:.28;
-  background:radial-gradient(circle,var(--aurora-3),transparent 65%);animation:aurora-a 30s ease-in-out infinite;
+[hidden] { display: none !important; }
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-x: clip;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* ─── 6. SHARED KEYFRAMES ─── */
-@keyframes aurora-a{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-5vw,3vw) scale(1.08)}}
-@keyframes aurora-b{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(4vw,-3vw) scale(1.06)}}
-@keyframes spin{to{transform:rotate(360deg)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-@keyframes slide-up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-@keyframes fade-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-@keyframes enter-in{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
-@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+body {
+  height: 100%;
+  min-height: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+  color: var(--fg-1);
+  background: var(--bg-0);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern" 1, "liga" 1;
+  overflow-x: clip;
+
+  /* Native-app feel */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  cursor: default;
+
+  /* Theme transition */
+  transition: background var(--dur-3) var(--ease-out),
+              color var(--dur-3) var(--ease-out);
+}
+
+/* Re-enable selection for inputs */
+input,
+textarea,
+select,
+[contenteditable],
+code,
+pre,
+.prompt-excerpt {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  max-width: 100%;
+}
+
+button {
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-out);
+}
+button:active:not(:disabled) { transform: scale(.96); }
+button:disabled { cursor: not-allowed; }
+
+a { color: inherit; text-decoration: none; }
+
+img, svg, video, canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+ul, ol { list-style: none; }
+
+:focus { outline: none; }
+
+::selection {
+  background: color-mix(in srgb, var(--c-brand) 32%, transparent);
+  color: var(--fg-1);
+}
+
+::placeholder {
+  color: var(--fg-4);
+  opacity: 1;
+}
+
+/* Scrollbar (webkit) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: var(--r-full);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--border-3); background-clip: padding-box; }
+
+/* ═══════════════════════════════════════════════
+   2. TYPOGRAPHY
+   ═══════════════════════════════════════════════ */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  text-wrap: balance;
+  color: var(--fg-1);
+}
+
+h1 { font-size: var(--fs-8); }
+h2 { font-size: var(--fs-7); }
+h3 { font-size: var(--fs-6); }
+h4 { font-size: var(--fs-5); }
+h5 { font-size: var(--fs-4); }
+h6 { font-size: var(--fs-3); font-weight: var(--fw-semibold); }
+
+p {
+  line-height: var(--lh-relaxed);
+  max-width: var(--reading-max);
+  text-wrap: pretty;
+}
+
+code, kbd, samp, pre {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  font-feature-settings: "liga" 0;
+}
+
+strong { font-weight: var(--fw-semibold); }
+
+small { font-size: var(--fs-1); color: var(--fg-3); }
+
+/* ═══════════════════════════════════════════════
+   3. FOCUS
+   ═══════════════════════════════════════════════ */
+:where(a, button, input, textarea, select, [tabindex], [role="button"]):focus-visible {
+  outline: none;
+  border-radius: var(--r-2);
+  box-shadow: var(--focus-ring);
+  transition: none;
+}
+
+/* ═══════════════════════════════════════════════
+   4. AURORA BACKGROUND
+   ═══════════════════════════════════════════════ */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-base);
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+.aurora::before,
+.aurora::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: .55;
+  will-change: transform;
+}
+
+.aurora::before {
+  width: min(60%, 720px);
+  aspect-ratio: 1;
+  top: -15%;
+  inset-inline-end: -10%;
+  background: radial-gradient(circle, var(--aurora-1), transparent 65%);
+  animation: aurora-a 22s ease-in-out infinite;
+}
+
+.aurora::after {
+  width: min(55%, 680px);
+  aspect-ratio: 1;
+  bottom: -15%;
+  inset-inline-start: -14%;
+  background: radial-gradient(circle, var(--aurora-2), transparent 65%);
+  animation: aurora-b 26s ease-in-out infinite reverse;
+}
+
+.aurora-mid {
+  position: absolute;
+  width: min(40%, 520px);
+  aspect-ratio: 1;
+  top: 35%;
+  inset-inline-start: 30%;
+  border-radius: 50%;
+  filter: blur(110px);
+  opacity: .28;
+  background: radial-gradient(circle, var(--aurora-3), transparent 65%);
+  animation: aurora-a 30s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════
+   5. KEYFRAMES (global library)
+   ═══════════════════════════════════════════════ */
+@keyframes aurora-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(-4%, 3%) scale(1.08); }
+}
+
+@keyframes aurora-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(3%, -3%) scale(1.06); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .4; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes enter-in {
+  from { opacity: 0; transform: translateY(8px) scale(.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ═══════════════════════════════════════════════
+   6. LAYOUT PRIMITIVES
+   ═══════════════════════════════════════════════ */
+.container {
+  width: 100%;
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding-inline: var(--pad-x);
+}
+
+.container-reading {
+  width: 100%;
+  max-width: var(--reading-max);
+  margin-inline: auto;
+  padding-inline: var(--pad-x);
+}
+
+/* Vertical rhythm */
+.stack > * + *    { margin-block-start: var(--sp-4); }
+.stack-sm > * + * { margin-block-start: var(--sp-2); }
+.stack-lg > * + * { margin-block-start: var(--sp-6); }
+.stack-xl > * + * { margin-block-start: var(--sp-10); }
+
+/* Horizontal cluster */
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+}
+.cluster-sm { gap: var(--sp-2); }
+.cluster-lg { gap: var(--sp-5); }
+
+.cluster-between {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Auto grid */
+.grid-auto {
+  display: grid;
+  gap: clamp(14px, 2.5vw, 22px);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+}
+
+/* ═══════════════════════════════════════════════
+   7. ACCESSIBILITY UTILITIES
+   ═══════════════════════════════════════════════ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  top: -100px;
+  inset-inline-start: var(--sp-4);
+  z-index: var(--z-command);
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--grad-brand);
+  color: var(--ink);
+  border-radius: var(--r-2);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-2);
+  transition: top var(--dur-2) var(--ease-out);
+}
+.skip-link:focus { top: var(--sp-4); }
+
+/* ═══════════════════════════════════════════════
+   8. UTILITIES
+   ═══════════════════════════════════════════════ */
+.hidden { display: none !important; }
+.text-center { text-align: center; }
+.text-start  { text-align: start; }
+.text-end    { text-align: end; }
+.text-muted  { color: var(--fg-3); }
+.text-brand  { color: var(--c-brand); }
+.text-danger { color: var(--c-danger); }
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.text-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.text-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════
+   9. NATIVE-FEEL — JS enhancers as CSS fallbacks
+   ═══════════════════════════════════════════════ */
+/* Ensure inputs don't zoom on iOS */
+input, textarea, select { font-size: max(16px, var(--fs-3)); }
+
+/* Prevent text selection on UI chrome */
+.nav,
+.dock,
+.tab-panel,
+button,
+[role="button"],
+[role="tab"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ═══════════════════════════════════════════════
+   10. REDUCED MOTION
+   ═══════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .aurora::before,
+  .aurora::after,
+  .aurora-mid {
+    animation: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   11. PRINT
+   ═══════════════════════════════════════════════ */
+@media print {
+  .aurora,
+  .nav,
+  .dock,
+  .toast-wrap,
+  .install-banner {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}
 
 } /* end @layer base */
