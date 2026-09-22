@@ -78,23 +78,26 @@
     </div>
   </div>
 
-  <nav class="profile-tabs ant-tabs-wrap ant-tabs-wrap--sub" id="profileTabs" role="tablist" aria-label="أقسام الملف" hidden>
-    <button class="tab ant-tab" role="tab" aria-selected="true" data-ptab="posts" type="button">
-      <i class="ph ph-image-square" aria-hidden="true"></i><span>البرومبتات</span>
-    </button>
-    <button class="tab ant-tab" role="tab" aria-selected="false" data-ptab="liked" type="button">
-      <i class="ph ph-heart" aria-hidden="true"></i><span>المُعجَبة</span>
-    </button>
-    <button class="tab ant-tab" role="tab" aria-selected="false" data-ptab="saved" type="button" id="profileSavedTab">
-      <i class="ph ph-bookmark-simple" aria-hidden="true"></i><span>المحفوظة</span>
-    </button>
-    <button class="tab ant-tab" role="tab" aria-selected="false" data-ptab="about" type="button">
-      <i class="ph ph-info" aria-hidden="true"></i><span>نبذة</span>
-    </button>
-    <button class="tab ant-tab" role="tab" aria-selected="false" data-ptab="settings" type="button" id="profileSettingsTab">
-      <i class="ph ph-gear" aria-hidden="true"></i><span>الإعدادات</span>
-    </button>
-  </nav>
+  <!-- ═══ Tabs — unified pill system ═══ -->
+  <div class="tabs-sticky">
+    <nav class="profile-tabs ant-tabs-wrap ant-tabs-wrap--sub" id="profileTabs" role="tablist" aria-label="أقسام الملف" hidden>
+      <button class="tab ant-tab" role="tab" aria-selected="true" data-ptab="posts" type="button">
+        <i class="ph ph-image-square" aria-hidden="true"></i><span>البرومبتات</span>
+      </button>
+      <button class="tab ant-tab" role="tab" aria-selected="false" data-ptab="liked" type="button">
+        <i class="ph ph-heart" aria-hidden="true"></i><span>المُعجَبة</span>
+      </button>
+      <button class="tab ant-tab" role="tab" aria-selected="false" data-ptab="saved" type="button" id="profileSavedTab">
+        <i class="ph ph-bookmark-simple" aria-hidden="true"></i><span>المحفوظة</span>
+      </button>
+      <button class="tab ant-tab" role="tab" aria-selected="false" data-ptab="about" type="button">
+        <i class="ph ph-info" aria-hidden="true"></i><span>نبذة</span>
+      </button>
+      <button class="tab ant-tab" role="tab" aria-selected="false" data-ptab="settings" type="button" id="profileSettingsTab">
+        <i class="ph ph-gear" aria-hidden="true"></i><span>الإعدادات</span>
+      </button>
+    </nav>
+  </div>
 
   <div id="profilePanel" class="profile-panel"></div>
 
