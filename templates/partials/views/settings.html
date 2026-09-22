@@ -13,7 +13,7 @@
 
   <div class="settings-page">
 
-    <!-- ═══ Identity — Ant Descriptions روح ═══ -->
+    <!-- ═══ Identity Hero Card (always visible) ═══ -->
     <section class="ant-identity" id="settingsHeroProfile" data-style="glass">
       <div class="ant-identity-cover" id="settingsHeroCover" data-cover="aurora">
         <div class="profile-cover-pattern" aria-hidden="true"></div>
@@ -56,23 +56,20 @@
       </div>
     </section>
 
-    <!-- ═══ Tabs — unified pill system ═══ -->
+    <!-- ═══ 5 Tabs ═══ -->
     <div class="tabs-sticky">
       <nav class="settings-tabs ant-tabs-wrap" role="tablist" aria-label="أقسام الإعدادات">
-        <button class="settings-tab ant-tab" role="tab" aria-selected="true" data-section="posts" type="button">
-          <i class="ph ph-image-square" aria-hidden="true"></i><span>المنشورات</span>
+        <button class="settings-tab ant-tab" role="tab" aria-selected="true" data-section="profile" type="button">
+          <i class="ph ph-user" aria-hidden="true"></i><span>الملف</span>
         </button>
-        <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="liked" type="button">
-          <i class="ph ph-heart" aria-hidden="true"></i><span>المُعجَبة</span>
+        <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="content" type="button">
+          <i class="ph ph-image-square" aria-hidden="true"></i><span>المحتوى</span>
         </button>
-        <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="saved" type="button">
-          <i class="ph ph-bookmark-simple" aria-hidden="true"></i><span>المحفوظة</span>
+        <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="notifications" type="button">
+          <i class="ph ph-bell" aria-hidden="true"></i><span>الإشعارات</span>
         </button>
-        <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="about" type="button">
-          <i class="ph ph-info" aria-hidden="true"></i><span>نبذة</span>
-        </button>
-        <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="appearance" type="button">
-          <i class="ph ph-palette" aria-hidden="true"></i><span>التخصيص</span>
+        <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="privacy" type="button">
+          <i class="ph ph-lock-simple" aria-hidden="true"></i><span>الخصوصية</span>
         </button>
         <button class="settings-tab ant-tab" role="tab" aria-selected="false" data-section="account" type="button">
           <i class="ph ph-gear-six" aria-hidden="true"></i><span>الحساب</span>
@@ -82,56 +79,12 @@
 
     <div class="settings-content ant-content">
 
-      <!-- ═══ POSTS ═══ -->
-      <section class="settings-panel ant-panel is-active" data-panel="posts" role="tabpanel">
-        <div class="feed" id="settingsUserPosts" aria-busy="true"></div>
-      </section>
+      <!-- ═══════════════════════════════════════════
+           TAB 1: PROFILE (الملف)
+           ═══════════════════════════════════════════ -->
+      <section class="settings-panel ant-panel is-active" data-panel="profile" role="tabpanel">
 
-      <!-- ═══ LIKED ═══ -->
-      <section class="settings-panel ant-panel" data-panel="liked" role="tabpanel">
-        <div class="feed" id="settingsLikedPosts" aria-busy="true"></div>
-      </section>
-
-      <!-- ═══ SAVED ═══ -->
-      <section class="settings-panel ant-panel" data-panel="saved" role="tabpanel">
-        <div class="feed" id="settingsSavedPosts" aria-busy="true"></div>
-      </section>
-
-      <!-- ═══ ABOUT — Descriptions ═══ -->
-      <section class="settings-panel ant-panel" data-panel="about" role="tabpanel">
-        <div class="ant-descriptions" id="settingsAboutCard">
-          <div class="ant-descriptions-item">
-            <div class="ant-descriptions-label">الاسم</div>
-            <div class="ant-descriptions-value" id="aboutName">—</div>
-          </div>
-          <div class="ant-descriptions-item">
-            <div class="ant-descriptions-label">المعرّف</div>
-            <div class="ant-descriptions-value" id="aboutHandle">@—</div>
-          </div>
-          <div class="ant-descriptions-item" id="aboutPronounsRow" hidden>
-            <div class="ant-descriptions-label">الضمائر</div>
-            <div class="ant-descriptions-value" id="aboutPronouns">—</div>
-          </div>
-          <div class="ant-descriptions-item" id="aboutBioRow" hidden>
-            <div class="ant-descriptions-label">نبذة</div>
-            <div class="ant-descriptions-value" id="aboutBio">—</div>
-          </div>
-          <div class="ant-descriptions-item" id="aboutWebsiteRow" hidden>
-            <div class="ant-descriptions-label">الموقع</div>
-            <div class="ant-descriptions-value">
-              <a class="about-link" id="aboutWebsite" href="#" target="_blank" rel="noopener noreferrer">—</a>
-            </div>
-          </div>
-          <div class="ant-descriptions-item">
-            <div class="ant-descriptions-label">تاريخ الانضمام</div>
-            <div class="ant-descriptions-value" id="aboutJoined">—</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ═══ APPEARANCE ═══ -->
-      <section class="settings-panel ant-panel" data-panel="appearance" role="tabpanel">
-
+        <!-- Cover style -->
         <div class="ant-card">
           <div class="ant-card-head">
             <i class="ph ph-image" aria-hidden="true"></i>
@@ -156,6 +109,7 @@
           </div>
         </div>
 
+        <!-- Avatar frame -->
         <div class="ant-card">
           <div class="ant-card-head">
             <i class="ph ph-user-circle" aria-hidden="true"></i>
@@ -192,6 +146,7 @@
           </div>
         </div>
 
+        <!-- Accent color -->
         <div class="ant-card">
           <div class="ant-card-head">
             <i class="ph ph-drop" aria-hidden="true"></i>
@@ -212,6 +167,7 @@
           </div>
         </div>
 
+        <!-- Card style -->
         <div class="ant-card">
           <div class="ant-card-head">
             <i class="ph ph-squares-four" aria-hidden="true"></i>
@@ -232,6 +188,7 @@
           </div>
         </div>
 
+        <!-- Info form -->
         <div class="ant-card">
           <div class="ant-card-head">
             <i class="ph ph-user" aria-hidden="true"></i>
@@ -274,22 +231,17 @@
         </button>
       </section>
 
-      <!-- ═══ ACCOUNT ═══ -->
-      <section class="settings-panel ant-panel" data-panel="account" role="tabpanel">
+      <!-- ═══════════════════════════════════════════
+           TAB 2: CONTENT (المحتوى)
+           ═══════════════════════════════════════════ -->
+      <section class="settings-panel ant-panel" data-panel="content" role="tabpanel">
+        <div class="feed" id="settingsUserPosts" aria-busy="true"></div>
+      </section>
 
-        <div class="ant-card">
-          <div class="ant-card-body ant-identity-mini">
-            <img class="ant-identity-mini-avatar" id="accountIdentityAvatar" src="" alt="">
-            <div class="ant-identity-mini-info">
-              <strong id="accountIdentityName">—</strong>
-              <span id="accountIdentityHandle">@—</span>
-              <span class="ant-identity-mini-email" id="accountIdentityEmail">—</span>
-            </div>
-            <span class="ant-tag ant-tag-success" id="accountIdentityBadge" hidden>
-              <i class="ph ph-seal-check" aria-hidden="true"></i> موثّق
-            </span>
-          </div>
-        </div>
+      <!-- ═══════════════════════════════════════════
+           TAB 3: NOTIFICATIONS (الإشعارات)
+           ═══════════════════════════════════════════ -->
+      <section class="settings-panel ant-panel" data-panel="notifications" role="tabpanel">
 
         <div class="ant-card">
           <div class="ant-card-head">
@@ -373,10 +325,17 @@
           </div>
         </div>
 
+      </section>
+
+      <!-- ═══════════════════════════════════════════
+           TAB 4: PRIVACY (الخصوصية)
+           ═══════════════════════════════════════════ -->
+      <section class="settings-panel ant-panel" data-panel="privacy" role="tabpanel">
+
         <div class="ant-card">
           <div class="ant-card-head">
-            <i class="ph ph-lock-simple" aria-hidden="true"></i>
-            <span>الخصوصية</span>
+            <i class="ph ph-eye" aria-hidden="true"></i>
+            <span>من يرى ملفك</span>
           </div>
           <div class="ant-card-body ant-rows">
             <div class="ant-row">
@@ -415,6 +374,54 @@
           </div>
         </div>
 
+      </section>
+
+      <!-- ═══════════════════════════════════════════
+           TAB 5: ACCOUNT (الحساب)
+           ═══════════════════════════════════════════ -->
+      <section class="settings-panel ant-panel" data-panel="account" role="tabpanel">
+
+        <div class="ant-card">
+          <div class="ant-card-body ant-identity-mini">
+            <img class="ant-identity-mini-avatar" id="accountIdentityAvatar" src="" alt="">
+            <div class="ant-identity-mini-info">
+              <strong id="accountIdentityName">—</strong>
+              <span id="accountIdentityHandle">@—</span>
+              <span class="ant-identity-mini-email" id="accountIdentityEmail">—</span>
+            </div>
+            <span class="ant-tag ant-tag-success" id="accountIdentityBadge" hidden>
+              <i class="ph ph-seal-check" aria-hidden="true"></i> موثّق
+            </span>
+          </div>
+        </div>
+
+        <div class="ant-card">
+          <div class="ant-card-head">
+            <i class="ph ph-calendar" aria-hidden="true"></i>
+            <span>معلومات الحساب</span>
+          </div>
+          <div class="ant-card-body">
+            <div class="ant-rows">
+              <div class="ant-row">
+                <div class="ant-row-info"><strong>الاسم الكامل</strong></div>
+                <span class="ant-card-extra" id="accountInfoName">—</span>
+              </div>
+              <div class="ant-row">
+                <div class="ant-row-info"><strong>المعرّف</strong></div>
+                <span class="ant-card-extra" id="accountInfoHandle">@—</span>
+              </div>
+              <div class="ant-row">
+                <div class="ant-row-info"><strong>البريد الإلكتروني</strong></div>
+                <span class="ant-card-extra" id="accountInfoEmail">—</span>
+              </div>
+              <div class="ant-row">
+                <div class="ant-row-info"><strong>تاريخ الانضمام</strong></div>
+                <span class="ant-card-extra" id="accountInfoJoined">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="ant-card ant-card-danger">
           <div class="ant-card-body">
             <div class="ant-row">
@@ -432,3 +439,7 @@
     </div>
   </div>
 </div>
+
+<!-- File inputs (unchanged) -->
+<input type="file" id="avatarFileInput" accept="image/*" hidden>
+<input type="file" id="coverFileInput" accept="image/*" hidden>
