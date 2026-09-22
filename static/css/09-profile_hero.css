@@ -1,0 +1,693 @@
+/* ═══════════════════════════════════════════════════════════════
+   09-profile-hero.css — بطاقة البروفايل v2
+   مبنية على التصميم المرجعي: غلاف علوي، أفاتار متداخل،
+   اسم بارز، مؤشر حضور، إحصاءات مقسّمة، شريط اجتماعي دائري.
+   UNLAYERED — يعمل بعد كل الطبقات لأعلى أولوية.
+   RTL · WebView-safe · بلا vh/vw · safe-area aware
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── 1. HOST SHELL ─── */
+.profile-hero{
+  --_accent: var(--c-brand);
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  margin-inline: auto;
+  margin-block: var(--sp-2) var(--sp-5);
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: 24px;
+  overflow: hidden;
+  isolation: isolate;
+  container-type: inline-size;
+  container-name: profile-hero;
+  box-shadow:
+    0 1px 2px rgba(0,0,0,.04),
+    0 8px 20px rgba(0,0,0,.06),
+    0 24px 48px rgba(0,0,0,.05);
+  transition:
+    box-shadow var(--dur-3) var(--ease-out),
+    border-color var(--dur-3) var(--ease-out),
+    transform var(--dur-3) var(--ease-clay);
+}
+.profile-hero[hidden]{ display: none !important; }
+.profile-hero:hover{
+  border-color: var(--border-2);
+  box-shadow:
+    0 1px 2px rgba(0,0,0,.05),
+    0 12px 28px rgba(0,0,0,.09),
+    0 32px 64px rgba(0,0,0,.07);
+}
+
+/* ─── 2. COVER ─── */
+.profile-hero-cover{
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 180px;
+  overflow: hidden;
+  background:
+    var(--_bg, linear-gradient(180deg, #BFDBFE 0%, #93C5FD 55%, #60A5FA 100%));
+  transition: background var(--dur-4) var(--ease-out);
+}
+
+/* طبقات الغيوم */
+.profile-hero-cover::before{
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 55% at 22% 22%, rgba(255,255,255,.65), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 78% 68%, rgba(255,255,255,.45), transparent 60%),
+    radial-gradient(ellipse 40% 40% at 50% 45%, rgba(255,255,255,.30), transparent 60%);
+  mix-blend-mode: screen;
+}
+
+/* شبكة خفيفة اختيارية */
+.profile-hero-cover-pattern{
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .35;
+  background-image:
+    linear-gradient(rgba(255,255,255,.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.10) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* التدرّج اللوني السفلي لمزيد من العمق */
+.profile-hero-cover::after{
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 45%;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0,0,0,.08), transparent);
+}
+
+/* ─── 3. ACTION BUTTON (Follow / Plus / Edit) ─── */
+.profile-hero-action{
+  position: absolute;
+  top: var(--sp-3);
+  inset-inline-end: var(--sp-3);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0 14px;
+  border-radius: var(--r-full);
+  background: rgba(255,255,255,.92);
+  color: #0A0A0F;
+  border: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow:
+    0 1px 2px rgba(0,0,0,.06),
+    0 4px 12px rgba(0,0,0,.10);
+  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  transition:
+    transform var(--dur-2) var(--ease-clay),
+    box-shadow var(--dur-2) var(--ease-out),
+    background var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out);
+}
+.profile-hero-action:hover{
+  transform: translateY(-1px);
+  box-shadow:
+    0 2px 4px rgba(0,0,0,.08),
+    0 8px 20px rgba(0,0,0,.14);
+}
+.profile-hero-action:active{
+  transform: translateY(0) scale(.96);
+}
+.profile-hero-action:focus-visible{
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--bg-1),
+    0 0 0 4px var(--c-brand),
+    0 4px 12px rgba(0,0,0,.12);
+}
+.profile-hero-action > i{
+  font-size: 15px;
+  line-height: 1;
+}
+.profile-hero-action > span{
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* أيقوني فقط (المرجع الأيمن) */
+.profile-hero-action[data-variant="icon"]{
+  width: 36px;
+  padding: 0;
+}
+.profile-hero-action[data-variant="icon"] > span{ display: none; }
+
+/* حالة "أتابعه" — زر داكن */
+.profile-hero-action[data-state="following"]{
+  background: rgba(10,10,15,.88);
+  color: #FAFAFC;
+}
+.profile-hero-action[data-state="following"]:hover{
+  background: rgba(10,10,15,.95);
+}
+
+/* حالة تحميل */
+.profile-hero-action[aria-busy="true"]{
+  pointer-events: none;
+  color: transparent;
+}
+.profile-hero-action[aria-busy="true"]::after{
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  color: #0A0A0F;
+  animation: spin .7s linear infinite;
+}
+
+/* ─── 4. AVATAR (متداخل) ─── */
+.profile-hero-avatar-wrap{
+  position: absolute;
+  inset-inline-start: var(--sp-5);
+  bottom: calc(-1 * var(--sp-6));
+  z-index: 4;
+  width: 88px;
+  height: 88px;
+  pointer-events: none;
+}
+.profile-hero-avatar{
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-1);
+  border: 4px solid var(--bg-1);
+  box-shadow:
+    0 2px 8px rgba(0,0,0,.10),
+    0 8px 24px rgba(0,0,0,.14);
+  pointer-events: auto;
+  transition:
+    transform var(--dur-3) var(--ease-clay),
+    border-radius var(--dur-3) var(--ease-clay),
+    box-shadow var(--dur-3) var(--ease-out);
+}
+.profile-hero:hover .profile-hero-avatar{
+  transform: scale(1.025);
+}
+
+/* إطارات — متوافقة مع النظام القديم */
+.profile-hero-avatar[data-frame="none"]{
+  border-radius: 20px;
+  border: 2px solid var(--border-2);
+  box-shadow: 0 2px 8px rgba(0,0,0,.10), 0 8px 24px rgba(0,0,0,.14);
+}
+.profile-hero-avatar[data-frame="ring"]{
+  border-radius: 50%;
+  border: 3px solid var(--bg-1);
+  box-shadow:
+    0 0 0 2px var(--_accent),
+    0 8px 24px rgba(0,0,0,.14);
+}
+.profile-hero-avatar[data-frame="gradient"]{
+  border-radius: 50%;
+  border: 3px solid transparent;
+  background:
+    linear-gradient(var(--bg-1), var(--bg-1)) padding-box,
+    var(--grad-brand) border-box;
+  box-shadow: 0 8px 24px rgba(0,0,0,.14);
+}
+.profile-hero-avatar[data-frame="neon"]{
+  border-radius: 50%;
+  border: 2px solid var(--_accent);
+  box-shadow:
+    0 0 20px var(--_accent),
+    0 0 40px color-mix(in srgb, var(--_accent) 40%, transparent),
+    0 8px 24px rgba(0,0,0,.14);
+}
+.profile-hero-avatar[data-frame="double"]{
+  border-radius: 50%;
+  border: 2px solid var(--bg-1);
+  box-shadow:
+    0 0 0 2px var(--_accent),
+    0 0 0 4px var(--bg-1),
+    0 0 0 6px var(--_accent),
+    0 8px 24px rgba(0,0,0,.14);
+}
+.profile-hero-avatar[data-frame="polaroid"]{
+  border-radius: 6px;
+  border: 6px solid #fff;
+  border-bottom-width: 20px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.20);
+  transform: rotate(-2deg);
+}
+.profile-hero:hover .profile-hero-avatar[data-frame="polaroid"]{
+  transform: rotate(0) scale(1.02);
+}
+.profile-hero-avatar[data-frame="glass"]{
+  border-radius: 20px;
+  border: 2px solid rgba(255,255,255,.55);
+  box-shadow:
+    inset 0 0 24px rgba(255,255,255,.20),
+    0 8px 24px rgba(0,0,0,.14);
+}
+.profile-hero-avatar[data-frame="hex"]{
+  border-radius: 0;
+  border: none;
+  clip-path: polygon(50% 2%, 96% 26%, 96% 74%, 50% 98%, 4% 74%, 4% 26%);
+  box-shadow: 0 8px 24px rgba(0,0,0,.14);
+}
+
+/* ─── 5. PRESENCE (exp. online + mini spectrum) ─── */
+.profile-hero-presence{
+  position: absolute;
+  inset-inline-start: calc(var(--sp-5) + 88px + var(--sp-3));
+  bottom: calc(-1 * var(--sp-6) + 14px);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-full);
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  transition:
+    background var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out);
+}
+.profile-hero-presence[hidden]{ display: none !important; }
+
+.profile-hero-presence-label{
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg-3);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.profile-hero-presence-bars{
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 12px;
+}
+.profile-hero-presence-bars > span{
+  width: 2px;
+  border-radius: 1px;
+  opacity: .9;
+  background: currentColor;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+.profile-hero-presence-bars > span:nth-child(1){ height: 4px;  color: #FB7185; }
+.profile-hero-presence-bars > span:nth-child(2){ height: 6px;  color: #FBBF24; }
+.profile-hero-presence-bars > span:nth-child(3){ height: 8px;  color: #34D399; }
+.profile-hero-presence-bars > span:nth-child(4){ height: 10px; color: #22D3EE; }
+.profile-hero-presence-bars > span:nth-child(5){ height: 12px; color: #8B5CF6; }
+.profile-hero-presence-bars > span:nth-child(6){ height: 10px; color: #EC4899; }
+.profile-hero-presence-bars > span:nth-child(7){ height: 7px;  color: #60A5FA; }
+.profile-hero-presence-bars > span:nth-child(8){ height: 5px;  color: #34D399; }
+.profile-hero-presence-bars > span:nth-child(9){ height: 3px;  color: #FB7185; }
+
+/* حالة الاتصال */
+.profile-hero-presence[data-online="true"]{
+  border-color: color-mix(in srgb, var(--c-success) 35%, var(--border-1));
+}
+.profile-hero-presence[data-online="true"] .profile-hero-presence-label{
+  color: var(--c-success);
+}
+.profile-hero-presence[data-online="true"] .profile-hero-presence-bars > span{
+  animation: presence-bounce 1.4s var(--ease-clay) infinite;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+.profile-hero-presence[data-online="true"] .profile-hero-presence-bars > span:nth-child(1){ --i: 0; }
+.profile-hero-presence[data-online="true"] .profile-hero-presence-bars > span:nth-child(2){ --i: 1; }
+.profile-hero-presence[data-online="true"] .profile-hero-presence-bars > span:nth-child(3){ --i: 2; }
+.profile-hero-presence[data-online="true"] .profile-hero-presence-bars > span:nth-child(4){ --i: 3; }
+.profile-hero-presence[data-online="true"] .profile-hero-presence-bars > span:nth-child(5){ --i: 4; }
+.profile-hero-presence[data-online="true"] .profile-hero-presence-bars > span:nth-child(6){ --i: 5; }
+.profile-hero-presence[data-online="true"] .profile-hero-presence-bars > span:nth-child(7){ --i: 6; }
+.profile-hero-presence[data-online="true"] .profile-hero-presence-bars > span:nth-child(8){ --i: 7; }
+.profile-hero-presence[data-online="true"] .profile-hero-presence-bars > span:nth-child(9){ --i: 8; }
+
+@keyframes presence-bounce{
+  0%, 100%{ transform: scaleY(1);   opacity: .9; }
+  50%     { transform: scaleY(1.6); opacity: 1;  }
+}
+
+/* ─── 6. BODY ─── */
+.profile-hero-body{
+  padding:
+    calc(var(--sp-6) + var(--sp-2))
+    var(--sp-5)
+    var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* الاسم */
+.profile-hero-name{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--fg-1);
+  text-wrap: balance;
+}
+.profile-hero-name > i{
+  font-size: 18px;
+  color: var(--_accent);
+  flex-shrink: 0;
+}
+
+/* المعرّف + الضمائر */
+.profile-hero-sub{
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: -4px;
+}
+.profile-hero-handle{
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--_accent);
+  opacity: .92;
+  letter-spacing: -0.01em;
+}
+.profile-hero-pronouns{
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-full);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg-3);
+  line-height: 1.4;
+}
+.profile-hero-pronouns[hidden]{ display: none !important; }
+
+/* النبذة */
+.profile-hero-bio{
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg-3);
+  max-width: 44ch;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.profile-hero-bio:empty{ display: none; }
+
+/* ─── 7. STATS ─── */
+.profile-hero-stats{
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: var(--sp-1);
+  padding: var(--sp-3) 0;
+  margin-top: var(--sp-1);
+  border-top: 1px solid var(--border-1);
+  border-bottom: 1px solid var(--border-1);
+}
+.profile-hero-stat{
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-1) var(--sp-2);
+  background: none;
+  border: none;
+  border-radius: var(--r-2);
+  font-family: inherit;
+  text-align: center;
+  cursor: default;
+  transition: background var(--dur-2) var(--ease-out);
+}
+button.profile-hero-stat{
+  cursor: pointer;
+}
+button.profile-hero-stat:hover{
+  background: var(--surface-2);
+}
+button.profile-hero-stat:active{
+  transform: scale(.97);
+}
+.profile-hero-stat:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-1), 0 0 0 4px var(--c-brand);
+}
+
+.profile-hero-stat strong{
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--fg-1);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.profile-hero-stat span{
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg-3);
+  letter-spacing: .02em;
+  line-height: 1.3;
+}
+.profile-hero-stat-div{
+  width: 1px;
+  height: 28px;
+  flex-shrink: 0;
+  background: var(--border-1);
+}
+
+/* ─── 8. SOCIAL ROW ─── */
+.profile-hero-social{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  padding-top: var(--sp-1);
+}
+.profile-hero-social-btn{
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--fg-2);
+  cursor: pointer;
+  transition:
+    color var(--dur-2) var(--ease-out),
+    background var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-clay);
+}
+.profile-hero-social-btn:hover{
+  color: var(--fg-1);
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+.profile-hero-social-btn:active{
+  transform: translateY(0) scale(.94);
+}
+.profile-hero-social-btn:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-1), 0 0 0 4px var(--c-brand);
+}
+.profile-hero-social-btn > i{
+  font-size: 20px;
+  line-height: 1;
+}
+.profile-hero-social-btn[aria-pressed="true"]{
+  color: var(--c-brand);
+}
+
+/* ─── 9. COVER PRESETS (مدمجة مع النظام القديم) ─── */
+.profile-hero-cover[data-cover="aurora"]  { --_bg: linear-gradient(180deg, #BFDBFE 0%, #93C5FD 55%, #60A5FA 100%); }
+.profile-hero-cover[data-cover="sunset"]  { --_bg: linear-gradient(180deg, #FED7AA 0%, #FDBA74 55%, #FB923C 100%); }
+.profile-hero-cover[data-cover="forest"]  { --_bg: linear-gradient(180deg, #BBF7D0 0%, #86EFAC 55%, #4ADE80 100%); }
+.profile-hero-cover[data-cover="royal"]   { --_bg: linear-gradient(180deg, #DDD6FE 0%, #C4B5FD 55%, #A78BFA 100%); }
+.profile-hero-cover[data-cover="midnight"]{ --_bg: linear-gradient(180deg, #1E1E2A 0%, #15151D 55%, #0A0A0F 100%); }
+.profile-hero-cover[data-cover="ocean"]   { --_bg: linear-gradient(180deg, #BAE6FD 0%, #7DD3FC 55%, #38BDF8 100%); }
+.profile-hero-cover[data-cover="cyber"]   { --_bg: linear-gradient(135deg, #0A0A0F 0%, #1A0B2E 50%, #2D1B4E 100%); }
+.profile-hero-cover[data-cover="candy"]   { --_bg: linear-gradient(180deg, #FBCFE8 0%, #F9A8D4 55%, #F472B6 100%); }
+.profile-hero-cover[data-cover="mesh"]    { --_bg: linear-gradient(180deg, #A5F3FC 0%, #C4B5FD 55%, #FBCFE8 100%); }
+.profile-hero-cover[data-cover="noir"]    { --_bg: linear-gradient(180deg, #3F3F46 0%, #27272A 55%, #18181B 100%); }
+.profile-hero-cover[data-cover="topo"]    { --_bg: linear-gradient(180deg, #E0E7FF 0%, #C7D2FE 55%, #A5B4FC 100%); }
+.profile-hero-cover[data-cover="dots"]    { --_bg: linear-gradient(180deg, #FED7AA 0%, #FBBF24 55%, #F59E0B 100%); }
+
+/* في الوضع الداكن نخفت الضجيج */
+[data-theme="dark"] .profile-hero-cover::before{
+  mix-blend-mode: soft-light;
+  opacity: .7;
+}
+
+/* ─── 10. SKELETON ─── */
+.profile-hero-skeleton{
+  width: 100%;
+  max-width: 420px;
+  margin-inline: auto;
+  margin-block: var(--sp-2) var(--sp-5);
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: 24px;
+  overflow: hidden;
+}
+.profile-hero-skeleton .profile-hero-cover{
+  background: linear-gradient(90deg,
+    var(--surface-1) 25%, var(--surface-2) 50%, var(--surface-1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.profile-hero-skeleton .profile-hero-avatar-wrap{
+  position: absolute;
+  inset-inline-start: var(--sp-5);
+  bottom: calc(-1 * var(--sp-6));
+}
+.profile-hero-skeleton .profile-hero-avatar{
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: linear-gradient(90deg,
+    var(--surface-1) 25%, var(--surface-2) 50%, var(--surface-1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border: 4px solid var(--bg-1);
+}
+.profile-hero-skeleton .profile-hero-body{
+  padding: calc(var(--sp-6) + var(--sp-2)) var(--sp-5) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.profile-hero-skeleton .sk-line{
+  height: 14px;
+  border-radius: var(--r-1);
+  background: linear-gradient(90deg,
+    var(--surface-1) 25%, var(--surface-2) 50%, var(--surface-1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.profile-hero-skeleton .sk-line.lg{ height: 22px; width: 55%; }
+.profile-hero-skeleton .sk-line.md{ height: 14px; width: 40%; }
+.profile-hero-skeleton .sk-line.full{ height: 14px; width: 100%; }
+
+/* ─── 11. CONTAINER QUERIES ─── */
+@container profile-hero (max-width: 380px){
+  .profile-hero-cover{ max-height: 150px; }
+  .profile-hero-avatar-wrap{
+    width: 76px;
+    height: 76px;
+    bottom: calc(-1 * var(--sp-5));
+    inset-inline-start: var(--sp-4);
+  }
+  .profile-hero-presence{
+    inset-inline-start: calc(var(--sp-4) + 76px + var(--sp-2));
+    bottom: calc(-1 * var(--sp-5) + 12px);
+    height: 26px;
+    padding: 0 10px;
+  }
+  .profile-hero-body{
+    padding: calc(var(--sp-5) + var(--sp-2)) var(--sp-4) var(--sp-4);
+  }
+  .profile-hero-name{ font-size: 19px; }
+  .profile-hero-stat strong{ font-size: 16px; }
+  .profile-hero-stat span{ font-size: 10.5px; }
+}
+
+@container profile-hero (max-width: 320px){
+  .profile-hero-avatar-wrap{
+    width: 68px;
+    height: 68px;
+    bottom: calc(-1 * var(--sp-4));
+  }
+  .profile-hero-presence{ display: none; }
+  .profile-hero-body{
+    padding: calc(var(--sp-4) + var(--sp-2)) var(--sp-3) var(--sp-3);
+    gap: var(--sp-2);
+  }
+  .profile-hero-name{ font-size: 17px; }
+  .profile-hero-stat strong{ font-size: 15px; }
+  .profile-hero-stat span{ font-size: 10px; }
+  .profile-hero-stat-div{ height: 22px; }
+  .profile-hero-social-btn{ width: 40px; height: 40px; }
+  .profile-hero-social-btn > i{ font-size: 18px; }
+}
+
+/* ─── 12. REDUCED MOTION ─── */
+@media (prefers-reduced-motion: reduce){
+  .profile-hero,
+  .profile-hero-cover,
+  .profile-hero-action,
+  .profile-hero-avatar,
+  .profile-hero-stat,
+  .profile-hero-social-btn,
+  .profile-hero-presence{
+    transition: none !important;
+    transform: none !important;
+    animation: none !important;
+  }
+  .profile-hero-presence-bars > span{
+    animation: none !important;
+  }
+  .profile-hero-skeleton,
+  .profile-hero-skeleton .profile-hero-cover,
+  .profile-hero-skeleton .profile-hero-avatar,
+  .profile-hero-skeleton .sk-line{
+    animation: none !important;
+  }
+}
+
+/* ─── 13. LIGHT MODE ADJUSTMENTS ─── */
+[data-theme="light"] .profile-hero{
+  background: #FFFFFF;
+  border-color: rgba(0,0,0,.06);
+  box-shadow:
+    0 1px 2px rgba(15,15,25,.04),
+    0 8px 20px rgba(15,15,25,.06),
+    0 24px 48px rgba(15,15,25,.05);
+}
+[data-theme="light"] .profile-hero-cover::after{
+  background: linear-gradient(to top, rgba(255,255,255,.15), transparent);
+}
+[data-theme="light"] .profile-hero-presence{
+  background: #FFFFFF;
+  border-color: rgba(0,0,0,.06);
+}
+[data-theme="light"] .profile-hero-avatar{
+  border-color: #FFFFFF;
+  background: #FFFFFF;
+}
+[data-theme="light"] .profile-hero-action{
+  background: rgba(255,255,255,.96);
+  color: #0A0A0F;
+}
+[data-theme="light"] .profile-hero-stats,
+[data-theme
