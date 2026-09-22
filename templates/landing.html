@@ -3,149 +3,255 @@
 
 {% block body %}
 
+<a class="skip-link" href="#main">تخطّى إلى المحتوى</a>
+
 {% include 'partials/nav.html' %}
 
 <main class="view is-active" id="view-landing">
-  <section class="hero">
-    <div class="hero-inner">
-      <div class="hero-chip">
-        <span class="pulse" aria-hidden="true"></span>
-        النسخة التجريبية · انضم لمبدعي البرومبتات
+
+  <!-- ═══════════════════════════════════════════════════════════
+       1. HERO
+       ═══════════════════════════════════════════════════════════ -->
+  <section class="lp-hero" id="main">
+    <div class="lp-hero-inner">
+
+      <div class="lp-hero-eyebrow">
+        <span class="lp-hero-dot" aria-hidden="true"></span>
+        <span>منصة عربية · مفتوحة للجميع</span>
       </div>
 
-      <h1>
-        شارِك <span class="grad">البرومبت</span>،<br>
-        لا <span class="stroke">الصورة</span> فقط.
+      <h1 class="lp-hero-title">
+        شارِك <span class="lp-hero-accent">البرومبت</span>،<br>
+        لا <em>الصورة</em> فقط.
       </h1>
 
-      <p class="hero-lede">
-        خَيال منصة عربية لمبدعي الصور بالذكاء الاصطناعي. انشر البرومبت مع النتيجة، اكتشف مكتبة حيّة، انسخ ما ينجح، واحفظ الفضل لأصحابه.
+      <p class="lp-hero-lede">
+        مكتبة عربية لتوليد الصور بالذكاء الاصطناعي.
+        انشر البرومبت مع نتيجته، اكتشف تقنيات جديدة،
+        واحفظ ما ينجح — كل شيء في مكان واحد.
       </p>
 
-      <div class="hero-cta">
-        <button class="btn btn-primary btn-lg" onclick="Auth.open('register')" type="button">
+      <div class="lp-hero-cta">
+        <button class="btn btn-primary btn-lg"
+                type="button"
+                data-action="landing-cta-register">
           <i class="ph ph-user-plus" aria-hidden="true"></i>
-          أنشئ حسابك مجاناً
+          <span>أنشئ حسابك مجاناً</span>
         </button>
-        <button class="btn btn-secondary btn-lg" onclick="App.previewFeed()" type="button">
-          تصفَّح المنصة
-          <i class="ph ph-arrow-left" aria-hidden="true"></i>
+        <button class="btn btn-secondary btn-lg"
+                type="button"
+                data-action="landing-cta-preview">
+          <i class="ph ph-compass" aria-hidden="true"></i>
+          <span>تصفَّح المنصة</span>
         </button>
       </div>
 
-      <div class="hero-stats">
-        <div class="hero-stat"><strong id="heroStatPosts">0</strong><span>برومبت</span></div>
-        <div class="hero-stat"><strong id="heroStatUsers">0</strong><span>مبدع</span></div>
-        <div class="hero-stat"><strong>∞</strong><span>إبداع</span></div>
+      <div class="lp-hero-trust">
+        <div class="lp-trust-item">
+          <strong data-hero-stat="posts">0</strong>
+          <span>برومبت</span>
+        </div>
+        <span class="lp-trust-div" aria-hidden="true"></span>
+        <div class="lp-trust-item">
+          <strong data-hero-stat="users">0</strong>
+          <span>مبدع</span>
+        </div>
+        <span class="lp-trust-div" aria-hidden="true"></span>
+        <div class="lp-trust-item">
+          <strong>∞</strong>
+          <span>إبداع</span>
+        </div>
       </div>
 
-      <div class="hero-preview">
-        <div class="card" data-label="cinematic rooftop, neon">
-          <img src="https://picsum.photos/seed/aurora1/900/1200" alt="" loading="lazy">
-        </div>
-        <div class="card" data-label="kyoto alley, rain">
-          <img src="https://picsum.photos/seed/aurora2/600/400" alt="" loading="lazy">
-        </div>
-        <div class="card" data-label="cyberpunk market">
-          <img src="https://picsum.photos/seed/aurora3/600/400" alt="" loading="lazy">
-        </div>
+    </div>
+
+    <!-- Preview grid — bento غير متماثل -->
+    <div class="lp-hero-preview" aria-hidden="true">
+      <div class="lp-preview-card lp-preview-a">
+        <img src="https://picsum.photos/seed/khayal1/900/1200"
+             alt="" loading="eager" decoding="async">
+        <span class="lp-preview-label" dir="ltr">cinematic rooftop · neon</span>
+      </div>
+      <div class="lp-preview-card lp-preview-b">
+        <img src="https://picsum.photos/seed/khayal2/700/500"
+             alt="" loading="lazy" decoding="async">
+        <span class="lp-preview-label" dir="ltr">kyoto alley · rain</span>
+      </div>
+      <div class="lp-preview-card lp-preview-c">
+        <img src="https://picsum.photos/seed/khayal3/700/500"
+             alt="" loading="lazy" decoding="async">
+        <span class="lp-preview-label" dir="ltr">portrait · golden hour</span>
+      </div>
+      <div class="lp-preview-card lp-preview-d">
+        <img src="https://picsum.photos/seed/khayal4/700/500"
+             alt="" loading="lazy" decoding="async">
+        <span class="lp-preview-label" dir="ltr">isometric · paper cut</span>
       </div>
     </div>
   </section>
 
-  <section class="section" id="features">
-    <div class="sec-head">
-      <div class="sec-head-info">
-        <div class="sec-eyebrow">ما تحصل عليه</div>
-        <h2>كل ما يحتاجه صانع البرومبت في مكان واحد.</h2>
+  <!-- ═══════════════════════════════════════════════════════════
+       2. VALUE PROPS — 3 كروت
+       ═══════════════════════════════════════════════════════════ -->
+  <section class="lp-section" id="features">
+    <header class="lp-section-head">
+      <div class="lp-section-eyebrow">
+        <span class="lp-eyebrow-line" aria-hidden="true"></span>
+        <span>ما تحصل عليه</span>
       </div>
-      <p>بُنيت مع مبدعين ينشرون كل يوم. برومبتات حقيقية، أسماء محفوظة، وإعادة استخدام موثّقة.</p>
-    </div>
+      <h2 class="lp-section-title">
+        كل ما يحتاجه صانع البرومبت
+        <span class="lp-section-title-accent">في مكان واحد.</span>
+      </h2>
+      <p class="lp-section-lede">
+        بُنيت مع مبدعين عرب ينشرون كل يوم. برومبتات حقيقية،
+        أسماء محفوظة، وإعادة استخدام موثّقة.
+      </p>
+    </header>
 
-    <div class="bento">
-      <article class="bento-card bento-a">
-        <div class="bento-icon"><i class="ph ph-sparkle" aria-hidden="true"></i></div>
-        <h3>انشر البرومبت مع النتيجة</h3>
-        <p>كل منشور يقرن الصورة بالبرومبت والموديل والإعدادات بالضبط.</p>
+    <div class="lp-props">
+      <article class="lp-prop">
+        <div class="lp-prop-icon">
+          <i class="ph ph-sparkle" aria-hidden="true"></i>
+        </div>
+        <h3 class="lp-prop-title">انشر البرومبت مع النتيجة</h3>
+        <p class="lp-prop-text">
+          كل منشور يقرن الصورة بالبرومبت والموديل.
+          نسخة واحدة بضغطة زر — يحفظ الفضل لصاحبه.
+        </p>
       </article>
 
-      <article class="bento-card bento-b">
-        <div class="bento-icon"><i class="ph ph-users-three" aria-hidden="true"></i></div>
-        <h3>مجتمع حقيقي</h3>
-        <p>تابِع المبدعين، زُر صفحاتهم، وتواصل معهم مباشرة.</p>
+      <article class="lp-prop">
+        <div class="lp-prop-icon">
+          <i class="ph ph-users-three" aria-hidden="true"></i>
+        </div>
+        <h3 class="lp-prop-title">مجتمع حقيقي</h3>
+        <p class="lp-prop-text">
+          تابِع المبدعين، زُر صفحاتهم،
+          وتواصل معهم مباشرة عبر الدردشة.
+        </p>
       </article>
 
-      <article class="bento-card bento-c">
-        <div class="bento-icon"><i class="ph ph-heart" aria-hidden="true"></i></div>
-        <h3>أعجِب واحفظ</h3>
-        <p>مكتبتان منفصلتان للرجوع لاحقاً.</p>
-      </article>
-
-      <article class="bento-card bento-d">
-        <div class="bento-icon"><i class="ph ph-chat-circle-dots" aria-hidden="true"></i></div>
-        <h3>دردشة وتعليقات حية</h3>
-        <p>تحدّث مع المبدعين دون مغادرة المنصة.</p>
+      <article class="lp-prop">
+        <div class="lp-prop-icon">
+          <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
+        </div>
+        <h3 class="lp-prop-title">مكتبتك الشخصية</h3>
+        <p class="lp-prop-text">
+          احفظ ما يعجبك، رتّب مجموعاتك،
+          وارجع إليها في أي وقت.
+        </p>
       </article>
     </div>
   </section>
 
-  <section class="section" id="how">
-    <div class="sec-head">
-      <div class="sec-head-info">
-        <div class="sec-eyebrow">كيف تعمل</div>
-        <h2>ثلاث خطوات. هذا كل شيء.</h2>
+  <!-- ═══════════════════════════════════════════════════════════
+       3. HOW IT WORKS — 3 خطوات
+       ═══════════════════════════════════════════════════════════ -->
+  <section class="lp-section" id="how">
+    <header class="lp-section-head">
+      <div class="lp-section-eyebrow">
+        <span class="lp-eyebrow-line" aria-hidden="true"></span>
+        <span>كيف تعمل</span>
       </div>
-    </div>
+      <h2 class="lp-section-title">ثلاث خطوات. هذا كل شيء.</h2>
+    </header>
 
-    <div class="bento bento-3">
-      <article class="bento-card">
-        <div class="bento-icon"><i class="ph ph-user-plus" aria-hidden="true"></i></div>
-        <h3>١. أنشئ حسابك</h3>
-        <p>اسم مستخدم وكلمة مرور. بلا انتظار.</p>
-      </article>
-
-      <article class="bento-card">
-        <div class="bento-icon"><i class="ph ph-image-square" aria-hidden="true"></i></div>
-        <h3>٢. انشر برومبتك</h3>
-        <p>ارفع الصورة، الصق البرومبت، ضع وسم الموديل.</p>
-      </article>
-
-      <article class="bento-card">
-        <div class="bento-icon"><i class="ph ph-copy" aria-hidden="true"></i></div>
-        <h3>٣. انسخ وأعِد الاستخدام</h3>
-        <p>اكتشف، انسخ، عدّل، وانشر نسختك.</p>
-      </article>
-    </div>
+    <ol class="lp-steps">
+      <li class="lp-step">
+        <span class="lp-step-num" aria-hidden="true">٠١</span>
+        <h3 class="lp-step-title">أنشئ حسابك</h3>
+        <p class="lp-step-text">اسم مستخدم وكلمة مرور. لا انتظار، لا تأكيد بريد.</p>
+      </li>
+      <li class="lp-step">
+        <span class="lp-step-num" aria-hidden="true">٠٢</span>
+        <h3 class="lp-step-title">انشر برومبتك</h3>
+        <p class="lp-step-text">ارفع الصورة، الصق البرومبت، ضع وسم الموديل.</p>
+      </li>
+      <li class="lp-step">
+        <span class="lp-step-num" aria-hidden="true">٠٣</span>
+        <h3 class="lp-step-title">اكتشف وانسخ</h3>
+        <p class="lp-step-text">تنقّل في المكتبة، انسخ البرومبت، وأنشئ نسختك.</p>
+      </li>
+    </ol>
   </section>
 
-  <section class="section" id="community">
-    <div class="sec-head">
-      <div class="sec-head-info">
-        <div class="sec-eyebrow">من المجتمع</div>
-        <h2>انظر ما ينشره الناس الآن.</h2>
+  <!-- ═══════════════════════════════════════════════════════════
+       4. COMMUNITY PREVIEW — برومبتات حقيقية
+       ═══════════════════════════════════════════════════════════ -->
+  <section class="lp-section" id="community">
+    <header class="lp-section-head lp-section-head-split">
+      <div>
+        <div class="lp-section-eyebrow">
+          <span class="lp-eyebrow-line" aria-hidden="true"></span>
+          <span>من المجتمع</span>
+        </div>
+        <h2 class="lp-section-title">انظر ما ينشره الناس الآن.</h2>
       </div>
-      <button class="btn btn-secondary" onclick="App.previewFeed()" type="button">
-        افتح التغذية كاملة
+      <button class="btn btn-secondary"
+              type="button"
+              data-action="landing-cta-preview">
+        <span>افتح التغذية كاملة</span>
         <i class="ph ph-arrow-up-left" aria-hidden="true"></i>
       </button>
-    </div>
+    </header>
 
-    <div class="feed" id="landingFeed"></div>
+    <div class="feed lp-community-feed" id="landingFeed" aria-busy="true">
+      {% for i in range(6) %}
+        {% include 'partials/cards/skeleton.html' %}
+      {% endfor %}
+    </div>
   </section>
 
-  <footer class="footer">
-    <div class="footer-inner">
-      <div class="nav-brand">
+  <!-- ═══════════════════════════════════════════════════════════
+       5. FINAL CTA
+       ═══════════════════════════════════════════════════════════ -->
+  <section class="lp-cta">
+    <div class="lp-cta-inner">
+      <h2 class="lp-cta-title">
+        جاهز لمشاركة
+        <span class="lp-cta-title-accent">أول برومبت؟</span>
+      </h2>
+      <p class="lp-cta-text">
+        انضم إلى مبدعين عرب يوثّقون أعمالهم كل يوم.
+        الحساب مجاني، ولا يستغرق أكثر من دقيقة.
+      </p>
+      <button class="btn btn-primary btn-lg lp-cta-btn"
+              type="button"
+              data-action="landing-cta-register">
+        <i class="ph ph-rocket-launch" aria-hidden="true"></i>
+        <span>ابدأ الآن</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       6. FOOTER
+       ═══════════════════════════════════════════════════════════ -->
+  <footer class="lp-footer">
+    <div class="lp-footer-inner">
+      <div class="lp-footer-brand">
         <span class="brand-mark" aria-hidden="true">خ</span>
-        <span>خَيال</span>
+        <div class="lp-footer-brand-text">
+          <strong>خَيال</strong>
+          <span>منصة البرومبتات العربية</span>
+        </div>
       </div>
-      <div>© ٢٠٢٥ خَيال. صُنع لمبدعي البرومبتات.</div>
-      <div class="footer-links">
+
+      <nav class="lp-footer-links" aria-label="روابط التذييل">
+        <a href="#features">المميزات</a>
+        <a href="#how">كيف تعمل</a>
+        <a href="#community">المجتمع</a>
         <a href="/privacy">الخصوصية</a>
-        <a href="#">الشروط</a>
+        <a href="/terms">الشروط</a>
+      </nav>
+
+      <div class="lp-footer-copy">
+        © 2025 خَيال · صُنع بشغف في العالم العربي
       </div>
     </div>
   </footer>
+
 </main>
 
 {% endblock %}
