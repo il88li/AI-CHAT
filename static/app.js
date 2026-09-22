@@ -1,2716 +1,1722 @@
-/* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v21.2
-   CSRF · FollowersDrawer · NotificationsLoader · ConfirmModal · ReportModal
-   · Post.edit · Post.delete modal · Post.report modal · ProfileView overlay
-   · Settings 5-tab (profile / content / notifications / privacy / account)
-   ═══════════════════════════════════════════════════════════════════════ */
-(function () {
-  'use strict';
+"""
+خَيال — منصة البرومبتات العربية
+Flask + PostgreSQL + تسجيل دخول محلي + استقرار إنتاجي
+v14.2 — Security + Notifications + Reports + Pagination + User Search
+- CSRF protection على كل POST/PATCH/DELETE
+- Rate limiting على auth endpoints
+- SECRET_KEY صارم في الإنتاج
+- URL validation على avatar/image/website
+- نظام إشعارات كامل (auto-create on like/comment/follow/message)
+- Reports endpoints
+- Post edit endpoint
+- Pagination على user posts / followers / following
+- User search endpoint (/api/users/search)
+"""
+import os
+import re
+import sys
+import time
+import json
+import secrets
+from datetime import datetime, timedelta
+from functools import wraps
 
-  const CFG = {
-    PAGE_SIZE: 20,
-    TOAST_MS: 3200,
-    SEARCH_DEBOUNCE: 280,
-    DRAFT_KEY: 'khayal.composer.draft',
-    THEME_KEY: 'khayal.theme',
-    NET_CHECK_MS: 8000,
-    NET_PING_TIMEOUT: 3000,
-    NOTIF_POLL_MS: 30000,
-    BUILD: '21.2',
-  };
+from flask import (Flask, render_template, jsonify, request, session,
+                   abort, redirect, url_for, make_response, send_from_directory,
+                   g)
+from flask_compress import Compress
+from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import inspect, text, func
+from sqlalchemy.orm import joinedload
+from dotenv import load_dotenv
 
-  const S = {
-    me: window.__ME__ || null,
-    tab: 'home',
-    sort: 'recent',
-    filterTag: '',
-    filterModel: '',
-    viewingUser: null,
-    openChatId: null,
-    feeds: Object.create(null),
-    lastFocused: null,
-    booted: false,
-    tabHistory: [],
-  };
+from database import (db, build_database_uri, test_connection,
+                      User, Post, Comment, Like, Save, Follow, Chat, Message,
+                      Notification, Report,
+                      ALLOWED_COVERS, ALLOWED_FRAMES,
+                      ALLOWED_PRONOUNS, ALLOWED_CARD_STYLES,
+                      ALLOWED_REPORT_REASONS)
 
-  function feedState(key) {
-    if (!S.feeds[key]) {
-      S.feeds[key] = { items: [], before: null, busy: false, hasMore: true, loaded: false, controller: null };
-    }
-    return S.feeds[key];
-  }
+load_dotenv()
 
-  /* ═══════════ UTILITIES ═══════════ */
-  const U = {
-    escapeHtml(s) {
-      if (s == null) return '';
-      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+# ═══════════════════════════════════════════════════════════
+# إعداد التطبيق
+# ═══════════════════════════════════════════════════════════
+app = Flask(__name__)
+app.config["JSON_AS_ASCII"] = False
+
+_IS_PROD = os.getenv("FLASK_ENV") == "production" or bool(os.getenv("RENDER"))
+
+# ─── الأمان ───
+_secret = os.getenv("SECRET_KEY")
+if not _secret:
+    if _IS_PROD:
+        raise RuntimeError(
+            "❌ SECRET_KEY غير معرّف في متغيرات البيئة. "
+            "لا يمكن تشغيل التطبيق في الإنتاج بدون مفتاح ثابت — "
+            "الجلسات ستُبطَل عند كل إعادة تشغيل."
+        )
+    _secret = secrets.token_hex(32)
+    print("⚠️  SECRET_KEY مؤقت للتطوير — لن يبقى بين إعادات التشغيل",
+          file=sys.stderr)
+
+app.config["SECRET_KEY"] = _secret
+app.config["SESSION_COOKIE_SECURE"] = _IS_PROD
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB max body
+
+# ─── قاعدة البيانات ───
+app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+_engine_opts = {
+    "pool_pre_ping": True,
+    "pool_recycle": 120,
+    "pool_use_lifo": True,
+    "pool_timeout": 30,
+    "connect_args": {
+        "connect_timeout": 15,
+        "keepalives": 1,
+        "keepalives_idle": 20,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+        "application_name": "khayal",
     },
-    relativeTime(iso) {
-      if (!iso) return '';
-      const d = new Date(iso), now = Date.now();
-      const diff = Math.max(0, now - d.getTime());
-      const sec = Math.floor(diff / 1000);
-      if (sec < 60) return 'الآن';
-      const min = Math.floor(sec / 60);
-      if (min < 60) return min + ' د';
-      const hr = Math.floor(min / 60);
-      if (hr < 24) return hr + ' س';
-      const day = Math.floor(hr / 24);
-      if (day < 7) return day + ' ي';
-      const wk = Math.floor(day / 7);
-      if (wk < 5) return wk + ' أ';
-      const mo = Math.floor(day / 30);
-      if (mo < 12) return mo + ' ش';
-      return Math.floor(day / 365) + ' سنة';
-    },
-    formatNumber(n) {
-      n = Number(n) || 0;
-      if (n < 1000) return String(n);
-      if (n < 1000000) return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'ألف';
-      return (n / 1000000).toFixed(1) + 'م';
-    },
-    debounce(fn, ms) {
-      let t;
-      return function () {
-        const args = arguments, ctx = this;
-        clearTimeout(t);
-        t = setTimeout(() => fn.apply(ctx, args), ms);
-      };
-    },
-    autoGrow(el) {
-      if (!el) return;
-      el.style.height = 'auto';
-      el.style.height = Math.min(el.scrollHeight, 200) + 'px';
-    },
-    safeAvatar(imgEl, url) {
-      if (!imgEl) return;
-      const clean = url && String(url).trim();
-      imgEl.onerror = function () { this.removeAttribute('src'); this.hidden = true; };
-      if (clean) { imgEl.src = clean; imgEl.hidden = false; }
-      else { imgEl.removeAttribute('src'); imgEl.hidden = true; }
-    },
-    isUrl(s) {
-      return typeof s === 'string' && /^https?:\/\/[^\s<>"']+$/i.test(s.trim());
-    },
-    async copy(text) {
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(text);
-          return true;
+}
+if _IS_PROD:
+    _engine_opts["pool_size"] = 3
+    _engine_opts["max_overflow"] = 2
+else:
+    _engine_opts["pool_size"] = 2
+    _engine_opts["max_overflow"] = 1
+
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = _engine_opts
+
+# ─── ضغط ───
+app.config["COMPRESS_MIMETYPES"] = [
+    "text/html", "text/css", "text/javascript",
+    "application/json", "application/javascript", "image/svg+xml",
+]
+app.config["COMPRESS_LEVEL"] = 6
+app.config["COMPRESS_MIN_SIZE"] = 500
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=30)
+
+db.init_app(app)
+Compress(app)
+
+
+# ═══════════════════════════════════════════════════════════
+# Helpers — مصادقة + تحقق
+# ═══════════════════════════════════════════════════════════
+def current_user():
+    if hasattr(g, "_cached_user"):
+        return g._cached_user
+    uid = session.get("user_id")
+    user = db.session.get(User, uid) if uid else None
+    g._cached_user = user
+    return user
+
+
+def require_auth(fn):
+    @wraps(fn)
+    def wrapper(*a, **kw):
+        u = current_user()
+        if not u:
+            return jsonify({"error": "يجب تسجيل الدخول"}), 401
+        g.user = u
+        return fn(*a, **kw)
+    return wrapper
+
+
+def _validate_url(s, max_len=1024):
+    """Allow only http/https URLs. Reject javascript:/data:/etc."""
+    if not s:
+        return True
+    if not isinstance(s, str):
+        return False
+    if len(s) > max_len:
+        return False
+    return bool(re.match(r"^https?://[^\s<>\"']+$", s.strip(), re.IGNORECASE))
+
+
+def _validate_username(s):
+    return bool(re.match(r"^[a-zA-Z0-9_\-]{3,32}$", s or ""))
+
+
+def _validate_email(s):
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", s or ""))
+
+
+def _validate_password(s):
+    return isinstance(s, str) and len(s) >= 6
+
+
+def _is_local_mode():
+    return not _IS_PROD
+
+
+def _payload(u):
+    """Serializes the current user for page render + auth endpoints."""
+    if not u:
+        return None
+    d = u.to_dict()
+    d["email"] = u.email
+    try:
+        d["posts_count"] = u.posts.count()
+        totals = db.session.query(
+            func.coalesce(func.sum(Post.likes), 0),
+            func.coalesce(func.sum(Post.copies), 0),
+        ).filter(Post.author_id == u.id).first()
+        if totals:
+            d["total_likes"] = int(totals[0])
+            d["total_copies"] = int(totals[1])
+        else:
+            d["total_likes"] = 0
+            d["total_copies"] = 0
+    except Exception:
+        d["posts_count"] = 0
+        d["total_likes"] = 0
+        d["total_copies"] = 0
+    return d
+
+
+# ═══════════════════════════════════════════════════════════
+# CSRF
+# ═══════════════════════════════════════════════════════════
+_CSRF_EXEMPT = {
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/health",
+    "/api/db-test",
+}
+
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+def _get_csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+    return session["csrf_token"]
+
+
+@app.context_processor
+def _inject_csrf():
+    return {"csrf_token": _get_csrf_token}
+
+
+@app.before_request
+def _csrf_protect():
+    if request.method in _SAFE_METHODS:
+        return
+    if not request.path.startswith("/api/"):
+        return
+    if request.path in _CSRF_EXEMPT:
+        return
+
+    expected = session.get("csrf_token")
+    provided = (request.headers.get("X-CSRF-Token")
+                or request.headers.get("X-CSRFToken"))
+    if not expected or not provided or not secrets.compare_digest(expected, provided):
+        return jsonify({"error": "CSRF token مفقود أو غير صالح"}), 403
+
+
+# ═══════════════════════════════════════════════════════════
+# Rate Limiting (in-memory, per-process)
+# ═══════════════════════════════════════════════════════════
+_RATE_BUCKETS: dict = {}
+
+
+def _rate_limit(key: str, max_hits: int, window_s: int) -> bool:
+    now = time.time()
+    bucket = _RATE_BUCKETS.get(key) or []
+    bucket = [t for t in bucket if now - t < window_s]
+    if len(bucket) >= max_hits:
+        _RATE_BUCKETS[key] = bucket
+        return False
+    bucket.append(now)
+    _RATE_BUCKETS[key] = bucket
+    return True
+
+
+def _client_ip() -> str:
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.remote_addr or "0.0.0.0"
+
+
+def rate_limit(max_hits: int, window_s: int, scope: str):
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*a, **kw):
+            key = f"{scope}:{_client_ip()}"
+            if not _rate_limit(key, max_hits, window_s):
+                return jsonify({
+                    "error": f"محاولات كثيرة، حاول بعد {window_s} ثانية"
+                }), 429
+            return fn(*a, **kw)
+        return wrapper
+    return deco
+
+
+# ═══════════════════════════════════════════════════════════
+# Notifications helper
+# ═══════════════════════════════════════════════════════════
+def _notify(user_id, actor_id, kind, target_type=None,
+            target_id=None, text=None):
+    """Create a notification unless disabled by user preferences or self-action."""
+    if not user_id or not actor_id:
+        return None
+    if user_id == actor_id:
+        return None
+
+    try:
+        target = db.session.get(User, user_id)
+        if target:
+            prefs = target.to_dict().get("preferences") or {}
+            notif_prefs = prefs.get("notif") or {}
+            kind_to_pref = {
+                "like": "likes",
+                "comment": "comments",
+                "follow": "follows",
+                "message": "messages",
+            }
+            pref_key = kind_to_pref.get(kind)
+            if pref_key and notif_prefs.get(pref_key) is False:
+                return None
+    except Exception:
+        pass
+
+    n = Notification(
+        user_id=user_id,
+        actor_id=actor_id,
+        kind=kind,
+        target_type=target_type,
+        target_id=target_id,
+        text=(text or "")[:255],
+    )
+    db.session.add(n)
+    return n
+
+
+# ═══════════════════════════════════════════════════════════
+# Middleware
+# ═══════════════════════════════════════════════════════════
+@app.before_request
+def _before_request():
+    if request.path.startswith("/api/"):
+        g.request_start = time.time()
+    _get_csrf_token()
+
+
+@app.after_request
+def _after_request(response):
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
+    elif request.path.startswith("/api/"):
+        if "Cache-Control" not in response.headers:
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+
+    try:
+        start = getattr(g, "request_start", None)
+        if start:
+            elapsed = (time.time() - start) * 1000
+            if elapsed > 1000:
+                print(f"⚠️ طلب بطيء: {request.method} {request.path} — {elapsed:.0f}ms",
+                      file=sys.stderr)
+    except Exception:
+        pass
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    if _IS_PROD:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    return response
+
+
+# ═══════════════════════════════════════════════════════════
+# الصفحات
+# ═══════════════════════════════════════════════════════════
+@app.route("/")
+def index():
+    return render_template("index.html", me=_payload(current_user()))
+
+
+@app.route("/app")
+def app_view():
+    return render_template("index.html", me=_payload(current_user()))
+
+
+@app.route("/u/<username>")
+def public_profile(username):
+    return render_template("index.html", me=_payload(current_user()))
+
+
+@app.route("/offline")
+def offline():
+    return render_template("error.html", code=503,
+                           title="لا يوجد اتصال",
+                           message="يبدو أنك غير متصل بالإنترنت.")
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
+@app.route("/manifest.json")
+def manifest():
+    return send_from_directory("static", "manifest.json",
+                               mimetype="application/manifest+json")
+
+
+@app.route("/sw.js")
+def service_worker():
+    r = make_response(send_from_directory("static", "sw.js",
+                                          mimetype="application/javascript"))
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    r.headers["Service-Worker-Allowed"] = "/"
+    return r
+
+
+# ═══════════════════════════════════════════════════════════
+# المصادقة
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/auth/register")
+@rate_limit(max_hits=5, window_s=3600, scope="register")
+def api_register():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    username = (data.get("username") or "").strip()
+    name = (data.get("name") or "").strip()
+    password = data.get("password") or ""
+
+    if not email or not username or not name or not password:
+        return jsonify({"error": "جميع الحقول مطلوبة"}), 400
+    if not _validate_email(email):
+        return jsonify({"error": "البريد الإلكتروني غير صحيح"}), 400
+    if not _validate_username(username):
+        return jsonify({"error": "اسم المستخدم غير صحيح (3-32 حرفاً إنجليزي)"}), 400
+    if len(name) < 2:
+        return jsonify({"error": "الاسم قصير جداً"}), 400
+    if not _validate_password(password):
+        return jsonify({"error": "كلمة المرور يجب أن تكون 6 أحرف على الأقل"}), 400
+
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "البريد الإلكتروني مستخدم"}), 409
+    if User.query.filter_by(username=username.lower()).first():
+        return jsonify({"error": "اسم المستخدم مستخدم"}), 409
+
+    handle = "@" + username.lower()
+    if User.query.filter_by(handle=handle).first():
+        return jsonify({"error": "اسم المستخدم مستخدم"}), 409
+
+    try:
+        user = User(
+            email=email,
+            username=username.lower(),
+            name=name,
+            handle=handle,
+            password_hash=generate_password_hash(
+                password, method="pbkdf2:sha256", salt_length=16
+            ),
+            avatar=f"https://api.dicebear.com/7.x/initials/svg?seed={name}&backgroundColor=22D3EE,8B5CF6",
+            bio="",
+            verified=False,
+            cover="aurora",
+            accent_color="#22D3EE",
+            avatar_shape="ring",
+            card_style="glass",
+            preferences="{}",
+        )
+        db.session.add(user)
+        db.session.commit()
+        print(f"✅ مستخدم جديد: {user.username}")
+
+        session.permanent = True
+        session["user_id"] = user.id
+        _get_csrf_token()
+        return jsonify(_payload(user)), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ خطأ تسجيل: {e}", file=sys.stderr)
+        return jsonify({"error": "خطأ في الخادم"}), 500
+
+
+@app.post("/api/auth/login")
+@rate_limit(max_hits=10, window_s=900, scope="login")
+def api_login():
+    data = request.get_json() or {}
+    identifier = (data.get("identifier") or "").strip().lower()
+    password = data.get("password") or ""
+    remember = bool(data.get("remember", False))
+
+    if not identifier or not password:
+        return jsonify({"error": "أدخل بيانات الدخول"}), 400
+
+    try:
+        user = User.query.filter(
+            db.or_(User.email == identifier, User.username == identifier)
+        ).first()
+
+        if not user or not check_password_hash(user.password_hash, password):
+            return jsonify({"error": "بيانات الدخول غير صحيحة"}), 401
+
+        session.permanent = remember
+        session["user_id"] = user.id
+        _get_csrf_token()
+        return jsonify(_payload(user))
+    except Exception as e:
+        print(f"❌ خطأ دخول: {e}", file=sys.stderr)
+        return jsonify({"error": "خطأ في الخادم"}), 500
+
+
+@app.post("/api/auth/logout")
+def api_logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/me")
+def api_me():
+    return jsonify(_payload(current_user()))
+
+
+@app.post("/api/auth/check-username")
+def api_check_username():
+    data = request.get_json() or {}
+    username = (data.get("username") or "").strip().lower()
+    if not _validate_username(username):
+        return jsonify({"available": False, "reason": "format"})
+    exists = User.query.filter_by(username=username).first() is not None
+    return jsonify({"available": not exists, "reason": "taken" if exists else "ok"})
+
+
+@app.post("/api/auth/check-email")
+def api_check_email():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    if not _validate_email(email):
+        return jsonify({"available": False, "reason": "format"})
+    exists = User.query.filter_by(email=email).first() is not None
+    return jsonify({"available": not exists, "reason": "taken" if exists else "ok"})
+
+
+# ═══════════════════════════════════════════════════════════
+# صيانة
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/db-test")
+def api_db_test():
+    report = test_connection(app)
+    status = 200 if report["connected"] else 503
+    return jsonify(report), status
+
+
+@app.get("/admin/db-status")
+def admin_db_status():
+    try:
+        insp = inspect(db.engine)
+        tables = insp.get_table_names()
+        out = {
+            "mode": "render" if _IS_PROD else "local",
+            "tables": tables,
+            "columns": {},
+            "row_counts": {},
         }
-      } catch (e) {}
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(ta); return ok;
-      } catch (e) { return false; }
-    },
-  };
-
-  /* ═══════════ CSRF ═══════════ */
-  function getCsrfToken() {
-    const meta = document.querySelector('meta[name="csrf-token"]');
-    if (meta && meta.content) return meta.content;
-    return window.__CSRF__ || null;
-  }
-
-  /* ═══════════ API ═══════════ */
-  const API = {
-    async call(method, path, body, opts) {
-      const init = { method, credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
-      const m = (method || 'GET').toUpperCase();
-      if (m !== 'GET' && m !== 'HEAD') {
-        const t = getCsrfToken();
-        if (t) init.headers['X-CSRF-Token'] = t;
-      }
-      if (body !== undefined && body !== null) {
-        init.headers['Content-Type'] = 'application/json';
-        init.body = JSON.stringify(body);
-      }
-      if (opts && opts.signal) init.signal = opts.signal;
-
-      let res;
-      try { res = await fetch(path, init); }
-      catch (err) {
-        if (err.name === 'AbortError') throw err;
-        throw new Error('تعذّر الاتصال بالخادم');
-      }
-
-      const nt = res.headers.get('X-CSRF-Token');
-      if (nt) {
-        const meta = document.querySelector('meta[name="csrf-token"]');
-        if (meta) meta.content = nt;
-        window.__CSRF__ = nt;
-      }
-
-      let data = null;
-      const ct = res.headers.get('Content-Type') || '';
-      if (ct.includes('application/json')) {
-        try { data = await res.json(); } catch (e) { data = null; }
-      }
-
-      if (!res.ok) {
-        const msg = (data && (data.error || data.message)) || `خطأ ${res.status}`;
-        const err = new Error(msg); err.status = res.status; err.data = data;
-        throw err;
-      }
-      return data;
-    },
-    get(p, o) { return API.call('GET', p, null, o); },
-    post(p, b) { return API.call('POST', p, b); },
-    patch(p, b) { return API.call('PATCH', p, b); },
-    del(p) { return API.call('DELETE', p); },
-  };
-
-  /* ═══════════ THEME ═══════════ */
-  const Theme = {
-    get() { return document.documentElement.dataset.theme || 'dark'; },
-    set(mode) {
-      document.documentElement.dataset.theme = mode;
-      try { localStorage.setItem(CFG.THEME_KEY, mode); } catch (e) {}
-      this.syncIcon();
-      const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute('content', mode === 'dark' ? '#08080C' : '#F7F7FA');
-    },
-    toggle() { this.set(this.get() === 'dark' ? 'light' : 'dark'); if (window.Sounds) Sounds.play('toggle'); },
-    syncIcon() {
-      const icon = document.getElementById('themeIcon');
-      if (!icon) return;
-      icon.className = this.get() === 'dark' ? 'ph ph-moon' : 'ph ph-sun';
-    },
-    init() {
-      try {
-        const saved = localStorage.getItem(CFG.THEME_KEY);
-        if (saved === 'light' || saved === 'dark') this.set(saved);
-        else this.set(window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-      } catch (e) { this.syncIcon(); }
-    },
-  };
-
-  /* ═══════════ TOAST ═══════════ */
-  const Toast = {
-    wrap() { return document.getElementById('toastWrap'); },
-    show(msg, tone, ms) {
-      const wrap = this.wrap();
-      if (!wrap) { console.log('[toast]', msg); return; }
-      const icons = { success: 'ph-check-circle', error: 'ph-warning-circle', warning: 'ph-warning', info: 'ph-info' };
-      const t = document.createElement('div');
-      t.className = 'toast';
-      t.setAttribute('data-tone', tone || 'info');
-      t.innerHTML = `<i class="ph ${icons[tone] || icons.info}" aria-hidden="true"></i><span></span>`;
-      t.querySelector('span').textContent = msg;
-      wrap.appendChild(t);
-      setTimeout(() => {
-        t.style.opacity = '0'; t.style.transform = 'translateY(12px)';
-        setTimeout(() => t.remove(), 260);
-      }, ms || CFG.TOAST_MS);
-    },
-  };
-
-  /* ═══════════ CONFIRM MODAL ═══════════ */
-  const ConfirmModal = {
-    _resolve: null,
-    show(opts) {
-      opts = opts || {};
-      const title = opts.title || 'تأكيد';
-      const message = opts.message || 'هل أنت متأكد؟';
-      const confirmLabel = opts.confirmLabel || 'تأكيد';
-      const cancelLabel = opts.cancelLabel || 'إلغاء';
-      const danger = !!opts.danger;
-
-      return new Promise((resolve) => {
-        this._resolve = resolve;
-        const scrim = document.createElement('div');
-        scrim.className = 'scrim';
-        scrim.setAttribute('data-open', 'false');
-        scrim.setAttribute('role', 'dialog');
-        scrim.setAttribute('aria-modal', 'true');
-        scrim.innerHTML =
-          '<div class="modal modal-sm" role="document">' +
-            '<h3>' + U.escapeHtml(title) + '</h3>' +
-            '<p>' + U.escapeHtml(message) + '</p>' +
-            '<div class="modal-actions">' +
-              '<button class="btn btn-ghost" type="button" data-choice="cancel">' + U.escapeHtml(cancelLabel) + '</button>' +
-              '<button class="btn ' + (danger ? 'btn-danger' : 'btn-primary') + '" type="button" data-choice="confirm">' + U.escapeHtml(confirmLabel) + '</button>' +
-            '</div>' +
-          '</div>';
-
-        const finish = (v) => {
-          scrim.setAttribute('data-open', 'false');
-          setTimeout(() => scrim.remove(), 280);
-          const r = this._resolve; this._resolve = null;
-          if (r) r(v);
-        };
-        scrim.addEventListener('click', (e) => {
-          const btn = e.target.closest('[data-choice]');
-          if (btn) { finish(btn.dataset.choice === 'confirm'); return; }
-          if (e.target === scrim) finish(false);
-        });
-        document.body.appendChild(scrim);
-        requestAnimationFrame(() => scrim.setAttribute('data-open', 'true'));
-        setTimeout(() => {
-          const p = scrim.querySelector('[data-choice="confirm"]');
-          if (p) p.focus({ preventScroll: true });
-        }, 140);
-      });
-    },
-  };
-
-  /* ═══════════ REPORT MODAL ═══════════ */
-  const ReportModal = {
-    _resolve: null,
-    show(postId) {
-      const reasons = [
-        ['spam', 'بريد مزعج أو محتوى متكرر'],
-        ['harassment', 'تحرّش أو مضايقة'],
-        ['hate', 'خطاب كراهية'],
-        ['violence', 'عنف أو محتوى مؤذٍ'],
-        ['nudity', 'محتوى غير لائق'],
-        ['misinformation', 'معلومات مضلّلة'],
-        ['copyright', 'انتهاك حقوق النشر'],
-        ['other', 'سبب آخر'],
-      ];
-      return new Promise((resolve) => {
-        this._resolve = resolve;
-        const scrim = document.createElement('div');
-        scrim.className = 'scrim';
-        scrim.setAttribute('data-open', 'false');
-        scrim.setAttribute('role', 'dialog');
-        scrim.setAttribute('aria-modal', 'true');
-        scrim.innerHTML =
-          '<div class="modal" role="document">' +
-            '<h3>الإبلاغ عن المنشور</h3>' +
-            '<p>اختر سبباً — سنراجع المنشور في أقرب وقت.</p>' +
-            '<form class="report-form">' +
-              '<div class="report-reasons">' +
-                reasons.map(([k, l], i) =>
-                  '<label class="report-reason">' +
-                    '<input type="radio" name="rr" value="' + k + '"' + (i === 0 ? ' checked' : '') + '>' +
-                    '<span class="report-reason-dot" aria-hidden="true"></span>' +
-                    '<span>' + U.escapeHtml(l) + '</span>' +
-                  '</label>'
-                ).join('') +
-              '</div>' +
-              '<label class="report-note-label" for="reportNote">ملاحظة إضافية <span class="field-opt">(اختياري)</span></label>' +
-              '<textarea id="reportNote" class="textarea report-note" maxlength="500" rows="3" placeholder="تفاصيل تساعد الفريق على المراجعة…"></textarea>' +
-              '<div class="modal-actions">' +
-                '<button class="btn btn-ghost" type="button" data-choice="cancel">إلغاء</button>' +
-                '<button class="btn btn-danger" type="submit" data-choice="submit">إرسال البلاغ</button>' +
-              '</div>' +
-            '</form>' +
-          '</div>';
-
-        const finish = (v) => {
-          scrim.setAttribute('data-open', 'false');
-          setTimeout(() => scrim.remove(), 280);
-          const r = this._resolve; this._resolve = null;
-          if (r) r(v);
-        };
-        scrim.addEventListener('click', (e) => {
-          if (e.target.closest('[data-choice="cancel"]') || e.target === scrim) { finish(false); return; }
-          const submit = e.target.closest('[data-choice="submit"]');
-          if (submit) {
-            e.preventDefault();
-            const reason = (scrim.querySelector('input[name="rr"]:checked') || {}).value || 'other';
-            const note = (scrim.querySelector('#reportNote') || {}).value || '';
-            finish({ reason, note });
-          }
-        });
-        document.body.appendChild(scrim);
-        requestAnimationFrame(() => scrim.setAttribute('data-open', 'true'));
-      });
-    },
-  };
-
-  /* ═══════════ INSTALL ═══════════ */
-  const Install = {
-    deferred: null, dismissed: false,
-    init() {
-      const banner = document.getElementById('installBanner');
-      if (!banner) return;
-      try { this.dismissed = localStorage.getItem('khayal.install.dismissed') === '1'; } catch (e) {}
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault(); this.deferred = e;
-        if (!this.dismissed) banner.hidden = false;
-        setTimeout(() => banner.setAttribute('data-open', 'true'), 60);
-      });
-      window.addEventListener('appinstalled', () => {
-        banner.setAttribute('data-open', 'false');
-        setTimeout(() => { banner.hidden = true; }, 400);
-        Toast.show('تم تثبيت التطبيق', 'success');
-      });
-    },
-    async prompt() {
-      if (!this.deferred) return;
-      this.deferred.prompt();
-      const c = await this.deferred.userChoice;
-      if (c && c.outcome === 'accepted') this.dismiss();
-      this.deferred = null;
-    },
-    dismiss() {
-      this.dismissed = true;
-      try { localStorage.setItem('khayal.install.dismissed', '1'); } catch (e) {}
-      const b = document.getElementById('installBanner');
-      if (b) { b.setAttribute('data-open', 'false'); setTimeout(() => { b.hidden = true; }, 400); }
-    },
-  };
-
-  /* ═══════════ NETWORK ═══════════ */
-  const Net = {
-    _interval: null, _lastState: null, _checking: false,
-    async _ping() {
-      if (this._checking) return this._lastState;
-      this._checking = true;
-      try {
-        const ctrl = new AbortController();
-        const to = setTimeout(() => ctrl.abort(), CFG.NET_PING_TIMEOUT);
-        const res = await fetch('/api/health', { method: 'HEAD', cache: 'no-store', signal: ctrl.signal });
-        clearTimeout(to); this._checking = false; return res.ok;
-      } catch (e) { this._checking = false; return false; }
-    },
-    init() {
-      const bar = document.getElementById('netBar');
-      if (!bar) return;
-      const self = this;
-      const update = async () => {
-        const browserOffline = !navigator.onLine;
-        let offline = browserOffline;
-        if (browserOffline) offline = !(await self._ping());
-        if (self._lastState !== null && self._lastState !== offline && !offline) Toast.show('عدت متصلاً', 'success');
-        self._lastState = offline;
-        bar.setAttribute('data-open', offline ? 'true' : 'false');
-      };
-      window.addEventListener('online', update);
-      window.addEventListener('offline', update);
-      this._interval = setInterval(update, CFG.NET_CHECK_MS);
-      update();
-    },
-  };
-
-  /* ═══════════ AUTH ═══════════ */
-  const Auth = {
-    modal() { return document.getElementById('authModal'); },
-    open(mode) {
-      const m = this.modal();
-      if (!m) return;
-      S.lastFocused = document.activeElement;
-      m.querySelectorAll('[aria-invalid="true"]').forEach(el => el.removeAttribute('aria-invalid'));
-      this.switchMode(mode || 'login');
-      m.setAttribute('data-open', 'true');
-      document.documentElement.style.overflow = 'hidden';
-      setTimeout(() => {
-        const f = m.querySelector('.auth-form.is-active input');
-        if (f) f.focus({ preventScroll: true });
-      }, 200);
-      if (window.Sounds) Sounds.play('open');
-    },
-    close(e) {
-      if (e && e.target && e.target.closest('.auth-shell')) return;
-      const m = this.modal();
-      if (!m) return;
-      m.setAttribute('data-open', 'false');
-      document.documentElement.style.overflow = '';
-      if (S.lastFocused) S.lastFocused.focus({ preventScroll: true });
-      if (window.Sounds) Sounds.play('close');
-    },
-    switchMode(mode) {
-      const m = this.modal();
-      if (!m) return;
-      const tabs = m.querySelector('.auth-tabs');
-      if (tabs) tabs.dataset.mode = mode;
-      m.querySelectorAll('.auth-tab').forEach(t => t.setAttribute('aria-selected', t.dataset.mode === mode ? 'true' : 'false'));
-      m.querySelectorAll('.auth-form').forEach(f => f.classList.toggle('is-active', f.id === mode + 'Form'));
-      const title = m.querySelector('#authTitle');
-      const sub = m.querySelector('#authSub');
-      if (title) title.textContent = mode === 'register' ? 'حساب جديد' : 'تسجيل الدخول';
-      if (sub) sub.textContent = mode === 'register' ? 'انضم إلى مبدعي خَيال' : 'أهلاً بعودتك إلى خَيال';
-      m.querySelectorAll('[aria-invalid="true"]').forEach(el => el.removeAttribute('aria-invalid'));
-    },
-    togglePassword(btn) {
-      const wrap = btn.closest('.input-wrap');
-      const input = wrap && wrap.querySelector('input');
-      if (!input) return;
-      const show = input.type === 'password';
-      input.type = show ? 'text' : 'password';
-      const i = btn.querySelector('i');
-      if (i) i.className = show ? 'ph ph-eye-slash' : 'ph ph-eye';
-      btn.setAttribute('aria-label', show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور');
-    },
-    checkStrength(v) {
-      const el = document.querySelector('.pw-strength');
-      if (!el) return;
-      let score = 0;
-      if (v.length >= 6) score++;
-      if (v.length >= 10) score++;
-      if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score++;
-      if (/[0-9]/.test(v)) score++;
-      if (/[^A-Za-z0-9]/.test(v)) score = Math.min(4, score + 1);
-      el.setAttribute('data-level', String(Math.min(4, score)));
-    },
-    async login(ev) {
-      ev.preventDefault();
-      const form = ev.target;
-      const btn = form.querySelector('#loginSubmit');
-      const idEl = form.querySelector('#loginIdentifier');
-      const pwEl = form.querySelector('#loginPassword');
-      const identifier = (idEl || {}).value || '';
-      const password = (pwEl || {}).value || '';
-      const remember = !!(form.querySelector('#rememberMe') || {}).checked;
-      if (idEl) idEl.removeAttribute('aria-invalid');
-      if (pwEl) pwEl.removeAttribute('aria-invalid');
-      if (!identifier || !password) {
-        if (idEl && !identifier) idEl.setAttribute('aria-invalid', 'true');
-        if (pwEl && !password) pwEl.setAttribute('aria-invalid', 'true');
-        if (window.Sounds) Sounds.play('error');
-        return Toast.show('أدخل بيانات الدخول', 'warning');
-      }
-      btn.setAttribute('aria-busy', 'true'); btn.disabled = true;
-      try {
-        const user = await API.post('/api/auth/login', { identifier, password, remember });
-        S.me = user; window.__ME__ = user;
-        this.afterLogin(user);
-      } catch (err) {
-        if (idEl) idEl.setAttribute('aria-invalid', 'true');
-        if (pwEl) pwEl.setAttribute('aria-invalid', 'true');
-        if (window.Sounds) Sounds.play('error');
-        Toast.show(err.message, 'error');
-      } finally { btn.removeAttribute('aria-busy'); btn.disabled = false; }
-    },
-    async register(ev) {
-      ev.preventDefault();
-      const form = ev.target;
-      const btn = form.querySelector('#registerSubmit');
-      const nameEl = form.querySelector('#regName');
-      const userEl = form.querySelector('#regUsername');
-      const emailEl = form.querySelector('#regEmail');
-      const pwEl = form.querySelector('#regPassword');
-      const agreeEl = form.querySelector('#agreeTerms');
-      const payload = {
-        name: (nameEl || {}).value || '',
-        username: (userEl || {}).value || '',
-        email: (emailEl || {}).value || '',
-        password: (pwEl || {}).value || '',
-      };
-      [nameEl, userEl, emailEl, pwEl].forEach(el => { if (el) el.removeAttribute('aria-invalid'); });
-      if (!payload.name || !payload.username || !payload.email || !payload.password) {
-        if (nameEl && !payload.name) nameEl.setAttribute('aria-invalid', 'true');
-        if (userEl && !payload.username) userEl.setAttribute('aria-invalid', 'true');
-        if (emailEl && !payload.email) emailEl.setAttribute('aria-invalid', 'true');
-        if (pwEl && !payload.password) pwEl.setAttribute('aria-invalid', 'true');
-        if (window.Sounds) Sounds.play('error');
-        return Toast.show('املأ جميع الحقول', 'warning');
-      }
-      if (agreeEl && !agreeEl.checked) {
-        if (window.Sounds) Sounds.play('error');
-        return Toast.show('وافق على الشروط أولاً', 'warning');
-      }
-      btn.setAttribute('aria-busy', 'true'); btn.disabled = true;
-      try {
-        const user = await API.post('/api/auth/register', payload);
-        S.me = user; window.__ME__ = user;
-        this.afterLogin(user);
-        Toast.show('أهلاً بك في خَيال', 'success');
-      } catch (err) {
-        if (userEl) userEl.setAttribute('aria-invalid', 'true');
-        if (emailEl) emailEl.setAttribute('aria-invalid', 'true');
-        if (window.Sounds) Sounds.play('error');
-        Toast.show(err.message, 'error');
-      } finally { btn.removeAttribute('aria-busy'); btn.disabled = false; }
-    },
-    afterLogin(user) {
-      this.close();
-      this.updateChrome(user);
-      App.showApp();
-      App.switchTab('home');
-      if (window.Sounds) Sounds.play('success');
-      if (window.NotificationsLoader) NotificationsLoader.start();
-    },
-    forgot(e) { e.preventDefault(); Toast.show('تواصل مع الدعم لاستعادة كلمة المرور', 'info'); },
-    updateChrome(user) {
-      const signIn = document.getElementById('signInBtn');
-      const avatarBtn = document.getElementById('avatarBtn');
-      const avatarImg = document.getElementById('avatarImg');
-      if (signIn) signIn.hidden = !!user;
-      if (avatarBtn) avatarBtn.hidden = !user;
-      if (avatarImg && user) { U.safeAvatar(avatarImg, user.avatar); avatarImg.alt = user.name || ''; }
-      const dock = document.getElementById('dock');
-      if (dock) dock.hidden = !user;
-      const ca = document.getElementById('composerAvatar');
-      if (ca && user) U.safeAvatar(ca, user.avatar);
-    },
-    logout() {
-      API.post('/api/auth/logout').then(() => {
-        S.me = null; window.__ME__ = null;
-        if (window.NotificationsLoader) NotificationsLoader.stop();
-        this.updateChrome(null);
-        App.showLanding();
-        Toast.show('تم تسجيل الخروج', 'info');
-      }).catch(() => Toast.show('تعذّر تسجيل الخروج', 'error'));
-    },
-  };
-
-  /* ═══════════ POST ═══════════ */
-  const Post = {
-    _extractImages(p) {
-      if (Array.isArray(p.images) && p.images.length) {
-        const clean = p.images.filter(U.isUrl);
-        if (clean.length) return clean;
-      }
-      if (p.image && U.isUrl(p.image)) return [p.image];
-      return [];
-    },
-
-    renderCard(p) {
-      const a = p.author_data || {};
-      const liked = !!p.liked;
-      const saved = !!p.saved;
-      const images = this._extractImages(p);
-      const image = images[0] || 'https://placehold.co/800x600/0E0E14/22D3EE?text=خَيال';
-      const tags = Array.isArray(p.tags) ? p.tags : [];
-      const model = p.model || '';
-      const isOwner = !!p.is_owner;
-
-      const card = document.createElement('article');
-      card.className = 'prompt-card';
-      card.setAttribute('data-post-id', String(p.id));
-
-      const tagsHtml = tags.length
-        ? `<div class="prompt-tags">${tags.slice(0, 4).map(t =>
-            `<button class="tag" type="button" data-tag="${U.escapeHtml(t)}">${U.escapeHtml(t)}</button>`
-          ).join('')}</div>`
-        : '';
-
-      card.innerHTML = `
-        <div class="prompt-media">
-          <img src="${U.escapeHtml(image)}" alt="${U.escapeHtml(p.title || '')}"
-               loading="lazy" data-state="loading"
-               data-action="open-author-media">
-          ${model ? `<span class="prompt-model"><i class="ph ph-sparkle" aria-hidden="true"></i>${U.escapeHtml(model)}</span>` : ''}
-          <div class="prompt-floats">
-            <button class="float-btn" data-action="like" aria-pressed="${liked}" aria-label="إعجاب" type="button">
-              <i class="ph ph-heart" aria-hidden="true"></i>
-            </button>
-            <button class="float-btn" data-action="save" aria-pressed="${saved}" aria-label="حفظ" type="button">
-              <i class="ph ph-bookmark-simple" aria-hidden="true"></i>
-            </button>
-            <div class="prompt-menu-wrap">
-              <button class="float-btn prompt-menu-btn" data-action="menu" aria-label="المزيد" aria-haspopup="true" aria-expanded="false" type="button">
-                <i class="ph ph-dots-three" aria-hidden="true"></i>
-              </button>
-              <div class="prompt-menu" role="menu" hidden>
-                <button role="menuitem" type="button" data-action="share"><i class="ph ph-share-network"></i><span>مشاركة</span></button>
-                <button role="menuitem" type="button" data-action="copy"><i class="ph ph-copy"></i><span>نسخ البرومبت</span></button>
-                ${isOwner ? `
-                <button role="menuitem" type="button" data-action="edit"><i class="ph ph-pencil-simple"></i><span>تعديل</span></button>
-                <button role="menuitem" type="button" class="menu-danger" data-action="delete"><i class="ph ph-trash"></i><span>حذف</span></button>` : ''}
-                <button role="menuitem" type="button" data-action="report"><i class="ph ph-flag"></i><span>إبلاغ</span></button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="prompt-body">
-          <div class="prompt-author" data-action="open-author" data-author-id="${a.id || ''}">
-            <img class="avatar avatar-sm" src="${U.escapeHtml(a.avatar || '')}" alt="" loading="lazy">
-            <div class="prompt-author-info">
-              <span class="prompt-author-name">
-                ${U.escapeHtml(a.name || 'مستخدم')}
-                ${a.verified ? '<i class="ph ph-seal-check" aria-label="موثّق"></i>' : ''}
-              </span>
-              <span class="prompt-author-meta">${U.escapeHtml(a.handle || '')}</span>
-            </div>
-          </div>
-          <h3 class="prompt-title">${U.escapeHtml(p.title || '')}</h3>
-          <div class="prompt-excerpt" data-action="copy-excerpt">
-            ${U.escapeHtml(p.prompt || '')}
-            <button type="button" class="prompt-excerpt-copy" aria-label="نسخ"><i class="ph ph-copy"></i></button>
-          </div>
-          ${tagsHtml}
-        </div>
-        <div class="prompt-actions">
-          <button class="action" data-action="like" aria-pressed="${liked}" type="button">
-            <i class="ph ph-heart" aria-hidden="true"></i>
-            <span data-count="likes">${U.formatNumber(p.likes || 0)}</span>
-          </button>
-          <button class="action" data-action="comments" type="button">
-            <i class="ph ph-chat-circle" aria-hidden="true"></i>
-            <span>${U.formatNumber(p.comments || 0)}</span>
-          </button>
-          <button class="action action-primary" data-action="copy" type="button">
-            <i class="ph ph-copy" aria-hidden="true"></i>
-            <span>نسخ</span>
-          </button>
-        </div>`;
-
-      const img = card.querySelector('.prompt-media > img');
-      img.addEventListener('load', () => { img.dataset.state = 'loaded'; });
-      img.addEventListener('error', () => { img.dataset.state = 'error'; });
-      if (img.complete) img.dataset.state = 'loaded';
-
-      card.addEventListener('click', (e) => this.onCardClick(e, card, p));
-      return card;
-    },
-
-    onCardClick(e, card, p) {
-      const btn = e.target.closest('[data-action]');
-      if (!btn) return;
-      const action = btn.dataset.action;
-
-      if (action === 'like') { e.stopPropagation(); this.like(btn, p.id); return; }
-      if (action === 'save') { e.stopPropagation(); this.save(btn, p.id); return; }
-      if (action === 'copy' || action === 'copy-excerpt') { e.stopPropagation(); this.copy(p.id, btn); return; }
-      if (action === 'comments') { e.stopPropagation(); Drawers.openComments(p.id); return; }
-      if (action === 'open-author' || action === 'open-author-media') {
-        e.stopPropagation();
-        const aid = btn.dataset.authorId || (p.author_data && p.author_data.id) || p.author;
-        if (aid) ProfileView.open(parseInt(aid, 10));
-        return;
-      }
-      if (action === 'menu') { e.stopPropagation(); this.toggleMenu(btn, e); return; }
-      if (action === 'share') { e.stopPropagation(); this.share(p.id); return; }
-      if (action === 'edit') { e.stopPropagation(); this.edit(p.id); return; }
-      if (action === 'delete') { e.stopPropagation(); this.delete(p.id); return; }
-      if (action === 'report') { e.stopPropagation(); this.report(p.id); return; }
-    },
-
-    async like(btn, id) {
-      if (!S.me) { Auth.open('login'); return; }
-      const currently = btn.getAttribute('aria-pressed') === 'true';
-      const next = !currently;
-      document.querySelectorAll(`[data-post-id="${id}"] [data-action="like"]`).forEach(b => b.setAttribute('aria-pressed', String(next)));
-      try {
-        const res = await API.post(`/api/posts/${id}/like`);
-        const liked = !!res.liked;
-        document.querySelectorAll(`[data-post-id="${id}"] [data-action="like"]`).forEach(b => b.setAttribute('aria-pressed', String(liked)));
-        document.querySelectorAll(`[data-post-id="${id}"] [data-count="likes"]`).forEach(el => el.textContent = U.formatNumber(res.likes));
-        if (window.Sounds) Sounds.play('like');
-      } catch (err) {
-        document.querySelectorAll(`[data-post-id="${id}"] [data-action="like"]`).forEach(b => b.setAttribute('aria-pressed', String(currently)));
-        Toast.show(err.message || 'تعذّر الإعجاب', 'error');
-      }
-    },
-
-    async save(btn, id) {
-      if (!S.me) { Auth.open('login'); return; }
-      const currently = btn.getAttribute('aria-pressed') === 'true';
-      const next = !currently;
-      document.querySelectorAll(`[data-post-id="${id}"] [data-action="save"]`).forEach(b => b.setAttribute('aria-pressed', String(next)));
-      try {
-        const res = await API.post(`/api/posts/${id}/save`);
-        const saved = !!res.saved;
-        document.querySelectorAll(`[data-post-id="${id}"] [data-action="save"]`).forEach(b => b.setAttribute('aria-pressed', String(saved)));
-        Toast.show(saved ? 'تم الحفظ' : 'أُزيل من المحفوظة', 'success', 1800);
-        if (saved && S.feeds.saved) S.feeds.saved.loaded = false;
-      } catch (err) {
-        document.querySelectorAll(`[data-post-id="${id}"] [data-action="save"]`).forEach(b => b.setAttribute('aria-pressed', String(currently)));
-        Toast.show(err.message || 'تعذّر الحفظ', 'error');
-      }
-    },
-
-    async copy(id, btn) {
-      const card = btn.closest('[data-post-id]');
-      let text = '';
-      if (card) {
-        const ex = card.querySelector('.prompt-excerpt');
-        if (ex) text = ex.textContent.trim();
-      }
-      if (!text) {
-        try { const p = await API.get(`/api/posts/${id}`); text = p.prompt || ''; } catch (e) {}
-      }
-      const ok = await U.copy(text);
-      if (ok) {
-        if (window.Sounds) Sounds.play('copy');
-        Toast.show('تم النسخ', 'success', 1600);
-        API.post(`/api/posts/${id}/copy`).catch(() => {});
-      } else { Toast.show('تعذّر النسخ', 'error'); }
-    },
-
-    toggleMenu(btn, e) {
-      if (e) e.stopPropagation();
-      const wrap = btn.closest('.prompt-menu-wrap');
-      if (!wrap) return;
-      const menu = wrap.querySelector('.prompt-menu');
-      if (!menu) return;
-      const isOpen = !menu.hidden;
-      document.querySelectorAll('.prompt-menu').forEach(m => {
-        m.hidden = true;
-        const b = m.closest('.prompt-menu-wrap')?.querySelector('.prompt-menu-btn');
-        if (b) b.setAttribute('aria-expanded', 'false');
-      });
-      if (!isOpen) { menu.hidden = false; btn.setAttribute('aria-expanded', 'true'); }
-    },
-
-    closeAllMenus() {
-      document.querySelectorAll('.prompt-menu').forEach(m => {
-        m.hidden = true;
-        const b = m.closest('.prompt-menu-wrap')?.querySelector('.prompt-menu-btn');
-        if (b) b.setAttribute('aria-expanded', 'false');
-      });
-    },
-
-    share(id) {
-      const url = `${location.origin}/?p=${id}`;
-      if (navigator.share) navigator.share({ title: 'برومبت من خَيال', url }).catch(() => {});
-      else navigator.clipboard.writeText(url).then(() => Toast.show('تم نسخ الرابط', 'success')).catch(() => Toast.show('تعذّر النسخ', 'error'));
-      this.closeAllMenus();
-    },
-
-    edit(id) { this.closeAllMenus(); Composer.openEdit(parseInt(id, 10)); },
-
-    async delete(id) {
-      this.closeAllMenus();
-      if (!S.me) { Auth.open('login'); return; }
-      const ok = await ConfirmModal.show({
-        title: 'حذف المنشور',
-        message: 'سيُحذف المنشور نهائياً. لا يمكن التراجع عن هذا الإجراء.',
-        confirmLabel: 'حذف', cancelLabel: 'بقاء', danger: true,
-      });
-      if (!ok) return;
-      try {
-        await API.del(`/api/posts/${id}`);
-        const card = document.querySelector(`[data-post-id="${id}"]`);
-        if (card) {
-          card.style.transition = 'opacity .3s, transform .3s';
-          card.style.opacity = '0';
-          card.style.transform = 'scale(.95)';
-          setTimeout(() => card.remove(), 300);
-        }
-        Toast.show('تم الحذف', 'success');
-        if (window.Sounds) Sounds.play('success');
-        Object.keys(S.feeds || {}).forEach(k => { if (S.feeds[k]) S.feeds[k].loaded = false; });
-      } catch (err) { Toast.show(err.message || 'تعذّر الحذف', 'error'); }
-    },
-
-    async report(id) {
-      this.closeAllMenus();
-      if (!S.me) { Auth.open('login'); return; }
-      const result = await ReportModal.show(id);
-      if (!result) return;
-      try {
-        await API.post(`/api/posts/${id}/report`, { reason: result.reason, note: result.note });
-        Toast.show('تم إرسال البلاغ، شكراً لك', 'success', 2600);
-        if (window.Sounds) Sounds.play('success');
-      } catch (err) { Toast.show(err.message || 'تعذّر إرسال البلاغ', 'error'); }
-    },
-  };
-
-  /* ═══════════ FEED ═══════════ */
-  const Feed = {
-    container(name) {
-      const map = { home: 'homeFeed', explore: 'exploreFeed', liked: 'likedFeed', saved: 'savedFeed', profile: 'profilePanel' };
-      return document.getElementById(map[name] || '');
-    },
-    skeletonsHtml() {
-      let html = '';
-      for (let i = 0; i < 6; i++) html += Feed.skeletonCardHtml();
-      return html;
-    },
-    skeletonCardHtml() {
-      return `<article class="prompt-card skeleton-card" aria-hidden="true">
-        <div class="prompt-media skeleton skeleton-media"></div>
-        <div class="prompt-body">
-          <div class="skeleton skeleton-line" style="width:55%"></div>
-          <div class="skeleton skeleton-line" style="width:85%;height:18px"></div>
-          <div class="skeleton skeleton-line" style="width:100%"></div>
-          <div class="skeleton skeleton-line" style="width:75%"></div>
-        </div>
-      </article>`;
-    },
-    emptyHtml(icon, title, msg) {
-      return `<div class="empty-block" data-empty-state>
-        <i class="ph ${icon}" aria-hidden="true"></i>
-        <h4>${U.escapeHtml(title)}</h4>
-        <p>${U.escapeHtml(msg)}</p>
-      </div>`;
-    },
-    async load(name, opts) {
-      opts = opts || {};
-      const fs = feedState(name);
-      if (fs.busy && !opts.force) return;
-      if (!opts.force && fs.loaded && fs.items.length > 0) return;
-      const container = this.container(name);
-      if (!container) return;
-      if (opts.reset !== false) { fs.items = []; fs.before = null; fs.hasMore = true; fs.loaded = false; }
-      if (fs.items.length === 0) { container.innerHTML = this.skeletonsHtml(); container.setAttribute('aria-busy', 'true'); }
-      fs.busy = true;
-      if (fs.controller) fs.controller.abort();
-      fs.controller = new AbortController();
-      const params = new URLSearchParams();
-      if (name === 'home' || name === 'explore') {
-        params.set('sort', S.sort);
-        if (S.filterTag) params.set('tag', S.filterTag);
-        if (S.filterModel) params.set('model', S.filterModel);
-      }
-      params.set('limit', String(CFG.PAGE_SIZE));
-      if (fs.before) params.set('before_id', String(fs.before));
-      try {
-        const items = await API.get('/api/posts?' + params.toString(), { signal: fs.controller.signal });
-        const list = Array.isArray(items) ? items : [];
-        if (list.length === 0 && fs.items.length === 0) {
-          this.showEmpty(name); fs.hasMore = false; fs.loaded = true; return;
-        }
-        const frag = document.createDocumentFragment();
-        list.forEach(p => frag.appendChild(Post.renderCard(p)));
-        if (fs.items.length === 0) container.innerHTML = '';
-        container.appendChild(frag);
-        fs.items = fs.items.concat(list);
-        fs.before = list[list.length - 1].id;
-        fs.hasMore = list.length === CFG.PAGE_SIZE;
-        fs.loaded = true;
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        if (fs.items.length === 0) {
-          container.innerHTML = this.emptyHtml('ph-cloud-slash', 'تعذّر التحميل', err.message || 'حاول مرة أخرى');
-        } else Toast.show(err.message || 'تعذّر تحميل المزيد', 'error');
-      } finally {
-        fs.busy = false;
-        container.setAttribute('aria-busy', 'false');
-      }
-    },
-    showEmpty(name) {
-      const c = this.container(name);
-      if (!c) return;
-      const map = {
-        home: ['ph-image-square', 'لا توجد برومبتات', 'كن أول من ينشر.'],
-        explore: ['ph-compass', 'لا شيء هنا', 'جرّب تصفية أخرى.'],
-        liked: ['ph-heart', 'لا توجد إعجابات بعد', 'ابدأ بتصفح المنصة وضع قلبك على ما يعجبك.'],
-        saved: ['ph-bookmark-simple', 'المكتبة فارغة', 'احفظ البرومبتات المميزة للرجوع إليها لاحقاً.'],
-        profile: ['ph-image-square', 'لا منشورات', 'لم ينشر هذا المستخدم بعد.'],
-      };
-      const [icon, title, msg] = map[name] || ['ph-info', 'لا يوجد شيء', ''];
-      c.innerHTML = this.emptyHtml(icon, title, msg);
-    },
-    async loadMore(name) {
-      const fs = feedState(name);
-      if (fs.busy || !fs.hasMore) return;
-      await this.load(name, { reset: false });
-    },
-    reset(name) {
-      const fs = feedState(name);
-      fs.items = []; fs.before = null; fs.hasMore = true; fs.loaded = false;
-    },
-  };
-
-  /* ═══════════ COMMENTS ═══════════ */
-  const Comments = {
-    currentPostId: null,
-    async load(postId) {
-      const body = document.getElementById('commentsBody');
-      const form = document.getElementById('commentForm');
-      const countEl = document.getElementById('commentCount');
-      if (!body) return;
-      body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-      if (form) form.style.display = S.me ? 'flex' : 'none';
-      try {
-        const items = await API.get(`/api/posts/${postId}/comments`);
-        if (!items || items.length === 0) {
-          body.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا تعليقات بعد</h4><p>كن أول المعلّقين.</p></div>';
-          if (countEl) countEl.textContent = '';
-          return;
-        }
-        if (countEl) countEl.textContent = '(' + items.length + ')';
-        body.innerHTML = items.map(c => this.rowHtml(c)).join('');
-      } catch (err) {
-        body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
-      }
-    },
-    rowHtml(c) {
-      const a = c.author_data || {};
-      const mine = S.me && S.me.id === c.author;
-      return `<div class="comment" data-comment-id="${c.id}">
-        <img class="avatar avatar-sm" src="${U.escapeHtml(a.avatar || '')}" alt="" loading="lazy">
-        <div class="comment-body">
-          <div class="comment-top">
-            <span class="comment-name">${U.escapeHtml(a.name || 'مستخدم')}</span>
-            <span class="comment-time">${U.relativeTime(c.time)}</span>
-          </div>
-          <div class="comment-text">${U.escapeHtml(c.text || '')}</div>
-          ${mine ? `<div class="comment-actions"><button type="button" data-action="delete-comment" data-comment-id="${c.id}"><i class="ph ph-trash"></i> حذف</button></div>` : ''}
-        </div>
-      </div>`;
-    },
-    async send(ev) {
-      ev.preventDefault();
-      if (!S.me) { Auth.open('login'); return; }
-      const input = document.getElementById('commentInput');
-      if (!input) return;
-      const text = input.value.trim();
-      if (!text || !this.currentPostId) return;
-      input.disabled = true;
-      try {
-        const c = await API.post(`/api/posts/${this.currentPostId}/comments`, { text });
-        input.value = ''; U.autoGrow(input);
-        if (window.Sounds) Sounds.play('send');
-        const body = document.getElementById('commentsBody');
-        if (body) {
-          const empty = body.querySelector('.empty-block');
-          if (empty) empty.remove();
-          body.insertAdjacentHTML('afterbegin', this.rowHtml(c));
-          const countEl = document.getElementById('commentCount');
-          if (countEl) countEl.textContent = '(' + body.querySelectorAll('.comment').length + ')';
-        }
-      } catch (err) { Toast.show(err.message || 'تعذّر الإرسال', 'error'); }
-      finally { input.disabled = false; input.focus(); }
-    },
-    async delete(id) {
-      const ok = await ConfirmModal.show({
-        title: 'حذف التعليق', message: 'سيُحذف التعليق نهائياً.',
-        confirmLabel: 'حذف', danger: true,
-      });
-      if (!ok) return;
-      try {
-        await API.del(`/api/comments/${id}`);
-        const row = document.querySelector(`.comment[data-comment-id="${id}"]`);
-        if (row) row.remove();
-        Toast.show('تم الحذف', 'success', 1500);
-      } catch (err) { Toast.show(err.message || 'تعذّر الحذف', 'error'); }
-    },
-    init() {
-      document.addEventListener('click', (e) => {
-        const del = e.target.closest('[data-action="delete-comment"]');
-        if (del) this.delete(parseInt(del.dataset.commentId, 10));
-      });
-    },
-  };
-
-  /* ═══════════ DRAWERS ═══════════ */
-  const Drawers = {
-    openComments(postId) {
-      this.closeNotifications(); this.closeFollowers();
-      Comments.currentPostId = postId;
-      const scrim = document.getElementById('commentsScrim');
-      const drawer = document.getElementById('commentsDrawer');
-      if (!scrim || !drawer) return;
-      scrim.setAttribute('data-open', 'true');
-      drawer.setAttribute('data-open', 'true');
-      document.documentElement.style.overflow = 'hidden';
-      Comments.load(postId);
-      if (window.Sounds) Sounds.play('open');
-    },
-    closeComments() {
-      const s = document.getElementById('commentsScrim');
-      const d = document.getElementById('commentsDrawer');
-      if (s) s.setAttribute('data-open', 'false');
-      if (d) d.setAttribute('data-open', 'false');
-      document.documentElement.style.overflow = '';
-    },
-    openNotifications() {
-      this.closeComments(); this.closeFollowers();
-      const scrim = document.getElementById('notificationsScrim');
-      const drawer = document.getElementById('notificationsDrawer');
-      if (!scrim || !drawer) return;
-      scrim.setAttribute('data-open', 'true');
-      drawer.setAttribute('data-open', 'true');
-      document.documentElement.style.overflow = 'hidden';
-      NotificationsLoader.load();
-      if (window.Sounds) Sounds.play('open');
-    },
-    closeNotifications() {
-      const s = document.getElementById('notificationsScrim');
-      const d = document.getElementById('notificationsDrawer');
-      if (s) s.setAttribute('data-open', 'false');
-      if (d) d.setAttribute('data-open', 'false');
-      document.documentElement.style.overflow = '';
-    },
-    openFollowers(userId, type) {
-      this.closeComments(); this.closeNotifications();
-      FollowersDrawer.open(userId, type);
-    },
-    closeFollowers() { FollowersDrawer.close(); },
-    closeAll() { this.closeComments(); this.closeNotifications(); this.closeFollowers(); },
-  };
-
-  /* ═══════════ FOLLOWERS DRAWER ═══════════ */
-  const FollowersDrawer = {
-    userId: null, type: 'followers', before: null, hasMore: true, busy: false,
-    open(userId, type) {
-      if (!userId) return;
-      this.userId = userId;
-      this.type = type === 'following' ? 'following' : 'followers';
-      this.before = null; this.hasMore = true; this.busy = false;
-      const scrim = document.getElementById('followersScrim');
-      const drawer = document.getElementById('followersDrawer');
-      const title = document.getElementById('followersTitle');
-      if (!scrim || !drawer) return;
-      if (title) title.textContent = this.type === 'following' ? 'يتابع' : 'المتابعون';
-      scrim.setAttribute('data-open', 'true');
-      drawer.setAttribute('data-open', 'true');
-      document.documentElement.style.overflow = 'hidden';
-      if (window.Sounds) Sounds.play('open');
-      this.load();
-    },
-    close() {
-      const s = document.getElementById('followersScrim');
-      const d = document.getElementById('followersDrawer');
-      if (s) s.setAttribute('data-open', 'false');
-      if (d) d.setAttribute('data-open', 'false');
-      document.documentElement.style.overflow = '';
-    },
-    async load() {
-      const body = document.getElementById('followersBody');
-      if (!body || !this.userId || this.busy) return;
-      this.busy = true;
-      const isFirst = !this.before;
-      if (isFirst) body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-      const path = `/api/users/${this.userId}/${this.type}?limit=30${this.before ? '&before_id=' + this.before : ''}`;
-      try {
-        const data = await API.get(path);
-        const items = (data && data.items) || [];
-        this.hasMore = !!data.next_before;
-        this.before = data.next_before;
-        if (isFirst) {
-          if (!items.length) {
-            body.innerHTML = `<div class="empty-block">
-              <i class="ph ph-users"></i>
-              <h4>${this.type === 'following' ? 'لا يتابع أحداً' : 'لا متابعين بعد'}</h4>
-              <p>${this.type === 'following' ? 'عندما يتابع هذا المستخدم شخصاً سيظهر هنا.' : 'كن أول من يتابع هذا المستخدم.'}</p>
-            </div>`;
-            return;
-          }
-          body.innerHTML = '';
-        }
-        const frag = document.createDocumentFragment();
-        items.forEach(u => frag.appendChild(this.rowHtml(u)));
-        body.appendChild(frag);
-        if (this.hasMore) {
-          const existing = body.querySelector('[data-load-more]');
-          if (existing) existing.remove();
-          const lm = document.createElement('button');
-          lm.className = 'load-more-btn';
-          lm.setAttribute('data-load-more', 'true');
-          lm.type = 'button';
-          lm.innerHTML = '<span>تحميل المزيد</span><i class="ph ph-arrow-down"></i>';
-          lm.addEventListener('click', () => this.load());
-          body.appendChild(lm);
-        }
-      } catch (err) {
-        if (isFirst) {
-          body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
-        } else Toast.show(err.message || 'تعذّر التحميل', 'error');
-      } finally { this.busy = false; }
-    },
-    rowHtml(u) {
-      const isMe = S.me && S.me.id === u.id;
-      return `<div class="follower-row" data-user-id="${u.id}">
-        <img class="follower-row-avatar" src="${U.escapeHtml(u.avatar || '')}" alt="" loading="lazy">
-        <div class="follower-row-info">
-          <div class="follower-row-name">
-            ${U.escapeHtml(u.name || '')}
-            ${u.verified ? '<i class="ph ph-seal-check" aria-hidden="true"></i>' : ''}
-          </div>
-          <div class="follower-row-handle">${U.escapeHtml(u.handle || '')}</div>
-        </div>
-        ${!isMe ? `<button class="btn btn-sm follower-row-btn ${u.is_following ? 'btn-secondary' : 'btn-primary'}" data-follow-user="${u.id}" type="button">
-          ${u.is_following ? 'أتابعه' : 'متابعة'}
-        </button>` : ''}
-      </div>`;
-    },
-    init() {
-      document.addEventListener('click', async (e) => {
-        const row = e.target.closest('.follower-row');
-        const btn = e.target.closest('[data-follow-user]');
-        if (btn) {
-          e.stopPropagation();
-          const uid = parseInt(btn.dataset.followUser, 10);
-          if (!uid) return;
-          btn.setAttribute('aria-busy', 'true');
-          try {
-            const res = await API.post(`/api/users/${uid}/follow`);
-            const following = !!res.following;
-            btn.classList.toggle('btn-primary', !following);
-            btn.classList.toggle('btn-secondary', following);
-            btn.textContent = following ? 'أتابعه' : 'متابعة';
-            if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
-          } catch (err) { Toast.show(err.message || 'تعذّر', 'error'); }
-          finally { btn.removeAttribute('aria-busy'); }
-          return;
-        }
-        if (row) {
-          const uid = parseInt(row.dataset.userId, 10);
-          if (!uid) return;
-          this.close();
-          setTimeout(() => ProfileView.open(uid), 200);
-        }
-      });
-    },
-  };
-
-  /* ═══════════ NOTIFICATIONS ═══════════ */
-  const NotificationsLoader = {
-    _interval: null, unread: 0,
-    start() {
-      if (!S.me) return;
-      this.refresh();
-      this._interval = setInterval(() => this.refresh(), CFG.NOTIF_POLL_MS);
-    },
-    stop() {
-      if (this._interval) clearInterval(this._interval);
-      this._interval = null;
-      this.setBadge(0);
-    },
-    async refresh() {
-      if (!S.me) return;
-      try {
-        const data = await API.get('/api/notifications/unread-count');
-        this.setBadge((data && data.count) || 0);
-      } catch (e) {}
-    },
-    setBadge(n) {
-      this.unread = n;
-      [document.getElementById('dockNotifBadge'), document.getElementById('navNotifBadge')].forEach(b => {
-        if (!b) return;
-        if (n > 0) { b.textContent = n > 99 ? '99+' : String(n); b.hidden = false; }
-        else b.hidden = true;
-      });
-    },
-    async load() {
-      const body = document.getElementById('notificationsBody');
-      if (!body || !S.me) return;
-      body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-      try {
-        const data = await API.get('/api/notifications?limit=30');
-        const items = (data && data.items) || [];
-        this.setBadge((data && data.unread) || 0);
-        if (!items.length) {
-          body.innerHTML = '<div class="empty-block"><i class="ph ph-bell"></i><h4>لا إشعارات بعد</h4><p>ستظهر هنا التفاعلات التي تهمّك.</p></div>';
-          return;
-        }
-        body.innerHTML = items.map(n => this.rowHtml(n)).join('');
-        setTimeout(() => { API.post('/api/notifications/read-all').then(() => this.setBadge(0)).catch(() => {}); }, 800);
-      } catch (err) {
-        body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
-      }
-    },
-    rowHtml(n) {
-      const a = n.actor || {};
-      const icons = { like: 'ph-heart-fill', comment: 'ph-chat-circle-fill', follow: 'ph-user-plus-fill', message: 'ph-chat-teardrop-fill' };
-      const icon = icons[n.kind] || 'ph-bell';
-      const color = n.kind || 'info';
-      return `<button class="notif-row ${n.read ? 'is-read' : 'is-unread'}" data-notif-id="${n.id}" data-kind="${n.kind}" data-target-id="${n.target_id || ''}" data-actor-id="${a.id || ''}" type="button">
-        <span class="notif-avatar-wrap">
-          <img class="notif-avatar" src="${U.escapeHtml(a.avatar || '')}" alt="" loading="lazy">
-          <span class="notif-icon notif-icon--${color}"><i class="ph ${icon}" aria-hidden="true"></i></span>
-        </span>
-        <span class="notif-body">
-          <span class="notif-text">${U.escapeHtml(a.name || 'مستخدم')} · ${U.escapeHtml(n.text || '')}</span>
-          <span class="notif-time">${U.relativeTime(n.created_at)}</span>
-        </span>
-        ${!n.read ? '<span class="notif-dot" aria-hidden="true"></span>' : ''}
-      </button>`;
-    },
-    init() {
-      document.addEventListener('click', (e) => {
-        const row = e.target.closest('.notif-row');
-        if (!row) return;
-        const kind = row.dataset.kind;
-        const targetId = parseInt(row.dataset.targetId, 10);
-        const actorId = parseInt(row.dataset.actorId, 10);
-        Drawers.closeNotifications();
-        if (kind === 'follow' && actorId) setTimeout(() => ProfileView.open(actorId), 220);
-        else if ((kind === 'like' || kind === 'comment') && targetId) {
-          setTimeout(() => {
-            const el = document.querySelector(`[data-post-id="${targetId}"]`);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 260);
-        } else if (kind === 'message' && actorId) Chat.openWith(actorId);
-      });
-    },
-  };
-
-  /* ═══════════ COMPOSER ═══════════ */
-  const Composer = {
-    type: 'text',
-    editingId: null,
-
-    open() {
-      if (!S.me) { Auth.open('login'); return; }
-      const view = document.getElementById('composerView');
-      if (!view) { console.error('[خَيال] #composerView غير موجود'); Toast.show('صفحة النشر غير متوفرة', 'error'); return; }
-      this.editingId = null;
-      this._resetFormUI();
-      const av = document.getElementById('composerFormAvatar');
-      if (av) U.safeAvatar(av, S.me.avatar);
-      const name = document.getElementById('composerUserName');
-      if (name) name.textContent = S.me.name || '—';
-      this.restoreDraft();
-      view.hidden = false;
-      document.body.classList.add('view-open');
-      if (window.Sounds) Sounds.play('open');
-    },
-
-    async openEdit(postId) {
-      if (!S.me) { Auth.open('login'); return; }
-      if (!postId) return;
-      const view = document.getElementById('composerView');
-      if (!view) return;
-      try {
-        const post = await API.get(`/api/posts/${postId}`);
-        if (!post.is_owner) { Toast.show('لا تملك صلاحية التعديل', 'error'); return; }
-        this.editingId = postId;
-        this._fillForm(post);
-        this._setEditUI(true);
-        const av = document.getElementById('composerFormAvatar');
-        if (av) U.safeAvatar(av, S.me.avatar);
-        const name = document.getElementById('composerUserName');
-        if (name) name.textContent = S.me.name || '—';
-        view.hidden = false;
-        document.body.classList.add('view-open');
-        document.body.classList.add('composer-editing');
-        if (window.Sounds) Sounds.play('open');
-      } catch (err) { Toast.show(err.message || 'تعذّر تحميل المنشور', 'error'); }
-    },
-
-    _fillForm(post) {
-      const el = (id) => document.getElementById(id);
-      if (el('cTitle')) el('cTitle').value = post.title || '';
-      if (el('cPrompt')) el('cPrompt').value = post.prompt || '';
-      if (el('cImage')) el('cImage').value = post.image || '';
-      if (el('cModel') && post.model) el('cModel').value = post.model;
-      if (el('cTags')) el('cTags').value = (post.tags || []).join('، ');
-      if (post.image) this.previewImage(post.image);
-      this.chooseType(post.image ? 'prompt' : 'text');
-    },
-
-    _setEditUI(isEdit) {
-      const head = document.querySelector('#composerView .view-overlay-head h2');
-      if (head) head.textContent = isEdit ? 'تعديل المنشور' : 'منشور جديد';
-      const btn = document.getElementById('composerSubmit');
-      if (btn) {
-        btn.innerHTML = isEdit
-          ? '<i class="ph ph-check" aria-hidden="true"></i><span>حفظ</span>'
-          : '<i class="ph ph-paper-plane-tilt" aria-hidden="true"></i><span>نشر</span>';
-      }
-    },
-
-    _resetFormUI() {
-      const form = document.getElementById('composerForm');
-      if (form) form.reset();
-      this.clearPreview();
-      this.chooseType('text');
-      this._setEditUI(false);
-      document.body.classList.remove('composer-editing');
-    },
-
-    close() {
-      const view = document.getElementById('composerView');
-      if (!view) return;
-      if (!this.editingId) this.saveDraft();
-      view.hidden = true;
-      document.body.classList.remove('view-open');
-      document.body.classList.remove('composer-editing');
-      this.editingId = null;
-      if (window.Sounds) Sounds.play('close');
-    },
-
-    saveDraft() {
-      if (!S.me || this.editingId) return;
-      const draft = {
-        title: (document.getElementById('cTitle') || {}).value || '',
-        prompt: (document.getElementById('cPrompt') || {}).value || '',
-        image: (document.getElementById('cImage') || {}).value || '',
-        model: (document.getElementById('cModel') || {}).value || '',
-        tags: (document.getElementById('cTags') || {}).value || '',
-        type: this.type,
-      };
-      try { localStorage.setItem(CFG.DRAFT_KEY, JSON.stringify(draft)); } catch (e) {}
-    },
-
-    restoreDraft() {
-      try {
-        const raw = localStorage.getItem(CFG.DRAFT_KEY);
-        if (!raw) return;
-        const d = JSON.parse(raw);
-        const el = (id) => document.getElementById(id);
-        if (d.title && el('cTitle')) el('cTitle').value = d.title;
-        if (d.prompt && el('cPrompt')) el('cPrompt').value = d.prompt;
-        if (d.image && el('cImage')) el('cImage').value = d.image;
-        if (d.model && el('cModel')) el('cModel').value = d.model;
-        if (d.tags && el('cTags')) el('cTags').value = d.tags;
-      } catch (e) {}
-    },
-
-    clearDraft() { try { localStorage.removeItem(CFG.DRAFT_KEY); } catch (e) {} },
-
-    chooseType(type) {
-      this.type = type;
-      const switchEl = document.querySelector('.type-switch');
-      if (switchEl) {
-        switchEl.querySelectorAll('.type-pill').forEach(b => b.setAttribute('aria-selected', b.dataset.type === type ? 'true' : 'false'));
-      }
-      const imageField = document.getElementById('imageField');
-      if (imageField) imageField.hidden = type !== 'prompt';
-      if (window.Sounds) Sounds.play('toggle');
-    },
-
-    previewImage(url) {
-      const wrap = document.getElementById('imgPreview');
-      const img = document.getElementById('imgPreviewEl');
-      if (!wrap || !img) return;
-      if (url && /^https?:\/\//i.test(url)) { img.src = url; wrap.hidden = false; }
-      else { wrap.hidden = true; }
-    },
-
-    clearPreview() {
-      const wrap = document.getElementById('imgPreview');
-      const img = document.getElementById('imgPreviewEl');
-      const input = document.getElementById('cImage');
-      if (wrap) wrap.hidden = true;
-      if (img) img.src = '';
-      if (input) input.value = '';
-    },
-
-    async publish(ev) {
-      if (ev) ev.preventDefault();
-      if (!S.me) { Auth.open('login'); return; }
-
-      const title = ((document.getElementById('cTitle') || {}).value || '').trim();
-      const prompt = ((document.getElementById('cPrompt') || {}).value || '').trim();
-      const image = ((document.getElementById('cImage') || {}).value || '').trim();
-      const model = ((document.getElementById('cModel') || {}).value || '').trim();
-      const tagsRaw = ((document.getElementById('cTags') || {}).value || '').trim();
-
-      if (!title || !prompt) {
-        if (window.Sounds) Sounds.play('error');
-        return Toast.show('العنوان والمحتوى مطلوبان', 'warning');
-      }
-
-      const tags = tagsRaw ? tagsRaw.split(/[,،]/).map(t => t.trim()).filter(Boolean) : [];
-
-      const btn = document.getElementById('composerSubmit');
-      if (btn) { btn.setAttribute('aria-busy', 'true'); btn.disabled = true; }
-
-      const payload = { title, prompt, image: image || null, model: model || null, tags };
-
-      try {
-        if (this.editingId) {
-          const updated = await API.patch(`/api/posts/${this.editingId}`, payload);
-          const card = document.querySelector(`[data-post-id="${this.editingId}"]`);
-          if (card && updated) card.replaceWith(Post.renderCard(updated));
-          Toast.show('تم حفظ التعديلات', 'success');
-        } else {
-          const post = await API.post('/api/posts', payload);
-          const homeEl = document.getElementById('homeFeed');
-          if (homeEl && post) {
-            const empty = homeEl.querySelector('.empty-block');
-            if (empty) empty.remove();
-            homeEl.insertBefore(Post.renderCard(post), homeEl.firstChild);
-          }
-          this.clearDraft();
-          Toast.show('تم النشر', 'success');
-        }
-        this.close();
-        if (window.Sounds) Sounds.play('success');
-      } catch (err) {
-        if (window.Sounds) Sounds.play('error');
-        Toast.show(err.message || 'تعذّر', 'error');
-      } finally {
-        if (btn) { btn.removeAttribute('aria-busy'); btn.disabled = false; }
-      }
-    },
-
-    init() {
-      document.querySelectorAll('.type-pill').forEach(btn => btn.addEventListener('click', () => this.chooseType(btn.dataset.type)));
-      ['cTitle', 'cPrompt', 'cImage', 'cTags'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', U.debounce(() => this.saveDraft(), 1500));
-      });
-    },
-  };
-
-  /* ═══════════ CHAT ═══════════ */
-  const Chat = {
-    allChats: [],
-    async loadList() {
-      const list = document.getElementById('chatList');
-      if (!list || !S.me) return;
-      list.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-      try {
-        const chats = await API.get('/api/chats');
-        this.allChats = chats || [];
-        if (!this.allChats.length) {
-          list.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>لا محادثات</h4><p>ابدأ محادثة جديدة من ملف أي مستخدم.</p></div>';
-          return;
-        }
-        list.innerHTML = this.allChats.map(c => this.rowHtml(c)).join('');
-        this.bindRows();
-      } catch (err) {
-        list.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
-      }
-    },
-    rowHtml(c) {
-      const u = c.with_user || {};
-      const unread = c.unread > 0 ? `<span class="badge">${c.unread}</span>` : '';
-      return `<button class="chat-item" type="button" data-chat-id="${c.id}">
-        <div style="position:relative">
-          <img class="avatar avatar-sm" src="${U.escapeHtml(u.avatar || '')}" alt="">
-          ${unread}
-        </div>
-        <div class="chat-item-info">
-          <div class="chat-item-top">
-            <span class="chat-item-name">${U.escapeHtml(u.name || 'محادثة')}</span>
-            <span class="chat-item-time">${U.escapeHtml(c.time || '')}</span>
-          </div>
-          <div class="chat-item-preview">${U.escapeHtml(c.last || 'لا رسائل بعد')}</div>
-        </div>
-      </button>`;
-    },
-    bindRows() {
-      document.querySelectorAll('.chat-item').forEach(row => row.addEventListener('click', () => this.openThread(parseInt(row.dataset.chatId, 10))));
-    },
-    async openThread(chatId) {
-      if (!S.me) return;
-      S.openChatId = chatId;
-      const layout = document.getElementById('chatLayout');
-      const name = document.getElementById('chatThreadName');
-      const body = document.getElementById('chatBody');
-      const composer = document.querySelector('.chat-composer');
-      const chat = this.allChats.find(c => c.id === chatId);
-      if (name && chat && chat.with_user) name.textContent = chat.with_user.name;
-      if (layout) layout.dataset.view = 'thread';
-      document.body.classList.add('chat-fullscreen');
-      if (body) body.innerHTML = '<div class="load-more"><div class="spinner"></div></div>';
-      if (composer) composer.style.display = 'flex';
-      document.querySelectorAll('.chat-item').forEach(r => r.setAttribute('aria-current', r.dataset.chatId === String(chatId) ? 'true' : 'false'));
-      try {
-        const msgs = await API.get(`/api/chats/${chatId}/messages`);
-        if (!msgs || !msgs.length) body.innerHTML = '<div class="empty-block"><i class="ph ph-chat-circle-dots"></i><h4>ابدأ المحادثة</h4><p>أرسل أول رسالة.</p></div>';
-        else { body.innerHTML = msgs.map(m => this.msgHtml(m)).join(''); body.scrollTop = body.scrollHeight; }
-      } catch (err) {
-        body.innerHTML = `<div class="empty-block"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message)}</p></div>`;
-      }
-    },
-    msgHtml(m) {
-      return `<div class="msg ${m.from === 'me' ? 'msg-me' : 'msg-them'}">${U.escapeHtml(m.text)}<span class="msg-time">${U.escapeHtml(m.time || '')}</span></div>`;
-    },
-    async send(ev) {
-      ev.preventDefault();
-      if (!S.me || !S.openChatId) return;
-      const input = document.getElementById('chatInput');
-      const body = document.getElementById('chatBody');
-      if (!input || !body) return;
-      const text = input.value.trim();
-      if (!text) return;
-      input.value = ''; U.autoGrow(input);
-      const empty = body.querySelector('.empty-block'); if (empty) empty.remove();
-      body.insertAdjacentHTML('beforeend', this.msgHtml({ from: 'me', text, time: 'الآن' }));
-      body.scrollTop = body.scrollHeight;
-      if (window.Sounds) Sounds.play('send');
-      try { await API.post(`/api/chats/${this.openChatId}/messages`, { text }); }
-      catch (err) { Toast.show(err.message || 'تعذّر الإرسال', 'error'); }
-    },
-    filterList(q) {
-      const query = (q || '').trim().toLowerCase();
-      document.querySelectorAll('.chat-item').forEach(row => {
-        const name = (row.querySelector('.chat-item-name') || {}).textContent || '';
-        row.style.display = !query || name.toLowerCase().includes(query) ? '' : 'none';
-      });
-    },
-    backToList() {
-      const layout = document.getElementById('chatLayout');
-      if (layout) layout.dataset.view = 'list';
-      document.body.classList.remove('chat-fullscreen');
-      S.openChatId = null;
-    },
-    async openWith(userId) {
-      if (!S.me) { Auth.open('login'); return; }
-      try {
-        const res = await API.post(`/api/chats/with/${userId}`);
-        App.switchTab('chat');
-        await this.loadList();
-        if (res && res.id) setTimeout(() => this.openThread(res.id), 200);
-      } catch (err) { Toast.show(err.message || 'تعذّر فتح المحادثة', 'error'); }
-    },
-  };
-
-  /* ═══════════ PROFILE VIEW (Overlay) ═══════════ */
-  const ProfileView = {
-    current: null,
-    _before: null, _hasMore: true, _busy: false, _scrollBound: false,
-
-    async open(userId) {
-      if (!userId) return;
-      const view = document.getElementById('profileView');
-      if (!view) { console.error('[ProfileView] #profileView مفقود'); return; }
-      const skeleton = document.getElementById('pvSkeleton');
-      const scroll = document.getElementById('pvScroll');
-      if (skeleton) skeleton.hidden = false;
-      if (scroll) scroll.hidden = true;
-      view.hidden = false;
-      document.body.classList.add('view-open');
-      document.documentElement.style.overflow = 'hidden';
-      if (window.Sounds) Sounds.play('open');
-      try {
-        const u = await API.get('/api/users/' + userId);
-        this.current = u;
-        this._render(u);
-        if (skeleton) skeleton.hidden = true;
-        if (scroll) { scroll.hidden = false; scroll.scrollTop = 0; }
-        this._bindScrollPagination();
-      } catch (err) {
-        Toast.show(err.message || 'تعذّر التحميل', 'error');
-        this.close();
-      }
-    },
-
-    close() {
-      const view = document.getElementById('profileView');
-      if (!view) return;
-      view.hidden = true;
-      document.body.classList.remove('view-open');
-      document.documentElement.style.overflow = '';
-      this.current = null;
-      if (window.Sounds) Sounds.play('close');
-    },
-
-    _render(u) {
-      const isMe = S.me && S.me.id === u.id;
-      const hero = document.getElementById('pvHero');
-      if (hero) hero.dataset.cover = u.cover || 'aurora';
-      const nameText = document.getElementById('pvNameText');
-      if (nameText) nameText.textContent = u.name || '—';
-      const verified = document.getElementById('pvVerified');
-      if (verified) verified.hidden = !u.verified;
-      const handle = document.getElementById('pvHandle');
-      if (handle) handle.textContent = u.handle || '@—';
-      const pronouns = document.getElementById('pvPronouns');
-      if (pronouns) { if (u.pronouns) { pronouns.textContent = u.pronouns; pronouns.hidden = false; } else pronouns.hidden = true; }
-
-      const followBtn = document.getElementById('pvFollowBtn');
-      if (followBtn) {
-        if (isMe) {
-          followBtn.dataset.state = 'owner';
-          followBtn.dataset.userId = '';
-          followBtn.innerHTML = '<i class="ph ph-pencil-simple" aria-hidden="true"></i><span>تعديل الملف</span>';
-        } else {
-          followBtn.dataset.state = u.is_following ? 'following' : 'idle';
-          followBtn.dataset.userId = String(u.id);
-          followBtn.innerHTML = u.is_following
-            ? '<i class="ph ph-check" aria-hidden="true"></i><span>أتابعه</span>'
-            : '<i class="ph ph-plus" aria-hidden="true"></i><span>متابعة</span>';
-        }
-      }
-
-      const setNum = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
-      setNum('pvStatFollowing', u.following || 0);
-      setNum('pvStatFollowers', u.followers || 0);
-      setNum('pvStatPosts', u.posts_count || 0);
-
-      const bio = document.getElementById('pvBio');
-      if (bio) { if (u.bio && u.bio.trim()) { bio.textContent = u.bio.trim(); bio.hidden = false; } else bio.hidden = true; }
-
-      const meta = document.getElementById('pvMeta');
-      const webWrap = document.getElementById('pvMetaWebsite');
-      const webLink = document.getElementById('pvMetaWebsiteLink');
-      const joinedWrap = document.getElementById('pvMetaJoined');
-      const joinedText = document.getElementById('pvMetaJoinedText');
-      let hasMeta = false;
-      if (u.website && webWrap && webLink) {
-        webLink.href = u.website;
-        webLink.textContent = u.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        webWrap.hidden = false; hasMeta = true;
-      } else if (webWrap) webWrap.hidden = true;
-      if (u.created_at && joinedWrap && joinedText) {
-        const d = new Date(u.created_at);
-        joinedText.textContent = 'انضم ' + d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' });
-        joinedWrap.hidden = false; hasMeta = true;
-      } else if (joinedWrap) joinedWrap.hidden = true;
-      if (meta) meta.hidden = !hasMeta;
-
-      this._before = null; this._hasMore = true; this._busy = false;
-      this._loadPosts(u.id);
-    },
-
-    _bindScrollPagination() {
-      if (this._scrollBound) return;
-      this._scrollBound = true;
-      const scroll = document.getElementById('pvScroll');
-      if (!scroll) return;
-      scroll.addEventListener('scroll', () => {
-        if (!this.current || this._busy || !this._hasMore) return;
-        if (scroll.scrollTop + scroll.clientHeight > scroll.scrollHeight - 400) {
-          this._loadPosts(this.current.id, true);
-        }
-      }, { passive: true });
-    },
-
-    async _loadPosts(userId, isLoadMore) {
-      const grid = document.getElementById('pvPostsGrid');
-      if (!grid || this._busy) return;
-      if (isLoadMore && !this._hasMore) return;
-      this._busy = true;
-      if (!isLoadMore) grid.innerHTML = '<div class="pv-empty"><i class="ph ph-circle-notch" style="animation:spin .8s linear infinite"></i><h4>جارٍ التحميل…</h4></div>';
-      const params = new URLSearchParams();
-      params.set('limit', '20');
-      if (isLoadMore && this._before) params.set('before_id', String(this._before));
-      try {
-        const items = await API.get(`/api/users/${userId}/posts?${params.toString()}`);
-        const list = Array.isArray(items) ? items : [];
-        this._hasMore = list.length === 20;
-        if (list.length) this._before = list[list.length - 1].id;
-        if (!isLoadMore) {
-          if (!list.length) {
-            grid.innerHTML = '<div class="pv-empty"><i class="ph ph-image-square"></i><h4>لا منشورات بعد</h4><p>لم ينشر هذا المستخدم بعد.</p></div>';
-            return;
-          }
-          grid.innerHTML = '';
-        } else {
-          const lm = grid.querySelector('.pv-load-more');
-          if (lm) lm.remove();
-        }
-        const frag = document.createDocumentFragment();
-        list.forEach(p => frag.appendChild(this._postCardHtml(p)));
-        grid.appendChild(frag);
-        if (this._hasMore) {
-          const lm = document.createElement('div');
-          lm.className = 'pv-load-more';
-          lm.innerHTML = '<div class="spinner"></div>';
-          grid.appendChild(lm);
-        }
-      } catch (err) {
-        if (!isLoadMore) grid.innerHTML = `<div class="pv-empty"><i class="ph ph-warning-circle"></i><h4>تعذّر التحميل</h4><p>${U.escapeHtml(err.message || 'حاول مرة أخرى')}</p></div>`;
-      } finally { this._busy = false; }
-    },
-
-    _postCardHtml(p) {
-      const images = Post._extractImages(p);
-      const first = images[0] || 'https://placehold.co/400x400/0E0E14/22D3EE?text=خَيال';
-      const likes = U.formatNumber(p.likes || 0);
-      const btn = document.createElement('button');
-      btn.className = 'pv-post';
-      btn.type = 'button';
-      btn.dataset.postId = p.id;
-      btn.innerHTML =
-        '<img src="' + U.escapeHtml(first) + '" alt="" loading="lazy">' +
-        '<span class="pv-post-badge"><i class="ph ph-heart-fill"></i>' + likes + '</span>';
-      btn.addEventListener('click', () => {
-        const pid = btn.dataset.postId;
-        this.close();
-        setTimeout(() => {
-          App.switchTab('home');
-          setTimeout(() => {
-            const el = document.querySelector('[data-post-id="' + pid + '"]');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 200);
-        }, 250);
-      });
-      return btn;
-    },
-
-    async _handleFollow(btn) {
-      if (!S.me) { Auth.open('login'); return; }
-      if (btn.dataset.state === 'owner') { this.close(); if (window.Settings) Settings.open(); return; }
-      const uid = parseInt(btn.dataset.userId, 10);
-      if (!uid) return;
-      btn.setAttribute('aria-busy', 'true');
-      try {
-        const res = await API.post('/api/users/' + uid + '/follow');
-        const following = !!res.following;
-        btn.dataset.state = following ? 'following' : 'idle';
-        btn.innerHTML = following
-          ? '<i class="ph ph-check" aria-hidden="true"></i><span>أتابعه</span>'
-          : '<i class="ph ph-plus" aria-hidden="true"></i><span>متابعة</span>';
-        const sf = document.getElementById('pvStatFollowers');
-        if (sf && typeof res.followers === 'number') sf.textContent = U.formatNumber(res.followers);
-        if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
-        Toast.show(following ? 'تتابعه الآن' : 'أُلغي المتابعة', 'success', 1600);
-      } catch (err) { Toast.show(err.message || 'تعذّر', 'error'); }
-      finally { btn.removeAttribute('aria-busy'); }
-    },
-
-    _handleShare() {
-      const u = this.current; if (!u) return;
-      const url = window.location.origin + '/u/' + (u.username || '');
-      if (navigator.share) navigator.share({ title: u.name || 'خَيال', url }).catch(() => {});
-      else U.copy(url).then(ok => Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600));
-    },
-
-    _handleMenu() { Toast.show('قريباً', 'info'); },
-    _openFollowers(type) { if (this.current) Drawers.openFollowers(this.current.id, type); },
-  };
-
-  /* ═══════════ PROFILE (tab-based) ═══════════ */
-  const Profile = {
-    current: null, _tabsBound: false,
-    async load(userId) {
-      const id = userId || (S.me && S.me.id);
-      if (!id) return;
-      S.viewingUser = { id };
-      S.tab = 'profile';
-      App.activateTab('profile');
-      Feed.reset('profile');
-      const skeleton = document.getElementById('profileSkeleton');
-      const card = document.getElementById('profileCard');
-      const tabs = document.getElementById('profileTabs');
-      const panel = document.getElementById('profilePanel');
-      if (skeleton) skeleton.hidden = false;
-      if (card) card.hidden = true;
-      if (tabs) tabs.hidden = true;
-      const tw = tabs ? tabs.closest('.tabs-sticky') : null;
-      if (tw) tw.hidden = true;
-      if (panel) panel.innerHTML = '';
-      try {
-        const u = await API.get(`/api/users/${id}`);
-        this.current = u;
-        this.render(u);
-      } catch (err) { Toast.show(err.message || 'تعذّر تحميل الملف', 'error'); }
-      finally { if (skeleton) skeleton.hidden = true; }
-    },
-    render(u) {
-      const isMe = S.me && S.me.id === u.id;
-      const card = document.getElementById('profileCard');
-      const tabs = document.getElementById('profileTabs');
-      if (!card) return;
-      card.hidden = false;
-      card.setAttribute('data-style', u.card_style || 'glass');
-      card.style.setProperty('--_accent', u.accent_color || '#22D3EE');
-      const cover = document.getElementById('profileCover');
-      if (cover) cover.dataset.cover = u.cover || 'aurora';
-      const avatar = document.getElementById('profileAvatar');
-      if (avatar) { U.safeAvatar(avatar, u.avatar); avatar.alt = u.name || ''; avatar.dataset.frame = u.avatar_shape || 'ring'; }
-      const name = document.getElementById('profileName');
-      if (name) name.textContent = u.name || '—';
-      const verified = document.getElementById('profileVerified');
-      if (verified) verified.hidden = !u.verified;
-      const handle = document.getElementById('profileHandle');
-      if (handle) handle.textContent = u.handle || '@—';
-      const pronouns = document.getElementById('profilePronouns');
-      if (pronouns) { if (u.pronouns) { pronouns.textContent = u.pronouns; pronouns.hidden = false; } else pronouns.hidden = true; }
-      const bio = document.getElementById('profileBio');
-      if (bio) bio.textContent = u.bio || '';
-      const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
-      setStat('statFollowers', u.followers || 0);
-      setStat('statFollowing', u.following || 0);
-      setStat('statPosts', u.posts_count || 0);
-      setStat('statLikes', u.total_likes || 0);
-      const actions = document.getElementById('profileActions');
-      if (actions) {
-        if (isMe) {
-          actions.innerHTML = '<button class="btn btn-secondary" data-action="open-settings" type="button"><i class="ph ph-pencil-simple"></i><span>تعديل الملف</span></button>';
-        } else {
-          actions.innerHTML = '<button class="btn btn-secondary" data-action="message" data-user-id="' + u.id + '" type="button"><i class="ph ph-chat-circle"></i><span>رسالة</span></button>';
-        }
-      }
-      if (tabs) {
-        tabs.hidden = false;
-        const tw = tabs.closest('.tabs-sticky'); if (tw) tw.hidden = false;
-        const st = document.getElementById('profileSavedTab');
-        const sett = document.getElementById('profileSettingsTab');
-        if (st) st.hidden = !isMe;
-        if (sett) sett.hidden = !isMe;
-        tabs.querySelectorAll('.tab[data-ptab]').forEach(t => t.setAttribute('aria-selected', t.dataset.ptab === 'posts' ? 'true' : 'false'));
-      }
-      Feed.reset('profile');
-      Feed.load('profile');
-      this.bindActions();
-      this.bindTabs();
-    },
-    bindTabs() {
-      if (this._tabsBound) return;
-      this._tabsBound = true;
-      const self = this;
-      document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(tab => {
-        tab.addEventListener('click', () => self.switchTab(tab.dataset.ptab));
-      });
-    },
-    switchTab(name) {
-      document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(t => t.setAttribute('aria-selected', t.dataset.ptab === name ? 'true' : 'false'));
-      if (name === 'settings') {
-        if (window.Settings) Settings.open();
-        document.querySelectorAll('#profileTabs .tab[data-ptab]').forEach(t => t.setAttribute('aria-selected', t.dataset.ptab === 'posts' ? 'true' : 'false'));
-        return;
-      }
-      if (name === 'posts') { Feed.reset('profile'); Feed.load('profile'); return; }
-      const panel = document.getElementById('profilePanel');
-      if (!panel) return;
-      panel.innerHTML = '<div class="empty-block"><i class="ph ph-hourglass"></i><h4>قريباً</h4><p>هذا القسم قيد التطوير.</p></div>';
-    },
-    bindActions() {
-      const card = document.getElementById('profileCard');
-      if (!card) return;
-      card.querySelectorAll('[data-action="message"]').forEach(btn => {
-        btn.addEventListener('click', () => Chat.openWith(parseInt(btn.dataset.userId, 10)));
-      });
-      card.querySelectorAll('[data-action="open-settings"]').forEach(btn => {
-        btn.addEventListener('click', () => Settings.open());
-      });
-    },
-    save(ev) { if (ev) ev.preventDefault(); if (window.Settings) Settings.save(); },
-  };
-
-  /* ═══════════ EXPLORE ═══════════ */
-  const Explore = {
-    openCollection(name) {
-      App.switchTab('explore');
-      S.filterTag = ''; S.filterModel = '';
-      if (name === 'trending' || name === 'editor') { S.sort = 'top'; App.setSort('top'); }
-      else { S.sort = 'recent'; App.setSort('recent'); }
-      Feed.reset('explore');
-      Feed.load('explore', { force: true });
-    },
-  };
-
-  /* ═══════════ SETTINGS ═══════════ */
-  function _defaultPreferences() {
-    return {
-      notif: { likes: true, comments: true, follows: true, messages: true },
-      priv: { public_profile: true, allow_messages: true, show_website: true },
-    };
-  }
-
-  const Settings = {
-    view: null, section: 'profile', postsLoaded: false, dirty: false,
-    _closingPromise: null, _flashHero: null, _flashTimer: null,
-    state: { cover: 'aurora', avatar_frame: 'ring', accent_color: '#22D3EE', card_style: 'glass', name: '', handle: '', avatar: '', bio: '', website: '', pronouns: '', preferences: null },
-
-    init() {
-      this.view = document.getElementById('settingsView');
-      if (!this.view) { console.error('[خَيال] #settingsView غير موجود.'); return; }
-      const self = this;
-
-      this._flashHero = U.debounce(function () {
-        const hero = document.getElementById('settingsHeroProfile');
-        if (!hero) return;
-        hero.classList.remove('is-updating');
-        requestAnimationFrame(() => {
-          hero.classList.add('is-updating');
-          clearTimeout(self._flashTimer);
-          self._flashTimer = setTimeout(() => hero.classList.remove('is-updating'), 600);
-        });
-      }, 120);
-
-      window.addEventListener('beforeunload', (e) => { if (self.dirty) { e.preventDefault(); e.returnValue = ''; } });
-
-      this.view.querySelector('[data-action="close-settings"]')?.addEventListener('click', () => self.close());
-      this.view.querySelector('[data-action="save-settings"]')?.addEventListener('click', () => self.save());
-
-      const resetBtn = document.getElementById('settingsResetBtn');
-      if (resetBtn) resetBtn.addEventListener('click', () => self.resetToSaved());
-
-      this.view.querySelectorAll('.settings-tab').forEach(btn => btn.addEventListener('click', () => self.switchSection(btn.dataset.section)));
-
-      const coverPicker = document.getElementById('settingsCoverPresets');
-      if (coverPicker) coverPicker.addEventListener('click', (e) => {
-        const b = e.target.closest('.cover-preset'); if (!b) return;
-        coverPicker.querySelectorAll('.cover-preset').forEach(x => x.setAttribute('aria-pressed', 'false'));
-        b.setAttribute('aria-pressed', 'true');
-        self.state.cover = b.dataset.cover;
-        self.markDirty(); self.updatePreview();
-        if (window.Sounds) Sounds.play('toggle');
-      });
-
-      const framePicker = document.getElementById('settingsFramePicker');
-      if (framePicker) framePicker.addEventListener('click', (e) => {
-        const b = e.target.closest('.frame-option'); if (!b) return;
-        framePicker.querySelectorAll('.frame-option').forEach(x => x.setAttribute('aria-pressed', 'false'));
-        b.setAttribute('aria-pressed', 'true');
-        self.state.avatar_frame = b.dataset.frame;
-        self.markDirty(); self.updatePreview();
-        if (window.Sounds) Sounds.play('toggle');
-      });
-
-      const accentPicker = document.getElementById('settingsAccentPicker');
-      if (accentPicker) accentPicker.addEventListener('click', (e) => {
-        const b = e.target.closest('.accent-swatch'); if (!b) return;
-        accentPicker.querySelectorAll('.accent-swatch').forEach(x => x.setAttribute('aria-pressed', 'false'));
-        b.setAttribute('aria-pressed', 'true');
-        self.state.accent_color = b.dataset.color;
-        const hint = document.getElementById('accentHint');
-        if (hint) hint.textContent = b.dataset.color;
-        self.markDirty(); self.updatePreview();
-        if (window.Sounds) Sounds.play('toggle');
-      });
-
-      const stylePicker = document.getElementById('settingsCardStylePicker');
-      if (stylePicker) stylePicker.addEventListener('click', (e) => {
-        const b = e.target.closest('.style-option'); if (!b) return;
-        stylePicker.querySelectorAll('.style-option').forEach(x => x.setAttribute('aria-pressed', 'false'));
-        b.setAttribute('aria-pressed', 'true');
-        self.state.card_style = b.dataset.style;
-        self.markDirty(); self.updatePreview();
-        if (window.Sounds) Sounds.play('toggle');
-      });
-
-      const pronounPicker = document.getElementById('settingsPronounPicker');
-      const pronounHidden = document.getElementById('setPronouns');
-      if (pronounPicker && pronounHidden) pronounPicker.addEventListener('click', (e) => {
-        const b = e.target.closest('.pronoun-option'); if (!b) return;
-        pronounPicker.querySelectorAll('.pronoun-option').forEach(x => x.setAttribute('aria-checked', 'false'));
-        b.setAttribute('aria-checked', 'true');
-        pronounHidden.value = b.dataset.pronoun || '';
-        self.state.pronouns = pronounHidden.value;
-        self.markDirty(); self.updatePreview();
-        if (window.Sounds) Sounds.play('toggle');
-      });
-
-      const nameEl = document.getElementById('setName');
-      if (nameEl) nameEl.addEventListener('input', () => { self.state.name = nameEl.value; self.markDirty(); self.updatePreview({ flash: false }); });
-      const bioEl = document.getElementById('setBio');
-      if (bioEl) bioEl.addEventListener('input', () => {
-        const c = document.getElementById('setBioCount');
-        if (c) c.textContent = bioEl.value.length;
-        self.markDirty(); self.updatePreview({ flash: false });
-      });
-      const webEl = document.getElementById('setWebsite');
-      if (webEl) webEl.addEventListener('input', () => { self.state.website = webEl.value; self.markDirty(); });
-
-      const soundToggle = document.getElementById('soundsToggle');
-      if (soundToggle) soundToggle.addEventListener('click', () => {
-        const next = soundToggle.getAttribute('aria-checked') !== 'true';
-        soundToggle.setAttribute('aria-checked', next ? 'true' : 'false');
-        if (window.Sounds) Sounds.setEnabled(next);
-      });
-
-      const vol = document.getElementById('volumeSlider');
-      const volHint = document.getElementById('volumeHint');
-      if (vol) vol.addEventListener('input', () => {
-        const v = parseInt(vol.value, 10) / 100;
-        if (window.Sounds) Sounds.setVolume(v);
-        if (volHint) volHint.textContent = vol.value + '%';
-      });
-
-      this.view.querySelectorAll('.sound-card').forEach(card => {
-        card.addEventListener('click', () => {
-          if (window.Sounds) Sounds.play(card.dataset.sound);
-          card.classList.add('is-playing');
-          setTimeout(() => card.classList.remove('is-playing'), 420);
-        });
-      });
-
-      this.view.querySelectorAll('.switch:not(#soundsToggle)').forEach(sw => {
-        sw.addEventListener('click', () => {
-          const next = sw.getAttribute('aria-checked') !== 'true';
-          sw.setAttribute('aria-checked', next ? 'true' : 'false');
-          if (!self.state.preferences) self.state.preferences = _defaultPreferences();
-          const notifKey = sw.dataset.notif;
-          const privKey = sw.dataset.priv;
-          if (notifKey) self.state.preferences.notif[notifKey] = next;
-          else if (privKey) self.state.preferences.priv[privKey] = next;
-          self.markDirty();
-          if (window.Sounds) Sounds.play('toggle');
-        });
-      });
-
-      // ✅ v21.2 — stat "posts" leads to Content tab (was: posts)
-      this.view.querySelectorAll('[data-stat="posts"]').forEach(btn => {
-        btn.addEventListener('click', () => self.switchSection('content'));
-      });
-
-      const chg = document.getElementById('changePasswordBtn');
-      if (chg) chg.addEventListener('click', () => {
-        const oldPw = (document.getElementById('setOldPassword') || {}).value || '';
-        const newPw = (document.getElementById('setNewPassword') || {}).value || '';
-        if (!oldPw || !newPw) {
-          if (window.Sounds) Sounds.play('error');
-          return Toast.show('املأ الحقلين', 'warning');
-        }
-        API.post('/api/me/password', { old_password: oldPw, new_password: newPw })
-          .then(() => {
-            if (window.Sounds) Sounds.play('success');
-            Toast.show('تم تحديث كلمة المرور', 'success');
-            document.getElementById('setOldPassword').value = '';
-            document.getElementById('setNewPassword').value = '';
-          })
-          .catch(err => {
-            if (window.Sounds) Sounds.play('error');
-            Toast.show(err.message || 'فشل التحديث', 'error');
-          });
-      });
-
-      const logout = document.getElementById('logoutBtn');
-      if (logout) logout.addEventListener('click', async () => {
-        const ok = await ConfirmModal.show({
-          title: 'تسجيل الخروج',
-          message: 'سيتم الخروج من هذا الجهاز فقط.',
-          confirmLabel: 'خروج', danger: true,
-        });
-        if (!ok) return;
-        self.dirty = false;
-        Auth.logout();
-        self.view.hidden = true;
-        document.body.classList.remove('view-open');
-      });
-    },
-
-    open() {
-      if (!this.view) this.view = document.getElementById('settingsView');
-      if (!this.view) { console.error('[خَيال] #settingsView مفقود'); return; }
-      try { this.hydrate(); }
-      catch (err) { console.error('[Settings] hydrate failed:', err); Toast.show('تعذّر تحميل الإعدادات', 'error'); return; }
-      this.view.hidden = false;
-      document.body.classList.add('view-open');
-      if (window.Sounds) Sounds.play('open');
-      if (!this.postsLoaded) this.loadUserPosts();
-    },
-
-    async close() {
-      if (!this.view || this.view.hidden) return;
-      if (this._closingPromise) return;
-      if (this.dirty) {
-        this._closingPromise = this._confirmClose();
-        const choice = await this._closingPromise;
-        this._closingPromise = null;
-        if (choice === 'cancel') return;
-        if (choice === 'save') { const ok = await this.save(); if (!ok) return; }
-      }
-      this.clearDirty();
-      this.view.hidden = true;
-      document.body.classList.remove('view-open');
-      if (window.Sounds) Sounds.play('close');
-    },
-
-    _confirmClose() {
-      return new Promise(function (resolve) {
-        var scrim = document.createElement('div');
-        scrim.className = 'scrim';
-        scrim.setAttribute('data-open', 'false');
-        scrim.setAttribute('role', 'dialog');
-        scrim.setAttribute('aria-modal', 'true');
-        scrim.innerHTML =
-          '<div class="modal" role="document">' +
-            '<h3>تغييرات غير محفوظة</h3>' +
-            '<p>لديك تغييرات لم تُحفظ بعد. ماذا تريد أن تفعل؟</p>' +
-            '<div class="modal-actions">' +
-              '<button class="btn btn-ghost" type="button" data-choice="cancel">بقاء</button>' +
-              '<button class="btn btn-secondary" type="button" data-choice="discard">تجاهل</button>' +
-              '<button class="btn btn-primary" type="button" data-choice="save">حفظ</button>' +
-            '</div>' +
-          '</div>';
-        function finish(c) { scrim.setAttribute('data-open', 'false'); setTimeout(() => scrim.remove(), 300); resolve(c); }
-        scrim.addEventListener('click', function (e) {
-          var btn = e.target.closest('[data-choice]');
-          if (btn) { finish(btn.dataset.choice); return; }
-          if (e.target === scrim) finish('cancel');
-        });
-        document.body.appendChild(scrim);
-        requestAnimationFrame(() => scrim.setAttribute('data-open', 'true'));
-        setTimeout(() => { const p = scrim.querySelector('[data-choice="save"]'); if (p) p.focus({ preventScroll: true }); }, 150);
-      });
-    },
-
-    markDirty() { if (this.dirty) return; this.dirty = true; const b = document.getElementById('settingsSave'); if (b) b.hidden = false; },
-    clearDirty() { this.dirty = false; const b = document.getElementById('settingsSave'); if (b) b.hidden = true; },
-
-    resetToSaved() {
-      this.hydrate(); this.clearDirty();
-      Toast.show('تمت استعادة القيم المحفوظة', 'info', 1600);
-      if (window.Sounds) Sounds.play('tab');
-    },
-
-    switchSection(name) {
-      if (!name || !this.view) return;
-      this.section = name;
-      this.view.querySelectorAll('.settings-tab').forEach(b => {
-        const on = b.dataset.section === name;
-        b.classList.toggle('is-active', on);
-        b.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
-      this.view.querySelectorAll('.settings-panel').forEach(p => p.classList.toggle('is-active', p.dataset.panel === name));
-      const t = this.view.querySelector('.settings-tab.is-active');
-      if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-      if (window.Sounds) Sounds.play('tab');
-    },
-
-    hydrate() {
-      const u = (S.me && S.me.id && S.me) || window.__ME__ || {};
-      this.state = {
-        cover: u.cover || 'aurora', avatar_frame: u.avatar_shape || 'ring',
-        accent_color: u.accent_color || '#22D3EE', card_style: u.card_style || 'glass',
-        name: u.name || '', handle: u.handle || '', avatar: u.avatar || '',
-        bio: u.bio || '', website: u.website || '', pronouns: u.pronouns || '',
-        preferences: u.preferences ? JSON.parse(JSON.stringify(u.preferences)) : _defaultPreferences(),
-      };
-      const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
-      set('setName', this.state.name); set('setWebsite', this.state.website); set('setBio', this.state.bio);
-      const bc = document.getElementById('setBioCount');
-      if (bc) bc.textContent = (this.state.bio || '').length;
-
-      const pp = document.getElementById('settingsPronounPicker');
-      const ph = document.getElementById('setPronouns');
-      if (pp && ph) {
-        const match = pp.querySelector('.pronoun-option[data-pronoun="' + this.state.pronouns.replace(/"/g, '') + '"]')
-          || pp.querySelector('.pronoun-option[data-pronoun=""]');
-        pp.querySelectorAll('.pronoun-option').forEach(b => b.setAttribute('aria-checked', b === match ? 'true' : 'false'));
-        ph.value = match ? (match.dataset.pronoun || '') : '';
-      }
-
-      const cp = document.getElementById('settingsCoverPresets');
-      if (cp) cp.querySelectorAll('.cover-preset').forEach(b => b.setAttribute('aria-pressed', b.dataset.cover === this.state.cover ? 'true' : 'false'));
-      const fp = document.getElementById('settingsFramePicker');
-      if (fp) fp.querySelectorAll('.frame-option').forEach(b => b.setAttribute('aria-pressed', b.dataset.frame === this.state.avatar_frame ? 'true' : 'false'));
-      const ap = document.getElementById('settingsAccentPicker');
-      if (ap) ap.querySelectorAll('.accent-swatch').forEach(b => b.setAttribute('aria-pressed', b.dataset.color === this.state.accent_color ? 'true' : 'false'));
-      const ah = document.getElementById('accentHint');
-      if (ah) ah.textContent = this.state.accent_color;
-      const sp = document.getElementById('settingsCardStylePicker');
-      if (sp) sp.querySelectorAll('.style-option').forEach(b => b.setAttribute('aria-pressed', b.dataset.style === this.state.card_style ? 'true' : 'false'));
-
-      const st = document.getElementById('soundsToggle');
-      if (st && window.Sounds) st.setAttribute('aria-checked', Sounds.isEnabled() ? 'true' : 'false');
-      const vs = document.getElementById('volumeSlider');
-      if (vs && window.Sounds) vs.value = Math.round(Sounds.getVolume() * 100);
-      const vh = document.getElementById('volumeHint');
-      if (vh && window.Sounds) vh.textContent = Math.round(Sounds.getVolume() * 100) + '%';
-
-      const prefs = this.state.preferences;
-      this.view.querySelectorAll('.switch[data-notif]').forEach(sw => {
-        const val = prefs.notif && prefs.notif[sw.dataset.notif];
-        sw.setAttribute('aria-checked', val !== false ? 'true' : 'false');
-      });
-      this.view.querySelectorAll('.switch[data-priv]').forEach(sw => {
-        const val = prefs.priv && prefs.priv[sw.dataset.priv];
-        sw.setAttribute('aria-checked', val !== false ? 'true' : 'false');
-      });
-
-      this.renderHero(u); this.renderAbout(u); this.renderAccount(u);
-      this.clearDirty();
-    },
-
-    renderHero(u) {
-      const cover = document.getElementById('settingsHeroCover');
-      if (cover) cover.dataset.cover = u.cover || 'aurora';
-      const avatar = document.getElementById('settingsHeroAvatar');
-      if (avatar) { U.safeAvatar(avatar, u.avatar); avatar.alt = u.name || ''; avatar.dataset.frame = u.avatar_shape || 'ring'; }
-      const name = document.getElementById('settingsHeroName');
-      if (name) name.textContent = u.name || '—';
-      const verified = document.getElementById('settingsHeroVerified');
-      if (verified) verified.hidden = !u.verified;
-      const handle = document.getElementById('settingsHeroHandle');
-      if (handle) handle.textContent = u.handle || '@—';
-      const pronouns = document.getElementById('settingsHeroPronouns');
-      if (pronouns) { if (u.pronouns) { pronouns.textContent = u.pronouns; pronouns.hidden = false; } else pronouns.hidden = true; }
-      const bio = document.getElementById('settingsHeroBio');
-      if (bio) { if (u.bio && u.bio.trim()) { bio.textContent = u.bio.trim(); bio.hidden = false; } else bio.hidden = true; }
-      const hero = document.getElementById('settingsHeroProfile');
-      if (hero) hero.dataset.style = u.card_style || 'glass';
-      const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
-      setStat('settingsStatPosts', u.posts_count || 0);
-      setStat('settingsStatFollowers', u.followers || 0);
-      setStat('settingsStatFollowing', u.following || 0);
-      setStat('settingsStatLikes', u.total_likes || 0);
-    },
-
-    renderAbout(u) {
-      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-      const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
-      set('aboutName', u.name || '—'); set('aboutHandle', u.handle || '@—');
-      if (u.pronouns) { set('aboutPronouns', u.pronouns); show('aboutPronounsRow', true); } else show('aboutPronounsRow', false);
-      if (u.bio && u.bio.trim()) { set('aboutBio', u.bio.trim()); show('aboutBioRow', true); } else show('aboutBioRow', false);
-      const siteEl = document.getElementById('aboutWebsite');
-      if (u.website && siteEl) {
-        siteEl.href = u.website;
-        siteEl.textContent = u.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        show('aboutWebsiteRow', true);
-      } else show('aboutWebsiteRow', false);
-      if (u.created_at) {
-        const d = new Date(u.created_at);
-        set('aboutJoined', d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' }));
-      } else set('aboutJoined', '—');
-    },
-
-    // ✅ v21.2 — expanded renderAccount (includes account info table)
-    renderAccount(u) {
-      const av = document.getElementById('accountIdentityAvatar');
-      if (av) U.safeAvatar(av, u.avatar);
-
-      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-
-      // Mini identity card
-      set('accountIdentityName', u.name || '—');
-      set('accountIdentityHandle', u.handle || '@—');
-      set('accountIdentityEmail', u.email || '—');
-      const badge = document.getElementById('accountIdentityBadge');
-      if (badge) badge.hidden = !u.verified;
-
-      // Info table (new)
-      set('accountInfoName', u.name || '—');
-      set('accountInfoHandle', u.handle || '—');
-      set('accountInfoEmail', u.email || '—');
-      if (u.created_at) {
-        const d = new Date(u.created_at);
-        set('accountInfoJoined', d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' }));
-      } else {
-        set('accountInfoJoined', '—');
-      }
-    },
-
-    async loadUserPosts() {
-      const feed = document.getElementById('settingsUserPosts');
-      if (!feed || !S.me) return;
-      feed.innerHTML = Feed.skeletonsHtml();
-      feed.setAttribute('aria-busy', 'true');
-      try {
-        const items = await API.get('/api/users/' + S.me.id + '/posts?limit=20');
-        if (!items || !items.length) {
-          feed.innerHTML = Feed.emptyHtml('ph-image-square', 'لا منشورات بعد', 'ابدأ بنشر أول برومبت لك.');
-        } else {
-          feed.innerHTML = '';
-          const frag = document.createDocumentFragment();
-          items.forEach(p => frag.appendChild(Post.renderCard(p)));
-          feed.appendChild(frag);
-        }
-        this.postsLoaded = true;
-      } catch (err) {
-        feed.innerHTML = Feed.emptyHtml('ph-cloud-slash', 'تعذّر التحميل', err.message || 'حاول مرة أخرى');
-      } finally { feed.setAttribute('aria-busy', 'false'); }
-    },
-
-    updatePreview(opts) {
-      opts = opts || {};
-      const heroCover = document.getElementById('settingsHeroCover');
-      if (heroCover) heroCover.dataset.cover = this.state.cover;
-      const heroAvatar = document.getElementById('settingsHeroAvatar');
-      if (heroAvatar) {
-        heroAvatar.dataset.frame = this.state.avatar_frame;
-        if (this.state.avatar && !heroAvatar.src) U.safeAvatar(heroAvatar, this.state.avatar);
-      }
-      const hero = document.getElementById('settingsHeroProfile');
-      if (hero) hero.dataset.style = this.state.card_style;
-      const name = document.getElementById('settingsHeroName');
-      if (name) name.textContent = this.state.name || '—';
-      const pronouns = document.getElementById('settingsHeroPronouns');
-      if (pronouns) { if (this.state.pronouns) { pronouns.textContent = this.state.pronouns; pronouns.hidden = false; } else pronouns.hidden = true; }
-      const bio = document.getElementById('settingsHeroBio');
-      if (bio) {
-        const bioVal = (document.getElementById('setBio') || {}).value || '';
-        if (bioVal.trim()) { bio.textContent = bioVal.trim(); bio.hidden = false; } else bio.hidden = true;
-      }
-      if (opts.flash !== false && this._flashHero) this._flashHero();
-    },
-
-    async save() {
-      const btn = document.getElementById('settingsSave');
-      if (btn) { btn.setAttribute('aria-busy', 'true'); btn.disabled = true; }
-      const payload = {
-        name: (document.getElementById('setName') || {}).value || '',
-        bio: (document.getElementById('setBio') || {}).value || '',
-        website: (document.getElementById('setWebsite') || {}).value || '',
-        pronouns: (document.getElementById('setPronouns') || {}).value || '',
-        cover: this.state.cover,
-        avatar_frame: this.state.avatar_frame,
-        accent_color: this.state.accent_color,
-        card_style: this.state.card_style,
-        preferences: this.state.preferences || _defaultPreferences(),
-      };
-      try {
-        const user = await API.patch('/api/me', payload);
-        S.me = user; window.__ME__ = user;
-        if (window.Sounds) Sounds.play('success');
-        Toast.show('تم الحفظ', 'success');
-        Auth.updateChrome(user);
-        this.hydrate();
-        if (S.tab === 'profile' && S.viewingUser && S.viewingUser.id === user.id) Profile.load(user.id);
-        return true;
-      } catch (err) {
-        if (window.Sounds) Sounds.play('error');
-        Toast.show(err.message || 'تعذّر الحفظ', 'error');
-        return false;
-      } finally {
-        if (btn) { btn.removeAttribute('aria-busy'); btn.disabled = false; }
-      }
-    },
-  };
-
-  /* ═══════════ PTR ═══════════ */
-  const PTR = {
-    init() {
-      const main = document.querySelector('.app-main');
-      if (!main) return;
-      let startY = 0, pulling = false, indicator = null;
-      const THRESHOLD = 70;
-      const createIndicator = () => {
-        const el = document.createElement('div');
-        el.className = 'ptr';
-        el.innerHTML = '<i class="ph ph-arrow-down"></i>';
-        main.appendChild(el); return el;
-      };
-      main.addEventListener('touchstart', (e) => {
-        if (window.scrollY > 5) return;
-        startY = e.touches[0].clientY; pulling = true;
-        indicator = indicator || createIndicator();
-      }, { passive: true });
-      main.addEventListener('touchmove', (e) => {
-        if (!pulling || !indicator) return;
-        const delta = e.touches[0].clientY - startY;
-        if (delta <= 0) return;
-        const progress = Math.min(delta / THRESHOLD, 1.2);
-        indicator.classList.add('pulling');
-        indicator.style.marginTop = Math.min(16, delta * 0.35) + 'px';
-        indicator.style.opacity = String(progress);
-        if (delta > THRESHOLD) indicator.classList.add('ready');
-        else indicator.classList.remove('ready');
-      }, { passive: true });
-      main.addEventListener('touchend', async () => {
-        if (!pulling || !indicator) return;
-        pulling = false;
-        if (indicator.classList.contains('ready')) {
-          indicator.classList.add('refreshing');
-          await App.refreshAll(true);
-          indicator.classList.remove('refreshing', 'ready');
-        }
-        setTimeout(() => {
-          indicator.classList.remove('pulling');
-          indicator.style.marginTop = '';
-          indicator.style.opacity = '';
-        }, 240);
-      });
-    },
-  };
-
-  /* ═══════════ APP ═══════════ */
-  const App = {
-    boot() {
-      if (S.booted) return;
-      S.booted = true;
-      console.log('[خَيال] booting v' + CFG.BUILD);
-
-      Theme.init();
-      Net.init();
-      Install.init();
-      Composer.init();
-      Comments.init();
-      Settings.init();
-      FollowersDrawer.init();
-      NotificationsLoader.init();
-      PTR.init();
-      this.bindGlobal();
-      this.bindNav();
-      this.bindDock();
-      this.bindSearch();
-      this.bindInfiniteScroll();
-      this.bindKeyboard();
-
-      Auth.updateChrome(S.me);
-
-      if (S.me) {
-        this.showApp();
-        this.switchTab('home', { silent: true });
-        const ca = document.getElementById('composerAvatar');
-        if (ca && S.me.avatar) U.safeAvatar(ca, S.me.avatar);
-        NotificationsLoader.start();
-      } else {
-        this.showLanding();
-        this.bindLanding();
-      }
-
-      this.updateHeroStats();
-      console.log('[خَيال] booted. v' + CFG.BUILD);
-    },
-
-    bindGlobal() {
-      document.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        const action = btn.dataset.action;
-
-        if (action === 'switch-mode') { e.preventDefault(); Auth.switchMode(btn.dataset.mode); return; }
-        if (action === 'close-auth') { e.preventDefault(); Auth.close(); return; }
-        if (action === 'close-composer') { e.preventDefault(); Composer.close(); return; }
-        if (action === 'close-settings') { e.preventDefault(); Settings.close(); return; }
-        if (action === 'close-edit-profile') { e.preventDefault(); Settings.close(); return; }
-        if (action === 'submit-composer') { e.preventDefault(); Composer.publish(); return; }
-        if (action === 'save-profile') { e.preventDefault(); Settings.save(); return; }
-        if (action === 'save-settings') { e.preventDefault(); Settings.save(); return; }
-        if (action === 'choose-type') { e.preventDefault(); Composer.chooseType(btn.dataset.type); return; }
-        if (action === 'chat-list') { e.preventDefault(); Chat.backToList(); return; }
-        if (action === 'chat-new') { e.preventDefault(); Toast.show('ابدأ محادثة من ملف أي مستخدم', 'info'); return; }
-        if (action === 'open-settings') { e.preventDefault(); Settings.open(); return; }
-        if (action === 'edit-profile') { e.preventDefault(); Settings.open(); return; }
-        if (action === 'pick-avatar-file') { e.preventDefault(); const i = document.getElementById('avatarFileInput'); if (i) i.click(); return; }
-        if (action === 'pick-cover-file') { e.preventDefault(); const i = document.getElementById('coverFileInput'); if (i) i.click(); return; }
-        if (action === 'toggle-notifications') { e.preventDefault(); Drawers.openNotifications(); return; }
-        if (action === 'close-profile-view') { e.preventDefault(); ProfileView.close(); return; }
-        if (action === 'profile-view-follow') { e.preventDefault(); ProfileView._handleFollow(btn); return; }
-        if (action === 'profile-view-share') { e.preventDefault(); ProfileView._handleShare(); return; }
-        if (action === 'profile-view-menu') { e.preventDefault(); ProfileView._handleMenu(); return; }
-        if (action === 'profile-view-followers') { e.preventDefault(); ProfileView._openFollowers('followers'); return; }
-        if (action === 'profile-view-following') { e.preventDefault(); ProfileView._openFollowers('following'); return; }
-        if (action === 'close-followers') { e.preventDefault(); FollowersDrawer.close(); return; }
-        if (action === 'close-notifications') { e.preventDefault(); Drawers.closeNotifications(); return; }
-        if (action === 'close-comments') { e.preventDefault(); Drawers.closeComments(); return; }
-        if (action === 'copy-handle') {
-          e.preventDefault();
-          const el = document.getElementById('profileHandle');
-          const handle = el ? el.textContent.trim() : '';
-          if (!handle) return;
-          U.copy(handle).then(ok => Toast.show(ok ? 'تم نسخ المعرّف' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600));
-          return;
-        }
-      });
-
-      document.addEventListener('click', (e) => {
-        const tag = e.target.closest('.tag[data-tag]');
-        if (tag) App.filterByTag(tag.dataset.tag);
-      });
-
-      document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
-        const pv = document.getElementById('profileView');
-        if (pv && !pv.hidden) { ProfileView.close(); return; }
-        const fd = document.getElementById('followersDrawer');
-        if (fd && fd.getAttribute('data-open') === 'true') { FollowersDrawer.close(); return; }
-        const cv = document.getElementById('composerView');
-        const sv = document.getElementById('settingsView');
-        const am = document.getElementById('authModal');
-        if (cv && !cv.hidden) { Composer.close(); return; }
-        if (sv && !sv.hidden) { Settings.close(); return; }
-        if (am && am.getAttribute('data-open') === 'true') { Auth.close(); return; }
-        Drawers.closeAll();
-      });
-
-      document.querySelectorAll('.composer-trigger').forEach(trigger => {
-        trigger.addEventListener('keydown', (ev) => {
-          if (ev.key === 'Enter' || ev.key === ' ') {
-            ev.preventDefault();
-            if (window.Composer) Composer.open();
-          }
-        });
-      });
-    },
-
-    bindNav() {
-      const themeBtn = document.querySelector('button[aria-label="تبديل المظهر"]');
-      if (themeBtn) { themeBtn.removeAttribute('onclick'); themeBtn.addEventListener('click', () => Theme.toggle()); }
-      const signIn = document.getElementById('signInBtn');
-      if (signIn) { signIn.removeAttribute('onclick'); signIn.addEventListener('click', () => Auth.open('login')); }
-      const avatarBtn = document.getElementById('avatarBtn');
-      if (avatarBtn) {
-        avatarBtn.removeAttribute('onclick');
-        avatarBtn.addEventListener('click', () => { if (S.me) this.switchTab('profile'); else Auth.open('login'); });
-      }
-      let ticking = false;
-      window.addEventListener('scroll', () => {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(() => {
-          const nav = document.querySelector('.nav');
-          if (nav) nav.classList.toggle('is-scrolled', window.scrollY > 12);
-          ticking = false;
-        });
-      }, { passive: true });
-    },
-
-    bindDock() {
-      document.querySelectorAll('.dock-item[data-tab]').forEach(btn => {
-        btn.removeAttribute('onclick');
-        const tab = btn.dataset.tab;
-        btn.addEventListener('click', () => {
-          if (tab === 'settings') {
-            if (window.Settings) Settings.open();
-            else Toast.show('تعذّر فتح الإعدادات', 'error');
-          } else { this.switchTab(tab); }
-        });
-      });
-      const create = document.querySelector('.dock-create');
-      if (create) {
-        create.removeAttribute('onclick');
-        create.addEventListener('click', () => { if (window.Composer) Composer.open(); });
-      }
-    },
-
-    bindSearch() {
-      const input = document.getElementById('searchInput');
-      const results = document.getElementById('searchResults');
-      if (!input || !results) return;
-      const run = U.debounce(async () => {
-        const q = input.value.trim();
-        if (!q) { results.setAttribute('data-open', 'false'); results.innerHTML = ''; return; }
-        try {
-          const items = await API.get('/api/posts?q=' + encodeURIComponent(q) + '&limit=6');
-          if (!items || !items.length) {
-            results.innerHTML = '<div style="padding:var(--sp-4);text-align:center;color:var(--fg-3);font-size:var(--fs-2)">لا نتائج</div>';
-          } else {
-            results.innerHTML = items.map(p =>
-              '<div class="search-result" data-post-id="' + p.id + '">' +
-                '<img src="' + U.escapeHtml(p.image || '') + '" alt="" loading="lazy">' +
-                '<div class="search-result-info"><strong>' + U.escapeHtml(p.title || '') + '</strong>' +
-                '<span>' + U.escapeHtml((p.prompt || '').slice(0, 80)) + '</span></div>' +
-              '</div>'
-            ).join('');
-            results.querySelectorAll('.search-result').forEach(r => {
-              r.addEventListener('click', () => {
-                const pid = r.dataset.postId;
-                results.setAttribute('data-open', 'false');
-                input.value = '';
-                const existing = document.querySelector('[data-post-id="' + pid + '"]');
-                if (existing) existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              });
-            });
-          }
-          results.setAttribute('data-open', 'true');
-        } catch (err) {}
-      }, CFG.SEARCH_DEBOUNCE);
-      input.addEventListener('input', run);
-      input.addEventListener('focus', () => { if (input.value.trim()) results.setAttribute('data-open', 'true'); });
-      document.addEventListener('click', (e) => {
-        if (!e.target.closest('.search')) results.setAttribute('data-open', 'false');
-      });
-    },
-
-    bindInfiniteScroll() {
-      const onScroll = () => {
-        if (window.innerHeight + window.scrollY < document.body.offsetHeight - 800) return;
-        const fs = feedState(S.tab);
-        if (!fs.hasMore || fs.busy || !fs.loaded) return;
-        Feed.loadMore(S.tab);
-      };
-      window.addEventListener('scroll', U.debounce(onScroll, 200), { passive: true });
-    },
-
-    bindKeyboard() {
-      document.addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-          e.preventDefault();
-          const input = document.getElementById('searchInput');
-          if (input) input.focus();
-        }
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
-          e.preventDefault();
-          if (S.me) Composer.open();
-        }
-      });
-    },
-
-    bindLanding() {
-      document.querySelectorAll('button[onclick*="previewFeed"]').forEach(b => {
-        b.removeAttribute('onclick');
-        b.addEventListener('click', () => this.previewFeed());
-      });
-      document.querySelectorAll('button[onclick*="Auth.open"]').forEach(b => {
-        b.removeAttribute('onclick');
-        b.addEventListener('click', () => Auth.open('register'));
-      });
-
-      // v21.0 — landing CTA actions
-      document.querySelectorAll('[data-action="landing-cta-register"]').forEach(b => {
-        b.addEventListener('click', () => Auth.open('register'));
-      });
-      document.querySelectorAll('[data-action="landing-cta-preview"]').forEach(b => {
-        b.addEventListener('click', () => this.previewFeed());
-      });
-    },
-
-    showLanding() {
-      const landing = document.getElementById('view-landing');
-      const appView = document.getElementById('view-app');
-      if (landing) { landing.hidden = false; landing.classList.add('is-active'); }
-      if (appView) appView.hidden = true;
-      const dock = document.getElementById('dock');
-      if (dock) dock.hidden = true;
-      document.querySelectorAll('.nav-links').forEach(n => n.style.display = '');
-    },
-
-    showApp() {
-      const landing = document.getElementById('view-landing');
-      const appView = document.getElementById('view-app');
-      if (landing) { landing.hidden = true; landing.classList.remove('is-active'); }
-      if (appView) { appView.hidden = false; appView.classList.add('is-active'); }
-      const dock = document.getElementById('dock');
-      if (dock) dock.hidden = !S.me;
-      document.querySelectorAll('.nav-links').forEach(n => n.style.display = 'none');
-    },
-
-    previewFeed() { if (!S.me) { Auth.open('register'); return; } this.showApp(); this.switchTab('home'); },
-
-    activateTab(name) {
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('is-active', p.dataset.tab === name));
-      document.querySelectorAll('.dock-item[data-tab]').forEach(b => {
-        const on = b.dataset.tab === name;
-        b.setAttribute('aria-current', on ? 'page' : 'false');
-      });
-    },
-
-    switchTab(name, opts) {
-      if (!name) return;
-      opts = opts || {};
-      if (S.tab !== name) S.tabHistory.push(S.tab);
-      S.tab = name;
-      this.activateTab(name);
-      if (window.Sounds && !opts.silent) Sounds.play('tab');
-      if (name === 'home' || name === 'explore') Feed.load(name);
-      else if (name === 'chat') Chat.loadList();
-      else if (name === 'profile') { if (S.viewingUser) Profile.load(S.viewingUser.id); else Profile.load(); }
-      else if (name === 'liked' || name === 'saved') Feed.load(name);
-      if (!opts.noScroll) window.scrollTo({ top: 0, behavior: 'smooth' });
-    },
-
-    setSort(sort) {
-      S.sort = sort;
-      document.querySelectorAll('.sort-tab').forEach(b => b.setAttribute('aria-selected', b.dataset.sort === sort ? 'true' : 'false'));
-      Feed.reset('home'); Feed.reset('explore');
-      Feed.load(S.tab === 'explore' ? 'explore' : 'home', { force: true });
-    },
-
-    filterByTag(tag) {
-      if (!tag) return;
-      S.filterTag = tag; S.sort = 'recent';
-      this.switchTab('explore');
-      Feed.reset('explore');
-      Feed.load('explore', { force: true });
-    },
-
-    openProfile(userId) { if (!userId) return; ProfileView.open(userId); },
-
-    async refreshAll(force) {
-      Feed.reset(S.tab);
-      await Feed.load(S.tab, { force: true });
-      if (S.tab === 'chat') await Chat.loadList();
-      if (S.tab === 'profile' && S.viewingUser) await Profile.load(S.viewingUser.id);
-      if (force) Toast.show('تم التحديث', 'success', 1600);
-    },
-
-    async updateHeroStats() {
-      try {
-        const health = await API.get('/api/health');
-        const p = document.getElementById('heroStatPosts');
-        const u = document.getElementById('heroStatUsers');
-        if (p) p.textContent = U.formatNumber(health.posts || 0);
-        if (u) u.textContent = U.formatNumber(health.users || 0);
-      } catch (e) {}
-    },
-  };
-
-  /* ═══════════ AUDIO UNLOCK ═══════════ */
-  function unlockAudioOnce() {
-    if (window.Sounds) Sounds.unlock();
-    ['click', 'touchstart', 'keydown'].forEach(evt => document.removeEventListener(evt, unlockAudioOnce));
-  }
-  ['click', 'touchstart', 'keydown'].forEach(evt => {
-    document.addEventListener(evt, unlockAudioOnce, { once: true, passive: true });
-  });
-
-  /* ═══════════ EXPORT + BOOT ═══════════ */
-  window.App = App;
-  window.Auth = Auth;
-  window.Post = Post;
-  window.Chat = Chat;
-  window.Comments = Comments;
-  window.Drawers = Drawers;
-  window.Composer = Composer;
-  window.Profile = Profile;
-  window.ProfileView = ProfileView;
-  window.FollowersDrawer = FollowersDrawer;
-  window.NotificationsLoader = NotificationsLoader;
-  window.ConfirmModal = ConfirmModal;
-  window.ReportModal = ReportModal;
-  window.Explore = Explore;
-  window.Settings = Settings;
-  window.Toast = Toast;
-  window.Install = Install;
-  window.U = U;
-  window.Theme = Theme;
-
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.prompt-menu-wrap')) {
-      if (window.Post && Post.closeAllMenus) Post.closeAllMenus();
-    }
-  });
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => App.boot());
-  } else {
-    App.boot();
-  }
-})();
+        for t in tables:
+            out["columns"][t] = [c["name"] for c in insp.get_columns(t)]
+        for model in [User, Post, Comment, Like, Save, Follow, Chat, Message,
+                      Notification, Report]:
+            try:
+                out["row_counts"][model.__tablename__] = model.query.count()
+            except Exception:
+                out["row_counts"][model.__tablename__] = "error"
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.get("/admin/db-reset")
+def admin_db_reset():
+    key = request.args.get("key", "")
+    expected = os.getenv("ADMIN_RESET_KEY", "")
+    if not expected or key != expected:
+        abort(403)
+    try:
+        db.drop_all()
+        db.create_all()
+        return jsonify({
+            "status": "ok",
+            "message": "تم إعادة إنشاء الجداول",
+            "tables": inspect(db.engine).get_table_names(),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.get("/admin/db-migrate")
+def admin_db_migrate():
+    key = request.args.get("key", "")
+    if not key or key != os.getenv("ADMIN_RESET_KEY", ""):
+        abort(403)
+    try:
+        with db.engine.begin() as conn:
+            cols = [
+                ("website",      "VARCHAR(120)"),
+                ("pronouns",     "VARCHAR(20)"),
+                ("cover",        "VARCHAR(40) DEFAULT 'aurora'"),
+                ("accent_color", "VARCHAR(7)  DEFAULT '#22D3EE'"),
+                ("avatar_shape", "VARCHAR(30) DEFAULT 'ring'"),
+                ("card_style",   "VARCHAR(12) DEFAULT 'glass'"),
+                ("preferences",  "TEXT DEFAULT '{}'"),
+            ]
+            for name, dtype in cols:
+                conn.execute(text(
+                    f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
+                ))
+
+            # ── v14.1: أعمدة جديدة لـ posts ──
+            conn.execute(text(
+                "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
+                "updated_at TIMESTAMP DEFAULT NOW()"
+            ))
+            conn.execute(text(
+                "UPDATE posts SET updated_at = created_at "
+                "WHERE updated_at IS NULL"
+            ))
+            conn.execute(text(
+                "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
+                "images TEXT"
+            ))
+
+            try:
+                conn.execute(text(
+                    "ALTER TABLE users ALTER COLUMN avatar_shape TYPE VARCHAR(30)"
+                ))
+            except Exception:
+                pass
+
+            conn.execute(text("""
+                UPDATE users SET avatar_shape = CASE
+                    WHEN avatar_shape = 'circle'  THEN 'gradient'
+                    WHEN avatar_shape = 'rounded' THEN 'ring'
+                    WHEN avatar_shape = 'square'  THEN 'none'
+                    ELSE avatar_shape
+                END
+                WHERE avatar_shape IN ('circle', 'rounded', 'square') OR avatar_shape IS NULL
+            """))
+
+            conn.execute(text("UPDATE users SET cover = 'aurora' WHERE cover IS NULL"))
+            conn.execute(text("UPDATE users SET accent_color = '#22D3EE' WHERE accent_color IS NULL"))
+            conn.execute(text("UPDATE users SET avatar_shape = 'ring' WHERE avatar_shape IS NULL"))
+            conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
+            conn.execute(text("UPDATE users SET preferences = '{}' WHERE preferences IS NULL"))
+
+        return jsonify({"ok": True, "message": "تمت إضافة الأعمدة بنجاح"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════
+# البرومبتات
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/posts")
+def api_posts():
+    q = request.args.get("q", "").strip()
+    tag = request.args.get("tag", "").strip()
+    model = request.args.get("model", "").strip()
+    author = request.args.get("author")
+    sort = request.args.get("sort", "recent")
+    limit = min(int(request.args.get("limit", 20)), 50)
+    before_id = request.args.get("before_id")
+
+    query = Post.query
+
+    if q:
+        like = f"%{q}%"
+        query = query.filter(db.or_(
+            Post.title.ilike(like),
+            Post.prompt.ilike(like),
+            Post.tags.ilike(like),
+        ))
+    if tag:
+        query = query.filter(Post.tags.ilike(f"%{tag}%"))
+    if model:
+        query = query.filter(Post.model == model)
+    if author:
+        try:
+            query = query.filter(Post.author_id == int(author))
+        except ValueError:
+            pass
+
+    if before_id:
+        try:
+            bid = int(before_id)
+            query = query.filter(Post.id < bid)
+        except (ValueError, TypeError):
+            pass
+
+    query = query.options(joinedload(Post.author))
+
+    if sort == "top":
+        query = query.order_by(Post.likes.desc(), Post.id.desc())
+    else:
+        query = query.order_by(Post.id.desc())
+
+    posts = query.limit(limit).all()
+    me = current_user()
+
+    post_ids = [p.id for p in posts]
+    liked_ids = set()
+    saved_ids = set()
+
+    if me and post_ids:
+        liked_rows = db.session.query(Like.post_id).filter(
+            Like.user_id == me.id, Like.post_id.in_(post_ids)
+        ).all()
+        liked_ids = {r[0] for r in liked_rows}
+
+        saved_rows = db.session.query(Save.post_id).filter(
+            Save.user_id == me.id, Save.post_id.in_(post_ids)
+        ).all()
+        saved_ids = {r[0] for r in saved_rows}
+
+    out = []
+    for p in posts:
+        d = p.to_dict()
+        d["author_data"] = p.author.to_dict()
+        d["liked"] = p.id in liked_ids
+        d["saved"] = p.id in saved_ids
+        d["is_owner"] = bool(me and me.id == p.author_id)
+        out.append(d)
+
+    resp = jsonify(out)
+    resp.headers["Cache-Control"] = (
+        "private, max-age=15" if me else "public, max-age=30"
+    )
+    resp.headers["X-Has-More"] = "true" if len(posts) == limit else "false"
+    return resp
+
+
+@app.get("/api/posts/<int:pid>")
+def api_post(pid):
+    p = db.session.get(Post, pid)
+    if not p:
+        abort(404)
+    d = p.to_dict()
+    d["author_data"] = p.author.to_dict()
+    me = current_user()
+    if me:
+        d["liked"] = db.session.query(Like).filter_by(
+            user_id=me.id, post_id=p.id
+        ).first() is not None
+        d["saved"] = db.session.query(Save).filter_by(
+            user_id=me.id, post_id=p.id
+        ).first() is not None
+        d["is_owner"] = (me.id == p.author_id)
+    else:
+        d["is_owner"] = False
+    return jsonify(d)
+
+
+@app.post("/api/posts")
+@require_auth
+def api_create_post():
+    u = g.user
+    data = request.get_json() or {}
+    title = (data.get("title") or "").strip()
+    prompt = (data.get("prompt") or "").strip()
+
+    if not title or not prompt:
+        return jsonify({"error": "العنوان والنص مطلوبان"}), 400
+    if len(title) > 200:
+        return jsonify({"error": "العنوان طويل جداً (200 حرف كحد أقصى)"}), 400
+    if len(prompt) > 5000:
+        return jsonify({"error": "النص طويل جداً (5000 حرف كحد أقصى)"}), 400
+
+    image = (data.get("image") or "").strip() or None
+    if image and not _validate_url(image, max_len=1024):
+        return jsonify({"error": "رابط الصورة غير صالح"}), 400
+
+    model = (data.get("model") or "").strip()[:64] or None
+
+    tags_raw = data.get("tags") or []
+    if isinstance(tags_raw, str):
+        tags_raw = [t.strip() for t in tags_raw.split(",")]
+    tags = [t[:30] for t in tags_raw if t.strip()][:8]
+
+    post = Post(
+        author_id=u.id,
+        title=title,
+        prompt=prompt,
+        image=image,
+        model=model,
+        tags=",".join(tags),
+    )
+    db.session.add(post)
+    db.session.commit()
+    d = post.to_dict()
+    d["author_data"] = u.to_dict()
+    d["liked"] = False
+    d["saved"] = False
+    d["is_owner"] = True
+    return jsonify(d), 201
+
+
+@app.patch("/api/posts/<int:pid>")
+@require_auth
+def api_update_post(pid):
+    u = g.user
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
+    if post.author_id != u.id:
+        abort(403)
+
+    data = request.get_json() or {}
+
+    if "title" in data:
+        title = (data.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "العنوان مطلوب"}), 400
+        if len(title) > 200:
+            return jsonify({"error": "العنوان طويل جداً"}), 400
+        post.title = title
+
+    if "prompt" in data:
+        prompt = (data.get("prompt") or "").strip()
+        if not prompt:
+            return jsonify({"error": "النص مطلوب"}), 400
+        if len(prompt) > 5000:
+            return jsonify({"error": "النص طويل جداً"}), 400
+        post.prompt = prompt
+
+    if "image" in data:
+        image = (data.get("image") or "").strip() or None
+        if image and not _validate_url(image, max_len=1024):
+            return jsonify({"error": "رابط الصورة غير صالح"}), 400
+        post.image = image
+
+    if "model" in data:
+        post.model = (data.get("model") or "").strip()[:64] or None
+
+    if "tags" in data:
+        tags_raw = data.get("tags") or []
+        if isinstance(tags_raw, str):
+            tags_raw = [t.strip() for t in tags_raw.split(",")]
+        tags = [t[:30] for t in tags_raw if t.strip()][:8]
+        post.tags = ",".join(tags)
+
+    db.session.commit()
+    d = post.to_dict()
+    d["author_data"] = post.author.to_dict()
+    d["is_owner"] = True
+    return jsonify(d)
+
+
+@app.delete("/api/posts/<int:pid>")
+@require_auth
+def api_delete_post(pid):
+    u = g.user
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
+    if post.author_id != u.id:
+        abort(403)
+    db.session.delete(post)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/posts/<int:pid>/like")
+@require_auth
+def api_like(pid):
+    u = g.user
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
+    existing = Like.query.filter_by(user_id=u.id, post_id=pid).first()
+    if existing:
+        db.session.delete(existing)
+        post.likes = max(0, post.likes - 1)
+        liked = False
+    else:
+        db.session.add(Like(user_id=u.id, post_id=pid))
+        post.likes += 1
+        liked = True
+        _notify(
+            user_id=post.author_id,
+            actor_id=u.id,
+            kind="like",
+            target_type="post",
+            target_id=post.id,
+            text=post.title[:120],
+        )
+    db.session.commit()
+    return jsonify({"liked": liked, "likes": post.likes})
+
+
+@app.post("/api/posts/<int:pid>/save")
+@require_auth
+def api_save(pid):
+    u = g.user
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
+    existing = Save.query.filter_by(user_id=u.id, post_id=pid).first()
+    if existing:
+        db.session.delete(existing)
+        post.saves = max(0, post.saves - 1)
+        saved = False
+    else:
+        db.session.add(Save(user_id=u.id, post_id=pid))
+        post.saves += 1
+        saved = True
+    db.session.commit()
+    return jsonify({"saved": saved, "saves": post.saves})
+
+
+@app.post("/api/posts/<int:pid>/copy")
+def api_copy(pid):
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
+    post.copies += 1
+    db.session.commit()
+    return jsonify({"copies": post.copies})
+
+
+# ═══════════════════════════════════════════════════════════
+# التعليقات
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/posts/<int:pid>/comments")
+def api_comments(pid):
+    if not db.session.get(Post, pid):
+        abort(404)
+    cs = Comment.query.filter_by(post_id=pid)\
+                      .order_by(Comment.created_at.desc()).all()
+    return jsonify([
+        {**c.to_dict(), "author_data": c.author.to_dict()} for c in cs
+    ])
+
+
+@app.post("/api/posts/<int:pid>/comments")
+@require_auth
+def api_add_comment(pid):
+    u = g.user
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
+    text_ = ((request.get_json() or {}).get("text") or "").strip()
+    if not text_:
+        return jsonify({"error": "نص التعليق مطلوب"}), 400
+    if len(text_) > 1000:
+        return jsonify({"error": "التعليق طويل جداً"}), 400
+
+    c = Comment(post_id=pid, author_id=u.id, text=text_)
+    db.session.add(c)
+
+    _notify(
+        user_id=post.author_id,
+        actor_id=u.id,
+        kind="comment",
+        target_type="post",
+        target_id=post.id,
+        text=text_[:200],
+    )
+
+    db.session.commit()
+    return jsonify({**c.to_dict(), "author_data": u.to_dict()}), 201
+
+
+@app.delete("/api/comments/<int:cid>")
+@require_auth
+def api_delete_comment(cid):
+    u = g.user
+    c = db.session.get(Comment, cid)
+    if not c:
+        abort(404)
+    if c.author_id != u.id:
+        abort(403)
+    db.session.delete(c)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# ═══════════════════════════════════════════════════════════
+# البلاغات
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/posts/<int:pid>/report")
+@require_auth
+@rate_limit(max_hits=10, window_s=3600, scope="report")
+def api_report_post(pid):
+    u = g.user
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
+    if post.author_id == u.id:
+        return jsonify({"error": "لا يمكنك الإبلاغ عن منشورك"}), 400
+
+    data = request.get_json() or {}
+    reason = (data.get("reason") or "").strip()
+    note = (data.get("note") or "").strip()[:500]
+
+    if reason not in ALLOWED_REPORT_REASONS:
+        return jsonify({"error": "سبب غير صالح"}), 400
+
+    existing = Report.query.filter_by(
+        reporter_id=u.id, target_type="post",
+        target_id=pid, status="pending"
+    ).first()
+    if existing:
+        return jsonify({"error": "لديك بلاغ قائم على هذا المنشور"}), 409
+
+    r = Report(
+        reporter_id=u.id,
+        target_type="post",
+        target_id=pid,
+        reason=reason,
+        note=note,
+    )
+    db.session.add(r)
+    db.session.commit()
+    return jsonify({"ok": True, "id": r.id}), 201
+
+
+# ═══════════════════════════════════════════════════════════
+# المستخدمون
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/users/<int:uid>")
+def api_user(uid):
+    u = db.session.get(User, uid)
+    if not u:
+        abort(404)
+
+    d = u.to_dict()
+    d["posts_count"] = u.posts.count()
+    d["total_likes"] = 0
+    d["total_copies"] = 0
+
+    totals = db.session.query(
+        func.coalesce(func.sum(Post.likes), 0),
+        func.coalesce(func.sum(Post.copies), 0),
+    ).filter(Post.author_id == uid).first()
+    if totals:
+        d["total_likes"] = int(totals[0])
+        d["total_copies"] = int(totals[1])
+
+    me = current_user()
+    d["is_following"] = False
+    if me and me.id != uid:
+        d["is_following"] = Follow.query.filter_by(
+            follower_id=me.id, following_id=uid
+        ).first() is not None
+
+    return jsonify(d)
+
+
+@app.get("/api/users/<int:uid>/posts")
+def api_user_posts(uid):
+    if not db.session.get(User, uid):
+        abort(404)
+
+    limit = min(int(request.args.get("limit", 20)), 50)
+    before_id = request.args.get("before_id")
+
+    query = Post.query.filter_by(author_id=uid)\
+                      .options(joinedload(Post.author))\
+                      .order_by(Post.id.desc())
+
+    if before_id:
+        try:
+            query = query.filter(Post.id < int(before_id))
+        except (ValueError, TypeError):
+            pass
+
+    posts = query.limit(limit).all()
+    me = current_user()
+
+    post_ids = [p.id for p in posts]
+    liked_ids = set()
+    saved_ids = set()
+    if me and post_ids:
+        liked_rows = db.session.query(Like.post_id).filter(
+            Like.user_id == me.id, Like.post_id.in_(post_ids)
+        ).all()
+        liked_ids = {r[0] for r in liked_rows}
+        saved_rows = db.session.query(Save.post_id).filter(
+            Save.user_id == me.id, Save.post_id.in_(post_ids)
+        ).all()
+        saved_ids = {r[0] for r in saved_rows}
+
+    out = []
+    for p in posts:
+        d = p.to_dict()
+        d["author_data"] = p.author.to_dict()
+        d["liked"] = p.id in liked_ids
+        d["saved"] = p.id in saved_ids
+        d["is_owner"] = bool(me and me.id == p.author_id)
+        out.append(d)
+
+    resp = jsonify(out)
+    resp.headers["X-Has-More"] = "true" if len(posts) == limit else "false"
+    return resp
+
+
+@app.get("/api/users/search")
+def api_users_search():
+    """v14.2 — Search users by name/username/handle."""
+    q = request.args.get("q", "").strip()
+    limit = min(int(request.args.get("limit", 20)), 50)
+    before_id = request.args.get("before_id")
+
+    if not q or len(q) < 2:
+        return jsonify({"items": [], "next_before": None})
+
+    like = f"%{q}%"
+    query = User.query.filter(
+        db.or_(
+            User.name.ilike(like),
+            User.username.ilike(like),
+            User.handle.ilike(like),
+        )
+    )
+
+    if before_id:
+        try:
+            query = query.filter(User.id < int(before_id))
+        except (ValueError, TypeError):
+            pass
+
+    query = query.order_by(User.followers.desc(), User.id.desc())
+    users = query.limit(limit).all()
+
+    me = current_user()
+    out = []
+    for u in users:
+        d = u.to_dict()
+        if me and me.id != u.id:
+            d["is_following"] = Follow.query.filter_by(
+                follower_id=me.id, following_id=u.id
+            ).first() is not None
+        else:
+            d["is_following"] = False
+        out.append(d)
+
+    last_id = users[-1].id if users else None
+    return jsonify({
+        "items": out,
+        "next_before": last_id if len(users) == limit else None,
+    })
+
+
+@app.get("/api/users/<int:uid>/followers")
+def api_user_followers(uid):
+    target = db.session.get(User, uid)
+    if not target:
+        abort(404)
+
+    limit = min(int(request.args.get("limit", 30)), 100)
+    before_id = request.args.get("before_id")
+
+    query = Follow.query.filter_by(following_id=uid)\
+                        .order_by(Follow.id.desc())
+    if before_id:
+        try:
+            query = query.filter(Follow.id < int(before_id))
+        except (ValueError, TypeError):
+            pass
+
+    rows = query.limit(limit).all()
+    out = []
+    last_id = None
+    for r in rows:
+        u = db.session.get(User, r.follower_id)
+        if u:
+            out.append(u.to_dict())
+            last_id = r.id
+
+    return jsonify({
+        "items": out,
+        "next_before": last_id if len(rows) == limit else None,
+        "total": target.followers,
+    })
+
+
+@app.get("/api/users/<int:uid>/following")
+def api_user_following(uid):
+    target = db.session.get(User, uid)
+    if not target:
+        abort(404)
+
+    limit = min(int(request.args.get("limit", 30)), 100)
+    before_id = request.args.get("before_id")
+
+    query = Follow.query.filter_by(follower_id=uid)\
+                        .order_by(Follow.id.desc())
+    if before_id:
+        try:
+            query = query.filter(Follow.id < int(before_id))
+        except (ValueError, TypeError):
+            pass
+
+    rows = query.limit(limit).all()
+    out = []
+    last_id = None
+    for r in rows:
+        u = db.session.get(User, r.following_id)
+        if u:
+            out.append(u.to_dict())
+            last_id = r.id
+
+    return jsonify({
+        "items": out,
+        "next_before": last_id if len(rows) == limit else None,
+        "total": target.following,
+    })
+
+
+@app.post("/api/users/<int:uid>/follow")
+@require_auth
+def api_follow(uid):
+    me = g.user
+    if me.id == uid:
+        return jsonify({"error": "لا يمكن متابعة نفسك"}), 400
+    target = db.session.get(User, uid)
+    if not target:
+        abort(404)
+
+    existing = Follow.query.filter_by(
+        follower_id=me.id, following_id=uid
+    ).first()
+    if existing:
+        db.session.delete(existing)
+        me.following = max(0, me.following - 1)
+        target.followers = max(0, target.followers - 1)
+        following = False
+    else:
+        db.session.add(Follow(follower_id=me.id, following_id=uid))
+        me.following += 1
+        target.followers += 1
+        following = True
+        _notify(
+            user_id=uid,
+            actor_id=me.id,
+            kind="follow",
+            target_type="user",
+            target_id=me.id,
+            text=me.name[:100],
+        )
+    db.session.commit()
+    return jsonify({"following": following, "followers": target.followers})
+
+
+@app.patch("/api/me")
+@require_auth
+def api_update_me():
+    u = g.user
+    data = request.get_json() or {}
+
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if len(name) < 2:
+            return jsonify({"error": "الاسم قصير جداً"}), 400
+        if len(name) > 80:
+            return jsonify({"error": "الاسم طويل جداً"}), 400
+        u.name = name
+
+    if "bio" in data:
+        bio = (data["bio"] or "").strip()
+        if len(bio) > 300:
+            return jsonify({"error": "النبذة طويلة جداً"}), 400
+        u.bio = bio
+
+    if "website" in data:
+        web = (data["website"] or "").strip()
+        if web:
+            if not web.startswith("http://") and not web.startswith("https://"):
+                web = "https://" + web
+            if not _validate_url(web, max_len=120):
+                return jsonify({"error": "رابط الموقع غير صالح"}), 400
+        u.website = web[:120] if web else None
+
+    if "pronouns" in data:
+        pr = (data["pronouns"] or "").strip()
+        if pr not in ALLOWED_PRONOUNS:
+            return jsonify({"error": "ضمير غير صالح"}), 400
+        u.pronouns = pr or None
+
+    if "avatar" in data and data["avatar"]:
+        av = data["avatar"].strip()
+        if not _validate_url(av, max_len=500):
+            return jsonify({"error": "رابط الصورة الشخصية غير صالح"}), 400
+        u.avatar = av
+
+    if "cover" in data:
+        cv = (data["cover"] or "").strip()
+        if cv in ALLOWED_COVERS:
+            u.cover = cv
+
+    if "accent_color" in data:
+        ac = (data["accent_color"] or "").strip()
+        if re.match(r"^#[0-9A-Fa-f]{6}$", ac):
+            u.accent_color = ac
+
+    frame_val = None
+    if "avatar_frame" in data:
+        frame_val = (data["avatar_frame"] or "").strip()
+    elif "avatar_shape" in data:
+        frame_val = (data["avatar_shape"] or "").strip()
+    if frame_val is not None and frame_val in ALLOWED_FRAMES:
+        u.avatar_shape = frame_val
+
+    if "card_style" in data:
+        cs = (data["card_style"] or "").strip()
+        if cs in ALLOWED_CARD_STYLES:
+            u.card_style = cs
+
+    if "preferences" in data:
+        prefs = data["preferences"]
+        if not isinstance(prefs, dict):
+            return jsonify({"error": "preferences يجب أن يكون كائناً"}), 400
+
+        clean = {}
+
+        notif_in = prefs.get("notif")
+        if isinstance(notif_in, dict):
+            clean["notif"] = {}
+            for k in ("likes", "comments", "follows", "messages"):
+                if k in notif_in:
+                    clean["notif"][k] = bool(notif_in[k])
+
+        priv_in = prefs.get("priv")
+        if isinstance(priv_in, dict):
+            clean["priv"] = {}
+            for k in ("public_profile", "allow_messages", "show_website"):
+                if k in priv_in:
+                    clean["priv"][k] = bool(priv_in[k])
+
+        try:
+            u.preferences = json.dumps(clean, ensure_ascii=False)
+        except Exception:
+            return jsonify({"error": "preferences غير صالح"}), 400
+
+    db.session.commit()
+    return jsonify(_payload(u))
+
+
+@app.post("/api/me/password")
+@require_auth
+@rate_limit(max_hits=5, window_s=3600, scope="password")
+def api_change_password():
+    u = g.user
+    data = request.get_json() or {}
+    old = data.get("old_password") or ""
+    new = data.get("new_password") or ""
+
+    if not check_password_hash(u.password_hash, old):
+        return jsonify({"error": "كلمة المرور الحالية غير صحيحة"}), 401
+    if not _validate_password(new):
+        return jsonify({"error": "كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل"}), 400
+
+    u.password_hash = generate_password_hash(
+        new, method="pbkdf2:sha256", salt_length=16
+    )
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# ═══════════════════════════════════════════════════════════
+# الإشعارات
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/notifications")
+@require_auth
+def api_notifications():
+    me = g.user
+    limit = min(int(request.args.get("limit", 30)), 100)
+    before_id = request.args.get("before_id")
+    unread_only = request.args.get("unread") == "1"
+
+    query = Notification.query.filter_by(user_id=me.id)\
+                              .options(joinedload(Notification.actor))\
+                              .order_by(Notification.id.desc())
+
+    if unread_only:
+        query = query.filter_by(read=False)
+    if before_id:
+        try:
+            query = query.filter(Notification.id < int(before_id))
+        except (ValueError, TypeError):
+            pass
+
+    rows = query.limit(limit).all()
+    last_id = rows[-1].id if rows else None
+
+    unread_count = Notification.query.filter_by(
+        user_id=me.id, read=False
+    ).count()
+
+    return jsonify({
+        "items": [n.to_dict() for n in rows],
+        "next_before": last_id if len(rows) == limit else None,
+        "unread": unread_count,
+    })
+
+
+@app.post("/api/notifications/<int:nid>/read")
+@require_auth
+def api_notification_read(nid):
+    me = g.user
+    n = db.session.get(Notification, nid)
+    if not n or n.user_id != me.id:
+        abort(404)
+    n.read = True
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/notifications/read-all")
+@require_auth
+def api_notifications_read_all():
+    me = g.user
+    Notification.query.filter_by(user_id=me.id, read=False)\
+                      .update({"read": True})
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/notifications/unread-count")
+@require_auth
+def api_notifications_unread_count():
+    me = g.user
+    c = Notification.query.filter_by(user_id=me.id, read=False).count()
+    return jsonify({"count": c})
+
+
+# ═══════════════════════════════════════════════════════════
+# الدردشة
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/chats")
+@require_auth
+def api_chats():
+    me = g.user
+    chats = Chat.query.filter(db.or_(
+        Chat.user_a_id == me.id,
+        Chat.user_b_id == me.id,
+    )).all()
+    out = []
+    for c in chats:
+        other_id = c.user_b_id if c.user_a_id == me.id else c.user_a_id
+        other = db.session.get(User, other_id)
+        last = c.messages.order_by(Message.created_at.desc()).first()
+        unread = c.messages.filter_by(read=False)\
+                          .filter(Message.sender_id != me.id).count()
+        out.append({
+            "id": c.id,
+            "with_user": other.to_dict() if other else None,
+            "last": last.text if last else "",
+            "time": last.created_at.strftime("%H:%M") if last else "",
+            "unread": unread,
+        })
+    return jsonify(out)
+
+
+@app.get("/api/chats/<int:cid>/messages")
+@require_auth
+def api_messages(cid):
+    me = g.user
+    chat = db.session.get(Chat, cid)
+    if not chat:
+        abort(404)
+    if me.id not in (chat.user_a_id, chat.user_b_id):
+        abort(403)
+    msgs = chat.messages.order_by(Message.created_at.asc()).all()
+    for m in msgs:
+        if m.sender_id != me.id and not m.read:
+            m.read = True
+    db.session.commit()
+    return jsonify([{
+        "id": m.id,
+        "text": m.text,
+        "from": "me" if m.sender_id == me.id else "them",
+        "time": m.created_at.strftime("%H:%M"),
+    } for m in msgs])
+
+
+@app.post("/api/chats/<int:cid>/messages")
+@require_auth
+def api_send_message(cid):
+    me = g.user
+    chat = db.session.get(Chat, cid)
+    if not chat:
+        abort(404)
+    if me.id not in (chat.user_a_id, chat.user_b_id):
+        abort(403)
+    text_ = ((request.get_json() or {}).get("text") or "").strip()
+    if not text_:
+        return jsonify({"error": "الرسالة فارغة"}), 400
+    if len(text_) > 2000:
+        return jsonify({"error": "الرسالة طويلة جداً"}), 400
+
+    m = Message(chat_id=cid, sender_id=me.id, text=text_)
+    db.session.add(m)
+
+    other_id = chat.user_b_id if chat.user_a_id == me.id else chat.user_a_id
+    _notify(
+        user_id=other_id,
+        actor_id=me.id,
+        kind="message",
+        target_type="chat",
+        target_id=cid,
+        text=text_[:200],
+    )
+
+    db.session.commit()
+    return jsonify({
+        "id": m.id, "text": m.text, "from": "me",
+        "time": m.created_at.strftime("%H:%M"),
+    }), 201
+
+
+@app.post("/api/chats/with/<int:uid>")
+@require_auth
+def api_open_chat(uid):
+    me = g.user
+    if me.id == uid:
+        abort(400)
+    chat = Chat.query.filter(db.or_(
+        db.and_(Chat.user_a_id == me.id, Chat.user_b_id == uid),
+        db.and_(Chat.user_a_id == uid, Chat.user_b_id == me.id),
+    )).first()
+    if not chat:
+        chat = Chat(user_a_id=me.id, user_b_id=uid)
+        db.session.add(chat)
+        db.session.commit()
+    return jsonify({"id": chat.id})
+
+
+# ═══════════════════════════════════════════════════════════
+# الصحة
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/health")
+def health():
+    try:
+        return jsonify({
+            "status": "ok",
+            "db": "connected",
+            "auth": "local",
+            "mode": "render" if _IS_PROD else "local",
+            "users": User.query.count(),
+            "posts": Post.query.count(),
+            "time": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════
+# معالجات الأخطاء
+# ═══════════════════════════════════════════════════════════
+@app.errorhandler(400)
+def err_400(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "طلب غير صالح"}), 400
+    return render_template("error.html", code=400,
+                           title="طلب غير صالح",
+                           message="تحقّق من البيانات وأعد المحاولة."), 400
+
+
+@app.errorhandler(401)
+def err_401(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "يجب تسجيل الدخول"}), 401
+    return render_template("error.html", code=401,
+                           title="تحتاج تسجيل الدخول",
+                           message="سجّل دخولك للوصول إلى هذه الصفحة."), 401
+
+
+@app.errorhandler(403)
+def err_403(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "غير مسموح"}), 403
+    return render_template("error.html", code=403,
+                           title="غير مسموح",
+                           message="لا تملك صلاحية الوصول."), 403
+
+
+@app.errorhandler(404)
+def err_404(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "غير موجود"}), 404
+    return render_template("error.html", code=404,
+                           title="الصفحة غير موجودة",
+                           message="يبدو أن الرابط غير صحيح."), 404
+
+
+@app.errorhandler(429)
+def err_429(e):
+    return jsonify({"error": "محاولات كثيرة — حاول لاحقاً"}), 429
+
+
+@app.errorhandler(413)
+def err_413(e):
+    return jsonify({"error": "الطلب كبير جداً"}), 413
+
+
+@app.errorhandler(500)
+def err_500(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "خطأ في الخادم"}), 500
+    return render_template("error.html", code=500,
+                           title="حدث خطأ",
+                           message="نعتذر، حدث خطأ غير متوقع."), 500
+
+
+@app.errorhandler(Exception)
+def err_all(e):
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+
+    err_str = str(e)
+    if "SSL error" in err_str or "decryption failed" in err_str:
+        print(f"⚠️ SSL connection error: {err_str[:120]}", file=sys.stderr)
+        try:
+            db.session.rollback()
+            db.session.remove()
+        except Exception:
+            pass
+        return jsonify({"error": "تعذّر الاتصال بقاعدة البيانات، حاول مرة أخرى"}), 503
+
+    print(f"❌ Unhandled: {e}", file=sys.stderr)
+    if request.path.startswith("/api/"):
+        return jsonify({"error": f"خطأ غير متوقع: {str(e)}"}), 500
+    return render_template("error.html", code=500,
+                           title="حدث خطأ",
+                           message="نعتذر، حدث خطأ غير متوقع."), 500
+
+
+# ═══════════════════════════════════════════════════════════
+# تهيئة قاعدة البيانات + Auto-migration (v14.2)
+# ═══════════════════════════════════════════════════════════
+def init_db():
+    with app.app_context():
+        try:
+            print("\n" + "═" * 60)
+            print("🔌 اختبار الاتصال بقاعدة البيانات…")
+
+            report = test_connection(app)
+
+            if not report["connected"]:
+                print("❌ فشل الاتصال!")
+                print(f"   النوع: {report.get('error_type', 'Unknown')}")
+                print(f"   الرسالة: {str(report.get('error', ''))[:200]}")
+                print(f"   المضيف: {report.get('host')}:{report.get('port')}")
+                print(f"   الوضع: {report['mode']}")
+                print("═" * 60 + "\n")
+                return
+
+            print(f"✅ متصل بـ: {report['host']}:{report['port']}")
+            print(f"⏱️  الاستجابة: {report['latency_ms']}ms")
+            print(f"🔧 الوضع: {report['mode']}")
+            if report.get("server_version"):
+                print(f"📦 {report['server_version'][:60]}…")
+
+            db.create_all()
+            print("✅ الجداول جاهزة.")
+
+            try:
+                with db.engine.begin() as conn:
+                    cols = [
+                        ("website",      "VARCHAR(120)"),
+                        ("pronouns",     "VARCHAR(20)"),
+                        ("cover",        "VARCHAR(40) DEFAULT 'aurora'"),
+                        ("accent_color", "VARCHAR(7)  DEFAULT '#22D3EE'"),
+                        ("avatar_shape", "VARCHAR(30) DEFAULT 'ring'"),
+                        ("card_style",   "VARCHAR(12) DEFAULT 'glass'"),
+                        ("preferences",  "TEXT DEFAULT '{}'"),
+                    ]
+                    for name, dtype in cols:
+                        conn.execute(text(
+                            f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {dtype}"
+                        ))
+
+                    # ── v14.1/v14.2: أعمدة جديدة لـ posts ──
+                    conn.execute(text(
+                        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
+                        "updated_at TIMESTAMP DEFAULT NOW()"
+                    ))
+                    conn.execute(text(
+                        "UPDATE posts SET updated_at = created_at "
+                        "WHERE updated_at IS NULL"
+                    ))
+                    conn.execute(text(
+                        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
+                        "images TEXT"
+                    ))
+
+                    try:
+                        conn.execute(text(
+                            "ALTER TABLE users ALTER COLUMN avatar_shape TYPE VARCHAR(30)"
+                        ))
+                    except Exception:
+                        pass
+
+                    conn.execute(text("""
+                        UPDATE users SET avatar_shape = CASE
+                            WHEN avatar_shape = 'circle'  THEN 'gradient'
+                            WHEN avatar_shape = 'rounded' THEN 'ring'
+                            WHEN avatar_shape = 'square'  THEN 'none'
+                            ELSE avatar_shape
+                        END
+                        WHERE avatar_shape IN ('circle', 'rounded', 'square')
+                           OR avatar_shape IS NULL
+                    """))
+
+                    conn.execute(text("UPDATE users SET cover = 'aurora' WHERE cover IS NULL"))
+                    conn.execute(text("UPDATE users SET accent_color = '#22D3EE' WHERE accent_color IS NULL"))
+                    conn.execute(text("UPDATE users SET avatar_shape = 'ring' WHERE avatar_shape IS NULL"))
+                    conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
+                    conn.execute(text("UPDATE users SET preferences = '{}' WHERE preferences IS NULL"))
+
+                print("✅ Auto-migration v14.2: updated_at + images + الإشعارات والبلاغات جاهزة.")
+            except Exception as m_err:
+                print(f"⚠️  Auto-migration: {str(m_err)[:150]}")
+
+            try:
+                users_count = User.query.count()
+                posts_count = Post.query.count()
+                notif_count = Notification.query.count()
+                print(f"📊 المستخدمون: {users_count} | البرومبتات: {posts_count} | الإشعارات: {notif_count}")
+            except Exception as qerr:
+                print(f"⚠️  تعذّر قراءة الإحصاءات: {str(qerr)[:100]}")
+
+            print("═" * 60 + "\n")
+
+        except Exception as e:
+            print(f"⚠️  فشل التهيئة: {e}", file=sys.stderr)
+
+
+init_db()
+
+
+# ═══════════════════════════════════════════════════════════
+# التشغيل
+# ═══════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.getenv("FLASK_ENV", "development") == "development"
+
+    if _is_local_mode():
+        print(f"\n🚀 خَيال على: http://localhost:{port}")
+        print(f"📊 اختبار: http://localhost:{port}/api/db-test")
+        print(f"📋 الجداول: http://localhost:{port}/admin/db-status\n")
+
+    app.run(host="0.0.0.0", port=port, debug=debug)
