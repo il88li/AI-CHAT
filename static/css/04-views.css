@@ -2667,3 +2667,466 @@ body.composer-editing .view-overlay-head h2::after {
   .sv-user-row,
   .sv-tag-chip { transition: none !important; transform: none !important; }
 }
+/* ═══════════════════════════════════════════════════════════════════════
+   v21.4 — Post Detail Page (Overlay)
+   يُضاف في نهاية 04-views.css (unlayered)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.pv2-overlay { z-index: calc(var(--z-modal) + 80); }
+
+/* ─── Body ─── */
+.pv2-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.pv2-content {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+  padding: var(--sp-5) var(--pad-x) calc(var(--sp-10) + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+/* ─── Media ─── */
+.pv2-media {
+  position: relative;
+  width: 100%;
+  min-height: 240px;
+  max-height: 560px;
+  margin: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-4);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.pv2-media[hidden] { display: none; }
+
+.pv2-media > img {
+  width: 100%;
+  height: auto;
+  max-height: 560px;
+  object-fit: contain;
+  display: block;
+  background: var(--bg-1);
+}
+
+/* ─── Meta ─── */
+.pv2-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-top: -8px;
+}
+.pv2-time {
+  font-size: var(--fs-2);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Title ─── */
+.pv2-title {
+  margin: 0;
+  font-size: clamp(24px, 4.5%, 36px);
+  font-weight: var(--fw-black);
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  color: var(--fg-1);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+/* ─── Author card ─── */
+.pv2-author {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-3);
+}
+.pv2-author-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  border-radius: var(--r-2);
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+.pv2-author-btn:hover { opacity: .85; }
+.pv2-author-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-2);
+  border: 2px solid var(--border-1);
+  flex-shrink: 0;
+}
+.pv2-author-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pv2-author-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  color: var(--fg-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pv2-author-name > i { font-size: 14px; color: var(--c-brand); flex-shrink: 0; }
+.pv2-author-handle {
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+  color: var(--fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pv2-author-follow {
+  flex-shrink: 0;
+  min-width: 80px;
+}
+.pv2-author-follow[data-state="following"] {
+  background: var(--surface-2);
+  color: var(--fg-1);
+  border: 1px solid var(--border-2);
+  box-shadow: none;
+}
+.pv2-author-follow[data-state="owner"] {
+  display: none;
+}
+.pv2-author-follow[aria-busy="true"] {
+  pointer-events: none;
+  color: transparent !important;
+  position: relative;
+}
+.pv2-author-follow[aria-busy="true"]::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ink);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  inset: 50%;
+  margin: -7px 0 0 -7px;
+}
+
+/* ─── Prompt ─── */
+.pv2-prompt-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pv2-prompt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.pv2-section-label {
+  margin: 0;
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  color: var(--fg-1);
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+.pv2-count {
+  font-size: var(--fs-2);
+  font-weight: var(--fw-medium);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.pv2-prompt {
+  margin: 0;
+  padding: var(--sp-4);
+  background: color-mix(in srgb, var(--bg-0) 40%, transparent);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-3);
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--fg-2);
+  direction: ltr;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-height: 480px;
+  overflow-y: auto;
+  font-feature-settings: "liga" 0;
+}
+
+/* ─── Tags ─── */
+.pv2-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.pv2-tags .tag {
+  padding: 6px 14px;
+  font-size: var(--fs-2);
+}
+
+/* ─── Actions / Stats ─── */
+.pv2-actions-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-2);
+}
+
+.pv2-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-2);
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-3);
+  color: var(--fg-2);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-out),
+              border-color var(--dur-2) var(--ease-out),
+              color var(--dur-2) var(--ease-out),
+              transform var(--dur-2) var(--ease-clay);
+}
+.pv2-action-static { cursor: default; }
+.pv2-action:not(.pv2-action-static):hover {
+  background: var(--surface-2);
+  border-color: var(--border-2);
+  transform: translateY(-1px);
+}
+.pv2-action:not(.pv2-action-static):active { transform: translateY(0) scale(.97); }
+.pv2-action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--c-brand);
+}
+
+.pv2-action > i {
+  font-size: 20px;
+  transition: color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-clay);
+}
+.pv2-action > strong {
+  font-size: var(--fs-4);
+  font-weight: var(--fw-bold);
+  color: var(--fg-1);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.pv2-action > span {
+  font-size: var(--fs-1);
+  color: var(--fg-3);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.02em;
+}
+.pv2-action-dash { opacity: .4; }
+
+/* States */
+.pv2-action[aria-pressed="true"][data-action="post-view-like"] {
+  color: var(--c-danger);
+  border-color: color-mix(in srgb, var(--c-danger) 40%, var(--border-1));
+  background: color-mix(in srgb, var(--c-danger) 6%, var(--surface-1));
+}
+.pv2-action[aria-pressed="true"][data-action="post-view-like"] > i {
+  color: var(--c-danger);
+  transform: scale(1.1);
+}
+.pv2-action[aria-pressed="true"][data-action="post-view-like"] > strong {
+  color: var(--c-danger);
+}
+
+.pv2-action[aria-pressed="true"][data-action="post-view-save"] {
+  color: var(--c-brand);
+  border-color: color-mix(in srgb, var(--c-brand) 40%, var(--border-1));
+  background: color-mix(in srgb, var(--c-brand) 6%, var(--surface-1));
+}
+.pv2-action[aria-pressed="true"][data-action="post-view-save"] > i {
+  color: var(--c-brand);
+  transform: scale(1.1);
+}
+.pv2-action[aria-pressed="true"][data-action="post-view-save"] > strong {
+  color: var(--c-brand);
+}
+
+.pv2-action[data-state="copied"] {
+  color: var(--c-success);
+  border-color: color-mix(in srgb, var(--c-success) 40%, var(--border-1));
+  background: color-mix(in srgb, var(--c-success) 8%, var(--surface-1));
+}
+
+/* ─── Comments ─── */
+.pv2-comments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--border-1);
+}
+.pv2-comments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.pv2-comment-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-3);
+}
+.pv2-comment-form[data-hidden="true"] { display: none; }
+.pv2-comment-form > .avatar {
+  flex-shrink: 0;
+  margin-bottom: 4px;
+}
+.pv2-comment-form > textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  max-height: 120px;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-2);
+  color: inherit;
+  resize: none;
+  font-size: 15px;
+  font-family: inherit;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color var(--dur-2) var(--ease-out);
+}
+.pv2-comment-form > textarea:focus { border-color: var(--c-brand); }
+.pv2-comment-form > button { flex-shrink: 0; }
+
+.pv2-comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+.pv2-comments-list:empty { display: none; }
+
+/* ─── Related ─── */
+.pv2-related {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--border-1);
+}
+.pv2-related .feed {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: var(--sp-3);
+}
+
+/* ─── Skeleton ─── */
+.pv2-skeleton {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+  padding: var(--sp-5) var(--pad-x);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.pv2-skeleton-block,
+.pv2-skeleton-line {
+  border-radius: var(--r-1);
+  background: linear-gradient(90deg,
+    var(--surface-1) 25%,
+    var(--surface-2) 50%,
+    var(--surface-1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.pv2-skeleton-media {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 400px;
+  border-radius: var(--r-4);
+}
+.pv2-skeleton-line { height: 14px; }
+.pv2-line-sm { width: 40%; height: 12px; }
+.pv2-line-lg { width: 75%; height: 28px; margin-top: var(--sp-2); }
+.pv2-line-md { width: 100%; height: 14px; }
+.pv2-skeleton-card { width: 100%; height: 72px; border-radius: var(--r-3); }
+.pv2-skeleton-prompt { width: 100%; height: 140px; border-radius: var(--r-3); }
+
+/* ─── Responsive ─── */
+@media (max-width: 640px) {
+  .pv2-content { padding: var(--sp-4) var(--sp-4) calc(var(--sp-8) + var(--safe-bottom)); gap: var(--sp-4); }
+  .pv2-title { font-size: clamp(22px, 7%, 28px); }
+  .pv2-media { min-height: 200px; max-height: 420px; }
+  .pv2-media > img { max-height: 420px; }
+  .pv2-author { padding: var(--sp-3); }
+  .pv2-author-avatar { width: 40px; height: 40px; }
+  .pv2-actions-row { gap: 6px; }
+  .pv2-action { padding: var(--sp-2) 4px; gap: 1px; }
+  .pv2-action > i { font-size: 18px; }
+  .pv2-action > strong { font-size: var(--fs-3); }
+  .pv2-action > span { font-size: 10px; }
+  .pv2-prompt { font-size: 12.5px; padding: var(--sp-3); }
+}
+
+@media (max-width: 380px) {
+  .pv2-author-follow { min-width: 40px; padding-inline: 10px; }
+  .pv2-author-follow > span { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv2-media > img,
+  .pv2-author-btn,
+  .pv2-author-follow,
+  .pv2-action,
+  .pv2-action > i {
+    transition: none !important;
+    transform: none !important;
+  }
+  .pv2-skeleton-block,
+  .pv2-skeleton-line { animation: none !important; }
+}
+
+[data-theme="light"] .pv2-prompt {
+  background: rgba(0,0,0,.03);
+}
