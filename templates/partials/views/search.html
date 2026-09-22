@@ -1,0 +1,61 @@
+<div class="view-overlay sv-overlay" id="searchView" hidden role="dialog" aria-modal="true" aria-labelledby="searchTitle">
+
+  <header class="view-overlay-head sv-head">
+    <button class="btn btn-icon btn-ghost" data-action="close-search" aria-label="رجوع" type="button">
+      <i class="ph ph-arrow-right" aria-hidden="true"></i>
+    </button>
+    <h2 id="searchTitle">البحث</h2>
+    <span class="sv-head-spacer" aria-hidden="true"></span>
+  </header>
+
+  <div class="sv-body">
+
+    <!-- Sticky: search bar + tabs -->
+    <div class="sv-sticky">
+      <div class="sv-search-wrap">
+        <label class="sv-search" aria-label="حقل البحث">
+          <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+          <input type="search"
+                 id="searchViewInput"
+                 placeholder="ابحث في البرومبتات والمبدعين…"
+                 autocomplete="off"
+                 autocapitalize="off"
+                 spellcheck="false"
+                 inputmode="search"
+                 enterkeyhint="search">
+          <button class="sv-search-clear"
+                  data-action="search-clear"
+                  aria-label="مسح"
+                  type="button"
+                  hidden>
+            <i class="ph ph-x" aria-hidden="true"></i>
+          </button>
+        </label>
+      </div>
+
+      <nav class="sv-tabs" role="tablist" aria-label="نوع البحث">
+        <button class="sv-tab" role="tab" aria-selected="true" data-stab="all" type="button">
+          <i class="ph ph-squares-four" aria-hidden="true"></i><span>الكل</span>
+        </button>
+        <button class="sv-tab" role="tab" aria-selected="false" data-stab="posts" type="button">
+          <i class="ph ph-image-square" aria-hidden="true"></i><span>البرومبتات</span>
+        </button>
+        <button class="sv-tab" role="tab" aria-selected="false" data-stab="users" type="button">
+          <i class="ph ph-users" aria-hidden="true"></i><span>المبدعون</span>
+        </button>
+        <button class="sv-tab" role="tab" aria-selected="false" data-stab="tags" type="button">
+          <i class="ph ph-hash" aria-hidden="true"></i><span>الوسوم</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Results container -->
+    <div class="sv-results" id="svResults" aria-live="polite">
+      <div class="sv-landing-hint">
+        <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+        <p>اكتب كلمتين على الأقل لتبدأ البحث في البرومبتات والمبدعين.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
