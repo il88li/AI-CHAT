@@ -1,11 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   خَيال — app.js v16.2
-   Fixes:
-   - v16.2: composer avatar fill · copy-handle · profile tabs functional
-           · settings About/Account render · composer keyboard support
-   - v14.2: Net.init() real server ping
-           · Composer.open() onerror handler
-           · Auth split-layout aria-invalid + shake feedback
+   خَيال — app.js v17.0
+   v17.0: ربط بطاقة البروفايل الجديدة (profile-hero)
+          - Profile.render() → new IDs (profileActionBtn, profilePresence, profileEditBtn)
+          - Profile.bindActions() → action button + social row
+          - App.bindGlobal() → edit-profile handler
+   v16.2: composer avatar fill · copy-handle · profile tabs functional
+          · settings About/Account render · composer keyboard support
+   v14.2: Net.init() real server ping
+          · Composer.open() onerror handler
+          · Auth split-layout aria-invalid + shake feedback
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -21,7 +24,7 @@
     THEME_KEY: 'khayal.theme',
     NET_CHECK_MS: 8000,
     NET_PING_TIMEOUT: 3000,
-    BUILD: '16.2',
+    BUILD: '17.0',
   };
 
   const S = {
@@ -128,7 +131,6 @@
       el.style.height = Math.min(el.scrollHeight, 200) + 'px';
     },
 
-    /** Set an image src safely — hide the element on load error. */
     safeAvatar(imgEl, url) {
       if (!imgEl) return;
       const clean = url && String(url).trim();
@@ -327,7 +329,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     NETWORK MONITOR (v14.2 — real server ping)
+     NETWORK MONITOR
      ═══════════════════════════════════════════════════════════════ */
   const Net = {
     _interval: null,
@@ -386,7 +388,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     AUTH (v14 — Split layout · aria-invalid feedback)
+     AUTH
      ═══════════════════════════════════════════════════════════════ */
   const Auth = {
     modal() { return document.getElementById('authModal'); },
@@ -586,7 +588,6 @@
       const dock = document.getElementById('dock');
       if (dock) dock.hidden = !user;
 
-      // v16.2 — fill composer avatar
       const composerAvatar = document.getElementById('composerAvatar');
       if (composerAvatar && user) U.safeAvatar(composerAvatar, user.avatar);
     },
@@ -1233,7 +1234,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     COMPOSER (v14.2 — safe avatar)
+     COMPOSER
      ═══════════════════════════════════════════════════════════════ */
   const Composer = {
     type: 'text',
@@ -1555,7 +1556,7 @@
   };
 
   /* ═══════════════════════════════════════════════════════════════
-     PROFILE
+     PROFILE — v17.0 (بطاقة profile-hero الجديدة)
      ═══════════════════════════════════════════════════════════════ */
   const Profile = {
     current: null,
@@ -1600,12 +1601,13 @@
       if (!card) return;
 
       card.hidden = false;
-      card.setAttribute('data-style', u.card_style || 'glass');
       card.style.setProperty('--_accent', u.accent_color || '#22D3EE');
 
+      /* ─── Cover ─── */
       const cover = document.getElementById('profileCover');
       if (cover) cover.dataset.cover = u.cover || 'aurora';
 
+      /* ─── Avatar ─── */
       const avatar = document.getElementById('profileAvatar');
       if (avatar) {
         U.safeAvatar(avatar, u.avatar);
@@ -1613,12 +1615,43 @@
         avatar.dataset.frame = u.avatar_shape || 'ring';
       }
 
+      /* ─── Action button (top-right of cover) ─── */
+      const actionBtn = document.getElementById('profileActionBtn');
+      if (actionBtn) {
+        if (isMe) {
+          actionBtn.dataset.variant = 'icon';
+          actionBtn.dataset.state = 'owner';
+          actionBtn.dataset.action = 'open-settings';
+          actionBtn.removeAttribute('data-user-id');
+          actionBtn.setAttribute('aria-label', 'تعديل الملف');
+          actionBtn.innerHTML = '<i class="ph ph-pencil-simple" aria-hidden="true"></i>';
+        } else {
+          actionBtn.dataset.variant = 'pill';
+          actionBtn.dataset.state = u.is_following ? 'following' : 'idle';
+          actionBtn.dataset.action = 'follow';
+          actionBtn.dataset.userId = String(u.id);
+          actionBtn.setAttribute('aria-label', u.is_following ? 'إلغاء المتابعة' : 'متابعة');
+          actionBtn.innerHTML =
+            '<i class="ph ' + (u.is_following ? 'ph-check' : 'ph-plus') + '" aria-hidden="true"></i>' +
+            '<span>' + (u.is_following ? 'أتابعه' : 'متابعة') + '</span>';
+        }
+      }
+
+      /* ─── Presence ─── */
+      const presence = document.getElementById('profilePresence');
+      if (presence) {
+        presence.hidden = isMe;
+        presence.dataset.online = 'true';
+      }
+
+      /* ─── Name + verified ─── */
       const name = document.getElementById('profileName');
       if (name) name.textContent = u.name || '—';
 
       const verified = document.getElementById('profileVerified');
       if (verified) verified.hidden = !u.verified;
 
+      /* ─── Handle + pronouns ─── */
       const handle = document.getElementById('profileHandle');
       if (handle) handle.textContent = u.handle || '@—';
 
@@ -1632,83 +1665,42 @@
         }
       }
 
+      /* ─── Bio ─── */
       const bio = document.getElementById('profileBio');
-      if (bio) bio.textContent = u.bio || '';
-
-      const meta = document.getElementById('profileMeta');
-      const website = document.getElementById('profileWebsite');
-      const link = website ? website.querySelector('a') : null;
-
-      if (u.website && link) {
-        link.href = u.website;
-        link.textContent = u.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        website.hidden = false;
-      } else if (website) {
-        website.hidden = true;
+      if (bio) {
+        const hasBio = !!(u.bio && u.bio.trim());
+        bio.textContent = hasBio ? u.bio.trim() : '';
+        bio.hidden = !hasBio;
       }
 
-      const joined = document.getElementById('profileJoined');
-      if (joined && u.created_at) {
-        const d = new Date(u.created_at);
-        joined.querySelector('span').textContent = 'انضم ' + d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' });
-        joined.hidden = false;
-      } else if (joined) {
-        joined.hidden = true;
-      }
-
-      if (meta && (website.hidden === false || joined.hidden === false)) meta.hidden = false;
-      else if (meta) meta.hidden = true;
-
-      const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = U.formatNumber(v); };
+      /* ─── Stats ─── */
+      const setStat = function (id, v) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = U.formatNumber(v);
+      };
       setStat('statFollowers', u.followers || 0);
       setStat('statFollowing', u.following || 0);
       setStat('statPosts', u.posts_count || 0);
       setStat('statLikes', u.total_likes || 0);
 
-      const actions = document.getElementById('profileActions');
-      if (actions) {
-        if (isMe) {
-          actions.innerHTML = `
-            <button class="btn btn-secondary" data-action="open-settings" type="button">
-              <i class="ph ph-pencil-simple" aria-hidden="true"></i>
-              <span>تعديل الملف</span>
-            </button>
-            <button class="btn btn-ghost btn-icon" data-action="share-profile" aria-label="مشاركة" type="button">
-              <i class="ph ph-share-network" aria-hidden="true"></i>
-            </button>`;
-        } else {
-          actions.innerHTML = `
-            <button class="btn ${u.is_following ? 'btn-secondary' : 'btn-primary'}"
-                    data-action="follow" data-user-id="${u.id}" type="button">
-              <i class="ph ${u.is_following ? 'ph-check' : 'ph-user-plus'}" aria-hidden="true"></i>
-              <span>${u.is_following ? 'تتابعه' : 'متابعة'}</span>
-            </button>
-            <button class="btn btn-secondary" data-action="message" data-user-id="${u.id}" type="button">
-              <i class="ph ph-chat-circle" aria-hidden="true"></i>
-              <span>رسالة</span>
-            </button>`;
-        }
-      }
+      /* ─── Social row — إظهار/إخفاء حسب الملكية ─── */
+      const editBtn = document.getElementById('profileEditBtn');
+      if (editBtn) editBtn.hidden = !isMe;
 
-      const coverEdit = document.getElementById('profileCoverEditBtn');
-      const avatarEdit = document.getElementById('profileAvatarEditBtn');
-      if (coverEdit) {
-        coverEdit.hidden = !isMe;
-        if (isMe) coverEdit.setAttribute('data-action', 'open-settings');
-      }
-      if (avatarEdit) {
-        avatarEdit.hidden = !isMe;
-        if (isMe) avatarEdit.setAttribute('data-action', 'open-settings');
-      }
+      const msgBtn = card.querySelector('.profile-hero-social-btn[data-action="message"]');
+      if (msgBtn) msgBtn.hidden = isMe;
 
+      /* ─── Tabs ─── */
       if (tabs) {
         tabs.hidden = false;
         const tabsWrap = tabs.closest('.tabs-sticky');
         if (tabsWrap) tabsWrap.hidden = false;
+
         const savedTab = document.getElementById('profileSavedTab');
         const settingsTab = document.getElementById('profileSettingsTab');
         if (savedTab) savedTab.hidden = !isMe;
         if (settingsTab) settingsTab.hidden = !isMe;
+
         tabs.querySelectorAll('.tab[data-ptab]').forEach(function (t) {
           t.setAttribute('aria-selected', t.dataset.ptab === 'posts' ? 'true' : 'false');
         });
@@ -1719,6 +1711,77 @@
 
       this.bindActions();
       this.bindTabs();
+    },
+
+    bindActions() {
+      const card = document.getElementById('profileCard');
+      if (!card) return;
+
+      /* ─── Action button (متابعة / تعديل) ─── */
+      const actionBtn = document.getElementById('profileActionBtn');
+      if (actionBtn && !actionBtn._bound) {
+        actionBtn._bound = true;
+        actionBtn.addEventListener('click', async function () {
+          const act = actionBtn.dataset.action;
+
+          if (act === 'open-settings') {
+            if (window.Settings) Settings.open();
+            return;
+          }
+
+          if (act === 'follow') {
+            const uid = parseInt(actionBtn.dataset.userId, 10);
+            if (!uid) return;
+
+            actionBtn.setAttribute('aria-busy', 'true');
+            try {
+              const res = await API.post('/api/users/' + uid + '/follow');
+              const following = !!res.following;
+
+              actionBtn.dataset.state = following ? 'following' : 'idle';
+              actionBtn.setAttribute('aria-label', following ? 'إلغاء المتابعة' : 'متابعة');
+              actionBtn.innerHTML =
+                '<i class="ph ' + (following ? 'ph-check' : 'ph-plus') + '" aria-hidden="true"></i>' +
+                '<span>' + (following ? 'أتابعه' : 'متابعة') + '</span>';
+
+              const sf = document.getElementById('statFollowers');
+              if (sf && typeof res.followers === 'number') {
+                sf.textContent = U.formatNumber(res.followers);
+              }
+
+              if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
+              Toast.show(following ? 'تتابعه الآن' : 'أُلغي المتابعة', 'success', 1600);
+            } catch (err) {
+              if (window.Sounds) Sounds.play('error');
+              Toast.show(err.message || 'تعذّر', 'error');
+            } finally {
+              actionBtn.removeAttribute('aria-busy');
+            }
+          }
+        });
+      }
+
+      /* ─── Edit button (social row) ─── */
+      const editBtn = document.getElementById('profileEditBtn');
+      if (editBtn && !editBtn._bound) {
+        editBtn._bound = true;
+        editBtn.addEventListener('click', function () {
+          if (window.Settings) Settings.open();
+        });
+      }
+
+      /* ─── Message button (social row) ─── */
+      const msgBtn = card.querySelector('.profile-hero-social-btn[data-action="message"]');
+      if (msgBtn && !msgBtn._bound) {
+        msgBtn._bound = true;
+        msgBtn.addEventListener('click', function () {
+          if (Profile.current && Profile.current.id) {
+            Chat.openWith(Profile.current.id);
+          }
+        });
+      }
+
+      /* share-profile / copy-handle — تُدار مركزياً في bindGlobal */
     },
 
     bindTabs() {
@@ -1790,49 +1853,6 @@
           '<div class="ant-descriptions-value">' + r[1] + '</div>' +
           '</div>';
       }).join('');
-    },
-
-    bindActions() {
-      const card = document.getElementById('profileCard');
-      if (!card) return;
-
-      card.querySelectorAll('[data-action="follow"]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const uid = parseInt(btn.dataset.userId, 10);
-          btn.setAttribute('aria-busy', 'true');
-          try {
-            const res = await API.post(`/api/users/${uid}/follow`);
-            const following = res.following;
-            btn.classList.toggle('btn-primary', !following);
-            btn.classList.toggle('btn-secondary', following);
-            btn.querySelector('i').className = following ? 'ph ph-check' : 'ph ph-user-plus';
-            btn.querySelector('span').textContent = following ? 'تتابعه' : 'متابعة';
-            if (window.Sounds) Sounds.play(following ? 'success' : 'tab');
-          } catch (err) {
-            Toast.show(err.message, 'error');
-          } finally {
-            btn.removeAttribute('aria-busy');
-          }
-        });
-      });
-
-      card.querySelectorAll('[data-action="message"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          Chat.openWith(parseInt(btn.dataset.userId, 10));
-        });
-      });
-
-      card.querySelectorAll('[data-action="open-settings"]').forEach(btn => {
-        btn.addEventListener('click', () => Settings.open());
-      });
-
-      card.querySelectorAll('[data-action="share-profile"]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const url = window.location.origin + '/u/' + (this.current && this.current.username);
-          const ok = await U.copy(url);
-          Toast.show(ok ? 'تم نسخ الرابط' : 'تعذّر النسخ', ok ? 'success' : 'error', 1600);
-        });
-      });
     },
 
     async refresh() {
@@ -2679,7 +2699,6 @@
       if (S.me) {
         this.showApp();
         this.switchTab('home', { silent: true });
-        // v16.2 — fill composer avatar in home trigger
         const ca = document.getElementById('composerAvatar');
         if (ca && S.me.avatar) U.safeAvatar(ca, S.me.avatar);
       } else {
@@ -2716,6 +2735,7 @@
           return;
         }
         if (action === 'open-settings') { e.preventDefault(); Settings.open(); return; }
+        if (action === 'edit-profile') { e.preventDefault(); Settings.open(); return; }
         if (action === 'pick-avatar-file') { e.preventDefault(); const i = document.getElementById('avatarFileInput'); if (i) i.click(); return; }
         if (action === 'pick-cover-file') { e.preventDefault(); const i = document.getElementById('coverFileInput'); if (i) i.click(); return; }
         if (action === 'toggle-notifications') {
@@ -2755,7 +2775,6 @@
         Drawers.closeAll();
       });
 
-      // v16.2 — composer trigger: keyboard support
       document.querySelectorAll('.composer-trigger').forEach(function (trigger) {
         trigger.addEventListener('keydown', function (ev) {
           if (ev.key === 'Enter' || ev.key === ' ') {
