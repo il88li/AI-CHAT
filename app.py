@@ -1,12 +1,19 @@
 """
 خَيال — منصة البرومبتات العربية
 Flask + PostgreSQL + تسجيل دخول محلي + استقرار إنتاجي
-محسّن للتطوير من الهاتف والإنتاج على Render
-v13.6 — _payload محسّن (email + stats) · login/register يستخدمانه
+v14.0 — Security + Notifications + Reports + Pagination
+- CSRF protection على كل POST/PATCH/DELETE
+- Rate limiting على auth endpoints
+- SECRET_KEY صارم في الإنتاج
+- URL validation على avatar/image/website
+- نظام إشعارات كامل (auto-create on like/comment/follow/message)
+- Reports endpoints
+- Post edit endpoint
+- Pagination على user posts / followers / following
 """
 import os
-import sys
 import re
+import sys
 import time
 import json
 import secrets
@@ -24,8 +31,10 @@ from dotenv import load_dotenv
 
 from database import (db, build_database_uri, test_connection,
                       User, Post, Comment, Like, Save, Follow, Chat, Message,
+                      Notification, Report,
                       ALLOWED_COVERS, ALLOWED_FRAMES,
-                      ALLOWED_PRONOUNS, ALLOWED_CARD_STYLES)
+                      ALLOWED_PRONOUNS, ALLOWED_CARD_STYLES,
+                      ALLOWED_REPORT_REASONS)
 
 load_dotenv()
 
@@ -36,12 +45,27 @@ load_dotenv()
 app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
 
-# ─── الأمان والجلسة ───
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
-app.config["SESSION_COOKIE_SECURE"] = os.getenv("FLASK_ENV") == "production"
+_IS_PROD = os.getenv("FLASK_ENV") == "production" or bool(os.getenv("RENDER"))
+
+# ─── الأمان ───
+_secret = os.getenv("SECRET_KEY")
+if not _secret:
+    if _IS_PROD:
+        raise RuntimeError(
+            "❌ SECRET_KEY غير معرّف في متغيرات البيئة. "
+            "لا يمكن تشغيل التطبيق في الإنتاج بدون مفتاح ثابت — "
+            "الجلسات ستُبطَل عند كل إعادة تشغيل."
+        )
+    _secret = secrets.token_hex(32)
+    print("⚠️  SECRET_KEY مؤقت للتطوير — لن يبقى بين إعادات التشغيل",
+          file=sys.stderr)
+
+app.config["SECRET_KEY"] = _secret
+app.config["SESSION_COOKIE_SECURE"] = _IS_PROD
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB max body
 
 # ─── قاعدة البيانات ───
 app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
@@ -61,7 +85,7 @@ _engine_opts = {
         "application_name": "khayal",
     },
 }
-if os.getenv("RENDER"):
+if _IS_PROD:
     _engine_opts["pool_size"] = 3
     _engine_opts["max_overflow"] = 2
 else:
@@ -84,7 +108,7 @@ Compress(app)
 
 
 # ═══════════════════════════════════════════════════════════
-# Helpers
+# Helpers — مصادقة + تحقق
 # ═══════════════════════════════════════════════════════════
 def current_user():
     if hasattr(g, "_cached_user"):
@@ -106,18 +130,41 @@ def require_auth(fn):
     return wrapper
 
 
+def _validate_url(s, max_len=1024):
+    """Allow only http/https URLs. Reject javascript:/data:/etc."""
+    if not s:
+        return True
+    if not isinstance(s, str):
+        return False
+    if len(s) > max_len:
+        return False
+    return bool(re.match(r"^https?://[^\s<>\"']+$", s.strip(), re.IGNORECASE))
+
+
+def _validate_username(s):
+    return bool(re.match(r"^[a-zA-Z0-9_\-]{3,32}$", s or ""))
+
+
+def _validate_email(s):
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", s or ""))
+
+
+def _validate_password(s):
+    return isinstance(s, str) and len(s) >= 6
+
+
+def _is_local_mode():
+    return not _IS_PROD
+
+
 def _payload(u):
     """
     Serializes the current user for page render + auth endpoints.
-    v13.6 — يضيف email + posts_count + total_likes + total_copies
-    تُستخدم في: /api/me, /api/auth/login, /api/auth/register, render index
     """
     if not u:
         return None
     d = u.to_dict()
-    # email — يُرسَل فقط للمستخدم الحالي (لا يتسرب عبر author_data)
     d["email"] = u.email
-    # إحصائيات المستخدم — تُحسَب مباشرة هنا لتُتاح في /api/me وكل صفحة
     try:
         d["posts_count"] = u.posts.count()
         totals = db.session.query(
@@ -137,20 +184,124 @@ def _payload(u):
     return d
 
 
-def _validate_username(s):
-    return bool(re.match(r"^[a-zA-Z0-9_\-]{3,32}$", s or ""))
+# ═══════════════════════════════════════════════════════════
+# CSRF
+# ═══════════════════════════════════════════════════════════
+_CSRF_EXEMPT = {
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/health",
+    "/api/db-test",
+}
+
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
-def _validate_email(s):
-    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", s or ""))
+def _get_csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+    return session["csrf_token"]
 
 
-def _validate_password(s):
-    return isinstance(s, str) and len(s) >= 6
+@app.context_processor
+def _inject_csrf():
+    return {"csrf_token": _get_csrf_token}
 
 
-def _is_local_mode():
-    return not bool(os.getenv("RENDER"))
+@app.before_request
+def _csrf_protect():
+    if request.method in _SAFE_METHODS:
+        return
+    if not request.path.startswith("/api/"):
+        return
+    if request.path in _CSRF_EXEMPT:
+        return
+
+    expected = session.get("csrf_token")
+    provided = (request.headers.get("X-CSRF-Token")
+                or request.headers.get("X-CSRFToken"))
+    if not expected or not provided or not secrets.compare_digest(expected, provided):
+        return jsonify({"error": "CSRF token مفقود أو غير صالح"}), 403
+
+
+# ═══════════════════════════════════════════════════════════
+# Rate Limiting (in-memory, per-process)
+# ═══════════════════════════════════════════════════════════
+_RATE_BUCKETS: dict = {}
+
+
+def _rate_limit(key: str, max_hits: int, window_s: int) -> bool:
+    now = time.time()
+    bucket = _RATE_BUCKETS.get(key) or []
+    bucket = [t for t in bucket if now - t < window_s]
+    if len(bucket) >= max_hits:
+        _RATE_BUCKETS[key] = bucket
+        return False
+    bucket.append(now)
+    _RATE_BUCKETS[key] = bucket
+    return True
+
+
+def _client_ip() -> str:
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.remote_addr or "0.0.0.0"
+
+
+def rate_limit(max_hits: int, window_s: int, scope: str):
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*a, **kw):
+            key = f"{scope}:{_client_ip()}"
+            if not _rate_limit(key, max_hits, window_s):
+                return jsonify({
+                    "error": f"محاولات كثيرة، حاول بعد {window_s} ثانية"
+                }), 429
+            return fn(*a, **kw)
+        return wrapper
+    return deco
+
+
+# ═══════════════════════════════════════════════════════════
+# Notifications helper
+# ═══════════════════════════════════════════════════════════
+def _notify(user_id, actor_id, kind, target_type=None,
+            target_id=None, text=None, preferences=None):
+    """Create a notification unless disabled by user preferences or self-action."""
+    if not user_id or not actor_id:
+        return None
+    if user_id == actor_id:
+        return None
+
+    # Check target user's notification preferences
+    try:
+        target = db.session.get(User, user_id)
+        if target:
+            prefs = target.to_dict().get("preferences") or {}
+            notif_prefs = prefs.get("notif") or {}
+            kind_to_pref = {
+                "like": "likes",
+                "comment": "comments",
+                "follow": "follows",
+                "message": "messages",
+            }
+            pref_key = kind_to_pref.get(kind)
+            if pref_key and notif_prefs.get(pref_key) is False:
+                return None
+    except Exception:
+        pass
+
+    n = Notification(
+        user_id=user_id,
+        actor_id=actor_id,
+        kind=kind,
+        target_type=target_type,
+        target_id=target_id,
+        text=(text or "")[:255],
+    )
+    db.session.add(n)
+    return n
 
 
 # ═══════════════════════════════════════════════════════════
@@ -160,6 +311,7 @@ def _is_local_mode():
 def _before_request():
     if request.path.startswith("/api/"):
         g.request_start = time.time()
+    _get_csrf_token()  # ensure token exists
 
 
 @app.after_request
@@ -185,7 +337,7 @@ def _after_request(response):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
-    if os.getenv("FLASK_ENV") == "production":
+    if _IS_PROD:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
     return response
@@ -206,7 +358,6 @@ def app_view():
 
 @app.route("/u/<username>")
 def public_profile(username):
-    """صفحة الملف العام"""
     return render_template("index.html", me=_payload(current_user()))
 
 
@@ -241,6 +392,7 @@ def service_worker():
 # المصادقة
 # ═══════════════════════════════════════════════════════════
 @app.post("/api/auth/register")
+@rate_limit(max_hits=5, window_s=3600, scope="register")
 def api_register():
     data = request.get_json() or {}
     email = (data.get("email") or "").strip().lower()
@@ -292,6 +444,7 @@ def api_register():
 
         session.permanent = True
         session["user_id"] = user.id
+        _get_csrf_token()
         return jsonify(_payload(user)), 201
     except Exception as e:
         db.session.rollback()
@@ -300,6 +453,7 @@ def api_register():
 
 
 @app.post("/api/auth/login")
+@rate_limit(max_hits=10, window_s=900, scope="login")
 def api_login():
     data = request.get_json() or {}
     identifier = (data.get("identifier") or "").strip().lower()
@@ -319,6 +473,7 @@ def api_login():
 
         session.permanent = remember
         session["user_id"] = user.id
+        _get_csrf_token()
         return jsonify(_payload(user))
     except Exception as e:
         print(f"❌ خطأ دخول: {e}", file=sys.stderr)
@@ -372,14 +527,15 @@ def admin_db_status():
         insp = inspect(db.engine)
         tables = insp.get_table_names()
         out = {
-            "mode": "render" if not _is_local_mode() else "local",
+            "mode": "render" if _IS_PROD else "local",
             "tables": tables,
             "columns": {},
             "row_counts": {},
         }
         for t in tables:
             out["columns"][t] = [c["name"] for c in insp.get_columns(t)]
-        for model in [User, Post, Comment, Like, Save, Follow, Chat, Message]:
+        for model in [User, Post, Comment, Like, Save, Follow, Chat, Message,
+                      Notification, Report]:
             try:
                 out["row_counts"][model.__tablename__] = model.query.count()
             except Exception:
@@ -409,7 +565,6 @@ def admin_db_reset():
 
 @app.get("/admin/db-migrate")
 def admin_db_migrate():
-    """Migration يدوي (احتياطي — auto-migration يعمل عند كل بدء)."""
     key = request.args.get("key", "")
     if not key or key != os.getenv("ADMIN_RESET_KEY", ""):
         abort(403)
@@ -566,16 +721,32 @@ def api_create_post():
     data = request.get_json() or {}
     title = (data.get("title") or "").strip()
     prompt = (data.get("prompt") or "").strip()
+
     if not title or not prompt:
         return jsonify({"error": "العنوان والنص مطلوبان"}), 400
+    if len(title) > 200:
+        return jsonify({"error": "العنوان طويل جداً (200 حرف كحد أقصى)"}), 400
+    if len(prompt) > 5000:
+        return jsonify({"error": "النص طويل جداً (5000 حرف كحد أقصى)"}), 400
+
+    image = (data.get("image") or "").strip() or None
+    if image and not _validate_url(image, max_len=1024):
+        return jsonify({"error": "رابط الصورة غير صالح"}), 400
+
+    model = (data.get("model") or "").strip()[:64] or None
+
+    tags_raw = data.get("tags") or []
+    if isinstance(tags_raw, str):
+        tags_raw = [t.strip() for t in tags_raw.split(",")]
+    tags = [t[:30] for t in tags_raw if t.strip()][:8]
 
     post = Post(
         author_id=u.id,
         title=title,
         prompt=prompt,
-        image=(data.get("image") or "").strip() or None,
-        model=(data.get("model") or "").strip() or None,
-        tags=",".join([t.strip() for t in (data.get("tags") or []) if t.strip()]),
+        image=image,
+        model=model,
+        tags=",".join(tags),
     )
     db.session.add(post)
     db.session.commit()
@@ -585,6 +756,57 @@ def api_create_post():
     d["saved"] = False
     d["is_owner"] = True
     return jsonify(d), 201
+
+
+@app.patch("/api/posts/<int:pid>")
+@require_auth
+def api_update_post(pid):
+    u = g.user
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
+    if post.author_id != u.id:
+        abort(403)
+
+    data = request.get_json() or {}
+
+    if "title" in data:
+        title = (data.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "العنوان مطلوب"}), 400
+        if len(title) > 200:
+            return jsonify({"error": "العنوان طويل جداً"}), 400
+        post.title = title
+
+    if "prompt" in data:
+        prompt = (data.get("prompt") or "").strip()
+        if not prompt:
+            return jsonify({"error": "النص مطلوب"}), 400
+        if len(prompt) > 5000:
+            return jsonify({"error": "النص طويل جداً"}), 400
+        post.prompt = prompt
+
+    if "image" in data:
+        image = (data.get("image") or "").strip() or None
+        if image and not _validate_url(image, max_len=1024):
+            return jsonify({"error": "رابط الصورة غير صالح"}), 400
+        post.image = image
+
+    if "model" in data:
+        post.model = (data.get("model") or "").strip()[:64] or None
+
+    if "tags" in data:
+        tags_raw = data.get("tags") or []
+        if isinstance(tags_raw, str):
+            tags_raw = [t.strip() for t in tags_raw.split(",")]
+        tags = [t[:30] for t in tags_raw if t.strip()][:8]
+        post.tags = ",".join(tags)
+
+    db.session.commit()
+    d = post.to_dict()
+    d["author_data"] = post.author.to_dict()
+    d["is_owner"] = True
+    return jsonify(d)
 
 
 @app.delete("/api/posts/<int:pid>")
@@ -617,6 +839,14 @@ def api_like(pid):
         db.session.add(Like(user_id=u.id, post_id=pid))
         post.likes += 1
         liked = True
+        _notify(
+            user_id=post.author_id,
+            actor_id=u.id,
+            kind="like",
+            target_type="post",
+            target_id=post.id,
+            text=post.title[:120],
+        )
     db.session.commit()
     return jsonify({"liked": liked, "likes": post.likes})
 
@@ -669,13 +899,27 @@ def api_comments(pid):
 @require_auth
 def api_add_comment(pid):
     u = g.user
-    if not db.session.get(Post, pid):
+    post = db.session.get(Post, pid)
+    if not post:
         abort(404)
     text_ = ((request.get_json() or {}).get("text") or "").strip()
     if not text_:
         return jsonify({"error": "نص التعليق مطلوب"}), 400
+    if len(text_) > 1000:
+        return jsonify({"error": "التعليق طويل جداً"}), 400
+
     c = Comment(post_id=pid, author_id=u.id, text=text_)
     db.session.add(c)
+
+    _notify(
+        user_id=post.author_id,
+        actor_id=u.id,
+        kind="comment",
+        target_type="post",
+        target_id=post.id,
+        text=text_[:200],
+    )
+
     db.session.commit()
     return jsonify({**c.to_dict(), "author_data": u.to_dict()}), 201
 
@@ -692,6 +936,47 @@ def api_delete_comment(cid):
     db.session.delete(c)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+# ═══════════════════════════════════════════════════════════
+# البلاغات
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/posts/<int:pid>/report")
+@require_auth
+@rate_limit(max_hits=10, window_s=3600, scope="report")
+def api_report_post(pid):
+    u = g.user
+    post = db.session.get(Post, pid)
+    if not post:
+        abort(404)
+    if post.author_id == u.id:
+        return jsonify({"error": "لا يمكنك الإبلاغ عن منشورك"}), 400
+
+    data = request.get_json() or {}
+    reason = (data.get("reason") or "").strip()
+    note = (data.get("note") or "").strip()[:500]
+
+    if reason not in ALLOWED_REPORT_REASONS:
+        return jsonify({"error": "سبب غير صالح"}), 400
+
+    # Prevent duplicate pending reports from same user on same target
+    existing = Report.query.filter_by(
+        reporter_id=u.id, target_type="post",
+        target_id=pid, status="pending"
+    ).first()
+    if existing:
+        return jsonify({"error": "لديك بلاغ قائم على هذا المنشور"}), 409
+
+    r = Report(
+        reporter_id=u.id,
+        target_type="post",
+        target_id=pid,
+        reason=reason,
+        note=note,
+    )
+    db.session.add(r)
+    db.session.commit()
+    return jsonify({"ok": True, "id": r.id}), 201
 
 
 # ═══════════════════════════════════════════════════════════
@@ -730,45 +1015,114 @@ def api_user(uid):
 def api_user_posts(uid):
     if not db.session.get(User, uid):
         abort(404)
-    posts = Post.query.filter_by(author_id=uid)\
-                      .order_by(Post.created_at.desc()).all()
+
+    limit = min(int(request.args.get("limit", 20)), 50)
+    before_id = request.args.get("before_id")
+
+    query = Post.query.filter_by(author_id=uid)\
+                      .options(joinedload(Post.author))\
+                      .order_by(Post.id.desc())
+
+    if before_id:
+        try:
+            query = query.filter(Post.id < int(before_id))
+        except (ValueError, TypeError):
+            pass
+
+    posts = query.limit(limit).all()
     me = current_user()
+
+    post_ids = [p.id for p in posts]
+    liked_ids = set()
+    saved_ids = set()
+    if me and post_ids:
+        liked_rows = db.session.query(Like.post_id).filter(
+            Like.user_id == me.id, Like.post_id.in_(post_ids)
+        ).all()
+        liked_ids = {r[0] for r in liked_rows}
+        saved_rows = db.session.query(Save.post_id).filter(
+            Save.user_id == me.id, Save.post_id.in_(post_ids)
+        ).all()
+        saved_ids = {r[0] for r in saved_rows}
+
     out = []
     for p in posts:
         d = p.to_dict()
         d["author_data"] = p.author.to_dict()
-        if me:
-            d["liked"] = db.session.query(Like).filter_by(
-                user_id=me.id, post_id=p.id
-            ).first() is not None
-            d["saved"] = db.session.query(Save).filter_by(
-                user_id=me.id, post_id=p.id
-            ).first() is not None
-            d["is_owner"] = (me.id == p.author_id)
-        else:
-            d["liked"] = False
-            d["saved"] = False
-            d["is_owner"] = False
+        d["liked"] = p.id in liked_ids
+        d["saved"] = p.id in saved_ids
+        d["is_owner"] = bool(me and me.id == p.author_id)
         out.append(d)
-    return jsonify(out)
+
+    resp = jsonify(out)
+    resp.headers["X-Has-More"] = "true" if len(posts) == limit else "false"
+    return resp
 
 
 @app.get("/api/users/<int:uid>/followers")
 def api_user_followers(uid):
-    if not db.session.get(User, uid):
+    target = db.session.get(User, uid)
+    if not target:
         abort(404)
-    rows = Follow.query.filter_by(following_id=uid).limit(100).all()
-    users = [db.session.get(User, r.follower_id) for r in rows]
-    return jsonify([u.to_dict() for u in users if u])
+
+    limit = min(int(request.args.get("limit", 30)), 100)
+    before_id = request.args.get("before_id")
+
+    query = Follow.query.filter_by(following_id=uid)\
+                        .order_by(Follow.id.desc())
+    if before_id:
+        try:
+            query = query.filter(Follow.id < int(before_id))
+        except (ValueError, TypeError):
+            pass
+
+    rows = query.limit(limit).all()
+    out = []
+    last_id = None
+    for r in rows:
+        u = db.session.get(User, r.follower_id)
+        if u:
+            out.append(u.to_dict())
+            last_id = r.id
+
+    return jsonify({
+        "items": out,
+        "next_before": last_id if len(rows) == limit else None,
+        "total": target.followers,
+    })
 
 
 @app.get("/api/users/<int:uid>/following")
 def api_user_following(uid):
-    if not db.session.get(User, uid):
+    target = db.session.get(User, uid)
+    if not target:
         abort(404)
-    rows = Follow.query.filter_by(follower_id=uid).limit(100).all()
-    users = [db.session.get(User, r.following_id) for r in rows]
-    return jsonify([u.to_dict() for u in users if u])
+
+    limit = min(int(request.args.get("limit", 30)), 100)
+    before_id = request.args.get("before_id")
+
+    query = Follow.query.filter_by(follower_id=uid)\
+                        .order_by(Follow.id.desc())
+    if before_id:
+        try:
+            query = query.filter(Follow.id < int(before_id))
+        except (ValueError, TypeError):
+            pass
+
+    rows = query.limit(limit).all()
+    out = []
+    last_id = None
+    for r in rows:
+        u = db.session.get(User, r.following_id)
+        if u:
+            out.append(u.to_dict())
+            last_id = r.id
+
+    return jsonify({
+        "items": out,
+        "next_before": last_id if len(rows) == limit else None,
+        "total": target.following,
+    })
 
 
 @app.post("/api/users/<int:uid>/follow")
@@ -780,6 +1134,7 @@ def api_follow(uid):
     target = db.session.get(User, uid)
     if not target:
         abort(404)
+
     existing = Follow.query.filter_by(
         follower_id=me.id, following_id=uid
     ).first()
@@ -793,6 +1148,14 @@ def api_follow(uid):
         me.following += 1
         target.followers += 1
         following = True
+        _notify(
+            user_id=uid,
+            actor_id=me.id,
+            kind="follow",
+            target_type="user",
+            target_id=me.id,
+            text=me.name[:100],
+        )
     db.session.commit()
     return jsonify({"following": following, "followers": target.followers})
 
@@ -819,8 +1182,11 @@ def api_update_me():
 
     if "website" in data:
         web = (data["website"] or "").strip()
-        if web and not (web.startswith("http://") or web.startswith("https://")):
-            web = "https://" + web
+        if web:
+            if not web.startswith("http://") and not web.startswith("https://"):
+                web = "https://" + web
+            if not _validate_url(web, max_len=120):
+                return jsonify({"error": "رابط الموقع غير صالح"}), 400
         u.website = web[:120] if web else None
 
     if "pronouns" in data:
@@ -830,7 +1196,10 @@ def api_update_me():
         u.pronouns = pr or None
 
     if "avatar" in data and data["avatar"]:
-        u.avatar = data["avatar"].strip()[:500]
+        av = data["avatar"].strip()
+        if not _validate_url(av, max_len=500):
+            return jsonify({"error": "رابط الصورة الشخصية غير صالح"}), 400
+        u.avatar = av
 
     if "cover" in data:
         cv = (data["cover"] or "").strip()
@@ -887,6 +1256,7 @@ def api_update_me():
 
 @app.post("/api/me/password")
 @require_auth
+@rate_limit(max_hits=5, window_s=3600, scope="password")
 def api_change_password():
     u = g.user
     data = request.get_json() or {}
@@ -903,6 +1273,73 @@ def api_change_password():
     )
     db.session.commit()
     return jsonify({"ok": True})
+
+
+# ═══════════════════════════════════════════════════════════
+# الإشعارات
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/notifications")
+@require_auth
+def api_notifications():
+    me = g.user
+    limit = min(int(request.args.get("limit", 30)), 100)
+    before_id = request.args.get("before_id")
+    unread_only = request.args.get("unread") == "1"
+
+    query = Notification.query.filter_by(user_id=me.id)\
+                              .options(joinedload(Notification.actor))\
+                              .order_by(Notification.id.desc())
+
+    if unread_only:
+        query = query.filter_by(read=False)
+    if before_id:
+        try:
+            query = query.filter(Notification.id < int(before_id))
+        except (ValueError, TypeError):
+            pass
+
+    rows = query.limit(limit).all()
+    last_id = rows[-1].id if rows else None
+
+    unread_count = Notification.query.filter_by(
+        user_id=me.id, read=False
+    ).count()
+
+    return jsonify({
+        "items": [n.to_dict() for n in rows],
+        "next_before": last_id if len(rows) == limit else None,
+        "unread": unread_count,
+    })
+
+
+@app.post("/api/notifications/<int:nid>/read")
+@require_auth
+def api_notification_read(nid):
+    me = g.user
+    n = db.session.get(Notification, nid)
+    if not n or n.user_id != me.id:
+        abort(404)
+    n.read = True
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/notifications/read-all")
+@require_auth
+def api_notifications_read_all():
+    me = g.user
+    Notification.query.filter_by(user_id=me.id, read=False)\
+                      .update({"read": True})
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/notifications/unread-count")
+@require_auth
+def api_notifications_unread_count():
+    me = g.user
+    c = Notification.query.filter_by(user_id=me.id, read=False).count()
+    return jsonify({"count": c})
 
 
 # ═══════════════════════════════════════════════════════════
@@ -967,8 +1404,22 @@ def api_send_message(cid):
     text_ = ((request.get_json() or {}).get("text") or "").strip()
     if not text_:
         return jsonify({"error": "الرسالة فارغة"}), 400
+    if len(text_) > 2000:
+        return jsonify({"error": "الرسالة طويلة جداً"}), 400
+
     m = Message(chat_id=cid, sender_id=me.id, text=text_)
     db.session.add(m)
+
+    other_id = chat.user_b_id if chat.user_a_id == me.id else chat.user_a_id
+    _notify(
+        user_id=other_id,
+        actor_id=me.id,
+        kind="message",
+        target_type="chat",
+        target_id=cid,
+        text=text_[:200],
+    )
+
     db.session.commit()
     return jsonify({
         "id": m.id, "text": m.text, "from": "me",
@@ -1003,7 +1454,7 @@ def health():
             "status": "ok",
             "db": "connected",
             "auth": "local",
-            "mode": "render" if not _is_local_mode() else "local",
+            "mode": "render" if _IS_PROD else "local",
             "users": User.query.count(),
             "posts": Post.query.count(),
             "time": datetime.utcnow().isoformat(),
@@ -1015,6 +1466,15 @@ def health():
 # ═══════════════════════════════════════════════════════════
 # معالجات الأخطاء
 # ═══════════════════════════════════════════════════════════
+@app.errorhandler(400)
+def err_400(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "طلب غير صالح"}), 400
+    return render_template("error.html", code=400,
+                           title="طلب غير صالح",
+                           message="تحقّق من البيانات وأعد المحاولة."), 400
+
+
 @app.errorhandler(401)
 def err_401(e):
     if request.path.startswith("/api/"):
@@ -1040,6 +1500,16 @@ def err_404(e):
     return render_template("error.html", code=404,
                            title="الصفحة غير موجودة",
                            message="يبدو أن الرابط غير صحيح."), 404
+
+
+@app.errorhandler(429)
+def err_429(e):
+    return jsonify({"error": "محاولات كثيرة — حاول لاحقاً"}), 429
+
+
+@app.errorhandler(413)
+def err_413(e):
+    return jsonify({"error": "الطلب كبير جداً"}), 413
 
 
 @app.errorhandler(500)
@@ -1144,14 +1614,15 @@ def init_db():
                     conn.execute(text("UPDATE users SET card_style = 'glass' WHERE card_style IS NULL"))
                     conn.execute(text("UPDATE users SET preferences = '{}' WHERE preferences IS NULL"))
 
-                print("✅ Auto-migration v13.6: الإطارات والأغلفة وpreferences جاهزة.")
+                print("✅ Auto-migration v14.0: الإشعارات والبلاغات جاهزة.")
             except Exception as m_err:
                 print(f"⚠️  Auto-migration: {str(m_err)[:150]}")
 
             try:
                 users_count = User.query.count()
                 posts_count = Post.query.count()
-                print(f"📊 المستخدمون: {users_count} | البرومبتات: {posts_count}")
+                notif_count = Notification.query.count()
+                print(f"📊 المستخدمون: {users_count} | البرومبتات: {posts_count} | الإشعارات: {notif_count}")
             except Exception as qerr:
                 print(f"⚠️  تعذّر قراءة الإحصاءات: {str(qerr)[:100]}")
 
